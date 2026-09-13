@@ -211,6 +211,100 @@
 		  </div>
 		</div>
 
+		<!-- Modal: Campanas (solo para Solandra) -->
+		<div class="modal fade" id="modal_campanas" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="modal_campanasLabel" aria-hidden="true">
+		  <div class="modal-dialog modal-lg">
+		    <div class="modal-content">
+		      <div class="modal-header">
+		        <h1 class="modal-title fs-6" id="modal_campanasLabel">Campa&ntilde;as de la Planta</h1>
+		        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+		      </div>
+		      <div class="modal-body">
+						<div class="row" style="padding: 5px;">
+							<div class="col-md-4 col-sm-4 col-xs-4" style="padding: 5px;">
+								Planta:
+							</div>
+							<div class="col-md-8 col-sm-8 col-xs-8">
+								<strong id="lbl_camp_planta"></strong>
+							</div>
+						</div>
+
+						<div class="row" style="padding: 5px;">
+							<div class="col-md-4 col-sm-4 col-xs-4" style="padding: 5px;">
+								Campa&ntilde;a activa:
+							</div>
+							<div class="col-md-5 col-sm-5 col-xs-5">
+								<strong id="lbl_camp_activa" style="color: #007bff;"></strong>
+							</div>
+							<div class="col-md-3 col-sm-3 col-xs-3" style="text-align: right;">
+								<button type="button" class="btn btn-primary btn-sm" onclick="f_NuevaCampana();">
+									<i class="bi bi-plus-circle"></i> Nueva Campa&ntilde;a
+								</button>
+							</div>
+						</div>
+
+						<hr>
+
+						<h6>Historial de Campañas</h6>
+						<table class="table table-bordered table-striped table-hover" style="font-size: 14px;">
+							<thead>
+								<tr style="background-color: #37393c; color: #ffffff;">
+									<th style="text-align: center;">Código</th>
+									<th style="text-align: center;">Fecha Inicio</th>
+									<th style="text-align: center;">Fecha Fin</th>
+									<th style="text-align: center;">Estado</th>
+								</tr>
+							</thead>
+							<tbody id="tbl_camp_detalle"></tbody>
+						</table>
+		      </div>
+
+		      <input id="hd_camp_idplanta" type="hidden">
+
+		      <div class="modal-footer">
+		        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+		      </div>
+		    </div>
+		  </div>
+		</div>
+
+		<!-- Modal: Nueva Campana -->
+		<div class="modal fade" id="modal_nueva_campana" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="modal_nueva_campanaLabel" aria-hidden="true">
+		  <div class="modal-dialog">
+		    <div class="modal-content">
+		      <div class="modal-header">
+		        <h1 class="modal-title fs-6" id="modal_nueva_campanaLabel">Nueva Campa&ntilde;a</h1>
+		        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+		      </div>
+		      <div class="modal-body">
+						<div class="row" style="padding: 5px;">
+							<div class="col-md-4 col-sm-4 col-xs-4" style="padding: 5px;">
+								Campa&ntilde;a actual:
+							</div>
+							<div class="col-md-8 col-sm-8 col-xs-8">
+								<strong id="lbl_camp_actual_new"></strong>
+							</div>
+						</div>
+
+						<div class="row" style="padding: 5px;">
+							<div class="col-md-4 col-sm-4 col-xs-4" style="padding: 5px;">
+								Nuevo código:
+							</div>
+							<div class="col-md-8 col-sm-8 col-xs-8">
+								<input id="camp_codigo" type="text" class="form-control" style="text-align: center; text-transform: uppercase;" maxlength="20" placeholder="Ej. CP31, CPM33">
+								<small class="text-muted">La campa&ntilde;a anterior ser&aacute; finalizada autom&aacute;ticamente.</small>
+							</div>
+						</div>
+		      </div>
+
+		      <div class="modal-footer">
+		        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+		        <button type="button" class="btn btn-primary" onclick="f_GrabarCampana();">Grabar</button>
+		      </div>
+		    </div>
+		  </div>
+		</div>
+
 		<!-- Referenciando a JQuery -->
 		<script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
 		<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-A3rJD856KowSb7dwlZdYEkO39Gagi7vIsF0jrRAoQmDKKtQBHUuLZ9AsSv4jD4Xa" crossorigin="anonymous"></script>
@@ -319,6 +413,14 @@
                   _html += '          <font style="color: #F20505;"> Eliminar</font>';
                   _html += '      </a>';
 
+                  // Solo para Solandra (id=5) mostrar opcion de Campanas
+                  if (val.Id == 5) {
+                    _html += '<br>';
+                    _html += '      <a class="success" href="javascript: f_AdminCampanas(' + val.Id + ', \'' + val.descripcion + '\');"><i class="bi bi-calendar-event"></i>';
+                    _html += '          <font style="color: #6f42c1;"> Campa&ntilde;as</font>';
+                    _html += '      </a>';
+                  }
+
                   _html += '  </td>';
 
                 _html += '</tr>';
@@ -420,6 +522,95 @@
 				else{
 					$("#wt_resumen").hide();
 				}
+			}
+
+		// ============================================================
+		// GESTION DE CAMPAnAS (solo Solandra)
+		// ============================================================
+			function f_AdminCampanas(_id_planta, _descripcion) {
+				$("#hd_camp_idplanta").val(_id_planta);
+				$("#lbl_camp_planta").html(_descripcion);
+				$("#lbl_camp_activa").html('<em style="color: #999;">Cargando...</em>');
+				$("#tbl_camp_detalle").html('');
+
+				f_LoadCampanas(_id_planta);
+
+				$("#modal_campanas").modal('show');
+			}
+
+			function f_LoadCampanas(_id_planta) {
+				$.post("apis/backend.php", { accion: "get_ListadoCampanasPlanta", id_planta: _id_planta },
+					function(data) {
+						var html = '';
+						if (data.estado == 1) {
+							$.each(data.res, function(key, val) {
+								var estado_label = (val.estado == 'A')
+									? '<span style="background-color: #28a745; color: #fff; padding: 2px 8px; border-radius: 8px; font-size: 14px;">Activa</span>'
+									: '<span style="background-color: #6c757d; color: #fff; padding: 2px 8px; border-radius: 8px; font-size: 14px;">Inactiva</span>';
+
+								html += '<tr>';
+								html += '  <td style="text-align: center; font-weight: bold;">' + val.codigo_campana + '</td>';
+								html += '  <td style="text-align: center;">' + val.fecha_inicio + '</td>';
+								html += '  <td style="text-align: center;">' + ((val.fecha_fin == null || val.fecha_fin == '') ? '<em style="color: #999;">---</em>' : val.fecha_fin) + '</td>';
+								html += '  <td style="text-align: center;">' + estado_label + '</td>';
+								html += '</tr>';
+							});
+						} else {
+							html = '<tr><td colspan="4" style="text-align: center; padding: 15px;"><em style="color: #999;">No hay campanas registradas.</em></td></tr>';
+						}
+						$("#tbl_camp_detalle").html(html);
+					}, "json");
+
+				$.post("apis/backend.php", { accion: "get_CampanaActivaPlanta", id_planta: _id_planta },
+					function(data) {
+						if (data.estado == 1) {
+							$("#lbl_camp_activa").html(data.codigo_campana);
+						} else {
+							$("#lbl_camp_activa").html('<em style="color: #dc3545;">Sin campana activa</em>');
+						}
+					}, "json");
+			}
+
+			function f_NuevaCampana() {
+				var id_planta = $("#hd_camp_idplanta").val();
+
+				$.post("apis/backend.php", { accion: "get_CampanaActivaPlanta", id_planta: id_planta },
+					function(data) {
+						if (data.estado == 1) {
+							$("#lbl_camp_actual_new").html(data.codigo_campana);
+						} else {
+							$("#lbl_camp_actual_new").html('<em style="color: #999;">Ninguna</em>');
+						}
+					}, "json");
+
+				$("#camp_codigo").val('');
+				$("#modal_nueva_campana").modal('show');
+
+				setTimeout(function() { $("#camp_codigo").focus(); }, 500);
+			}
+
+			function f_GrabarCampana() {
+				var id_planta = $("#hd_camp_idplanta").val();
+				var codigo = $("#camp_codigo").val().trim();
+
+				if (codigo.length == 0) {
+					alert("Debe ingresar un codigo para la campana.");
+					return;
+				}
+
+				$.post("apis/backend.php", { accion: "grabar_CampanaPlanta", id_planta: id_planta, codigo_campana: codigo },
+					function(data) {
+						if (data.estado == 1) {
+							alert("Campana registrada correctamente.");
+							$("#modal_nueva_campana").modal('hide');
+							f_LoadCampanas(id_planta);
+						} else {
+							var mensaje = (typeof data.mensaje !== 'undefined' && data.mensaje.length > 0)
+								? data.mensaje
+								: "Ocurrio un error. Codigo: " + data.estado;
+							alert(mensaje);
+						}
+					}, "json");
 			}
 		</script>
 
