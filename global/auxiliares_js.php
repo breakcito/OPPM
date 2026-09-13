@@ -352,8 +352,9 @@
 	if (speechSynthesis !== undefined){
 		speechSynthesis.onvoiceschanged = GetVoices;
 	}
-
 	function GetVoices(){
+		if (!voiceList) return;
+
 		voices = tts.getVoices();
 		voiceList.innerHTML = '';
 		voices.forEach((voice)=>{
@@ -366,7 +367,6 @@
 
 		voiceList.selectedIndex = 0;
 	}
-
 	function f_StartToSpeech(_sexo, _nom_usuario){
 		var txtMsg = 'Bienvenid' + ((_sexo == 0) ? 'o' : 'a') + ' ' + _nom_usuario + ', este es el ERP Operaciones de O P P M  SAC.';
 		var toSpeak = new SpeechSynthesisUtterance(txtMsg);

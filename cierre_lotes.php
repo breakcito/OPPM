@@ -672,7 +672,7 @@
 						// Identifica el valor del cierre
 							cierre = $("#td_cierre_1_" + tr_id).html();
 
-							if (cierre.toLowerCase().includes('reabrir')){
+							if (cierre && cierre.toLowerCase().includes('reabrir')){
 								$(".input_datos_" + tr_id).prop('disabled', true);
 							}
 							else{
