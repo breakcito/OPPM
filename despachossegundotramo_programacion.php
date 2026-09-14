@@ -314,7 +314,7 @@ if (!isset($_SESSION["Id"])) {
 													Código Despacho
 												</th>
 
-												<th id="th_codigocomercializacion" rowspan="2" style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle; min-width: 170px; display: none;">
+												<th id="th_codigocomercializacion" rowspan="2" style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle; min-width: 170px;">
 													Código Despacho<br>Comercialización
 												</th>
 
@@ -2203,7 +2203,7 @@ if (!isset($_SESSION["Id"])) {
 
 			// Seteando Th de Código de Planta y Comercialización en la Distribución, solo para Colibrí
 			$("#th_distribucion_codplanta").hide();
-			$("#th_codigocomercializacion").hide();
+			// $("#th_codigocomercializacion").hide();
 			$("#th_codigoplanta").hide();
 			$(".th_codigoscmh").hide();
 
@@ -3500,6 +3500,31 @@ if (!isset($_SESSION["Id"])) {
 
 				arr_lotes = arr_lotes.substring(0, arr_lotes.length - 1);
 
+			// Validacion: al menos un lote debe ser de modalidad VIII o 48 SAC (los unicos que generan codigo de detalle)
+				if (idplanta_Selected == 3 || idplanta_Selected == 5) {
+					var hay_lote_valido = false;
+					var hay_lote_otro = false;
+
+					var m = 1;
+					$("#tbl_FiltroLotes tr").each(function() {
+						if ($("#chk_lote_" + m).prop('checked')) {
+							var mod_texto = $(this).find("td:eq(5)").text().trim();
+
+							if (mod_texto.indexOf('VIII') !== -1 || mod_texto.indexOf('48') !== -1) {
+								hay_lote_valido = true;
+							} else {
+								hay_lote_otro = true;
+							}
+						}
+						m++;
+					});
+
+					if (!hay_lote_valido) {
+						alert("Debe seleccionar al menos un lote con modalidad VIII o 48 SAC para generar codigos de despacho.");
+						return;
+					}
+				}
+
 			// Grabando Datos
 				f_LoadingGrabarProgramacion(1);
 
@@ -3515,7 +3540,10 @@ if (!isset($_SESSION["Id"])) {
 
 								f_cerrarModal('modal_adminprogramaciones');
 							} else {
-								alert("Ocurrió un error al momento de agregar el Lote.\nCódigo de Error N° " + data.estado + ".");
+								var mensaje = (typeof data.mensaje !== 'undefined' && data.mensaje.length > 0)
+									? data.mensaje
+									: "Ocurrió un error al momento de agregar el Lote. Código de Error N° " + data.estado + ".";
+								alert(mensaje);
 							}
 
 							f_LoadingGrabarProgramacion(0);
@@ -3535,7 +3563,10 @@ if (!isset($_SESSION["Id"])) {
 
 								f_cerrarModal('modal_adminprogramaciones');
 							} else {
-								alert("Ocurrió un error al momento de grabar la Programación.");
+								var mensaje = (typeof data.mensaje !== 'undefined' && data.mensaje.length > 0)
+									? data.mensaje
+									: "Ocurrió un error al momento de grabar la Programación. Código de Error N° " + data.estado + ".";
+								alert(mensaje);
 							}
 
 							f_LoadingGrabarProgramacion(0);

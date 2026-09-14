@@ -557,21 +557,21 @@ function f_Eliminar_DespachoSegundoTramo_ProgramacionLote($enlace, $id_programac
 	$usuario_registro_x = '';
 	$is_loteaum = 0;
 
-	$q_datos .= "SELECT PD.Id,
-														PD.id_programacion,
-														PD.cod_lote,
-														PD.id_planta,
-														IFNULL(PD.id_modalidadenvio, 'NULL') AS id_modalidadenvio,
-														PD.codigo_despacho,
-														PD.codigo_despacho_comercializacion,
-														PD.codigo_planta,
-														PD.TMH,
-														PD.fechahora_registro,
-														PD.usuario_registro,
-														L.is_loteaum
-											 FROM despachos_segundotramo_programacion_detalle PD
-														INNER JOIN catalogolotes L ON PD.cod_lote = L.ccod_Lote
-										WHERE PD.Id = " . $id_programacionlote;
+	$q_datos = "SELECT PD.Id,
+														 PD.id_programacion,
+														 PD.cod_lote,
+														 PD.id_planta,
+														 IFNULL(PD.id_modalidadenvio, 0) AS id_modalidadenvio,
+														 PD.codigo_despacho,
+														 PD.codigo_despacho_comercializacion,
+														 PD.codigo_planta,
+														 PD.TMH,
+														 PD.fechahora_registro,
+														 PD.usuario_registro,
+														 L.is_loteaum
+												 FROM despachos_segundotramo_programacion_detalle PD
+														 INNER JOIN catalogolotes L ON PD.cod_lote = L.ccod_Lote
+											WHERE PD.Id = " . $id_programacionlote;
 
 	if ($res_datos = mysqli_query($enlace, $q_datos)) {
 		if (mysqli_num_rows($res_datos) > 0) {
@@ -580,7 +580,7 @@ function f_Eliminar_DespachoSegundoTramo_ProgramacionLote($enlace, $id_programac
 				$id_programacion = $row_datos["id_programacion"];
 				$cod_lote = $row_datos["cod_lote"];
 				$id_planta = $row_datos["id_planta"];
-				$id_modalidadenvio = $row_datos["id_modalidadenvio"];
+				$id_modalidadenvio = intval($row_datos["id_modalidadenvio"]);
 				$codigo_despacho = trim($row_datos["codigo_despacho"]);
 				$codigo_comercializacion = trim($row_datos["codigo_despacho_comercializacion"]);
 				$codigo_planta = $row_datos["codigo_planta"];
@@ -598,7 +598,7 @@ function f_Eliminar_DespachoSegundoTramo_ProgramacionLote($enlace, $id_programac
 	$q_log .= "			 " . $id_programacion . ", ";
 	$q_log .= "			'" . $cod_lote . "', ";
 	$q_log .= "			 " . ((strlen($id_planta) == 0) ? 'NULL' : $id_planta) . ", ";
-	$q_log .= "			 " . $id_modalidadenvio . ", ";
+	$q_log .= "			 " . (($id_modalidadenvio == 0) ? 'NULL' : $id_modalidadenvio) . ", ";
 	$q_log .= "			'" . $codigo_despacho . "', ";
 	$q_log .= "			 " . ((strlen($codigo_comercializacion) == 0) ? 'NULL' : "'" . $codigo_comercializacion . "'") . ", ";
 	$q_log .= "			'" . $codigo_planta . "', ";
@@ -613,68 +613,17 @@ function f_Eliminar_DespachoSegundoTramo_ProgramacionLote($enlace, $id_programac
 		return $estado;
 	}
 
-	// Identifica si se trata de un código AUM o VIIISAC, solo para COLIBRI
-	$is_codigoaum = 0;
-
-	if ($id_planta == 3) {
-		if (strpos($codigo_comercializacion, 'CAUM') !== false) {
-			$is_codigoaum = 1;
-		}
+	// Elimina el correlativo de detalle asociado (solo si la modalidad genera codigo)
+	if ($id_modalidadenvio == 5 || $id_modalidadenvio == 6) {
+		$q_del_det = "DELETE FROM correlativo_despacho_detalle
+								 WHERE id_programacion = " . $id_programacion . "
+									 AND id_planta = " . $id_planta . "
+									 AND id_modalidadenvio = " . $id_modalidadenvio . "
+									 AND codigo = '" . mysqli_real_escape_string($enlace, $codigo_comercializacion) . "'";
+		mysqli_query($enlace, $q_del_det);
 	}
 
-	// Verificando si quedan más registros con el mismo correlativo
-	$q_verify_a = '';
-	$q_verify_b = '';
-
-	$continuar = 0;
-	$recreate_codigo = 0;
-	$recreate_codigo_despacho = 0;
-
-	$q_verify_a = "SELECT COUNT(Id) AS _COUNT
-											 FROM despachos_segundotramo_programacion_detalle
-											WHERE /*id_planta = " . $id_planta . "
-												AND id_modalidadenvio = " . $id_modalidadenvio . "
-												AND */TRIM(codigo_despacho) = '" . $codigo_despacho . "'
-												AND Id <> " . $id;
-
-	if ($id_planta == 3) {
-		if ($is_codigoaum == 1) {
-			$q_verify_b .= "   AND codigo_despacho_comercializacion LIKE 'CAUM%'";
-		} else {
-			$q_verify_b .= "   AND codigo_despacho_comercializacion LIKE 'CVIII%'";
-		}
-	}
-
-	$q_verify = $q_verify_a . $q_verify_b;
-
-	// Verificando si se recrea el código de Comercialización
-	if ($res_verify = mysqli_query($enlace, $q_verify)) {
-		if (mysqli_num_rows($res_verify) > 0) {
-			while ($row_verify = mysqli_fetch_array($res_verify)) {
-				$continuar = 1;
-
-				if ($row_verify["_COUNT"] == 0) {
-					$recreate_codigo = 1;
-				}
-			}
-		}
-	}
-
-	// Verificando si se recrea el código de Despacho
-	if ($res_verify_a = mysqli_query($enlace, $q_verify_a)) {
-		if (mysqli_num_rows($res_verify_a) > 0) {
-			while ($row_verify_a = mysqli_fetch_array($res_verify_a)) {
-				$continuar = 1;
-
-				if ($row_verify_a["_COUNT"] == 0) {
-					$recreate_codigo_despacho = 1;
-				}
-			}
-		}
-	}
-
-	// Eliminando Lote programado
-	if ($continuar == 1) {
+	// Eliminar Lote programado
 		$q_delete = "DELETE FROM despachos_segundotramo_programacion_detalle";
 		$q_delete .= " WHERE Id = " . $id_programacionlote;
 
@@ -683,6 +632,32 @@ function f_Eliminar_DespachoSegundoTramo_ProgramacionLote($enlace, $id_programac
 		} else {
 			$estado = 2;
 		}
+
+	// Si no quedan más lotes en la programación, elimina también la cabecera y el correlativo de cabecera
+	$q_count = "SELECT COUNT(Id) AS TOTAL
+							 FROM despachos_segundotramo_programacion_detalle
+							WHERE id_programacion = " . $id_programacion;
+
+	$total_detalle = 0;
+	if ($res_count = mysqli_query($enlace, $q_count)) {
+		if (mysqli_num_rows($res_count) > 0) {
+			while ($row_count = mysqli_fetch_array($res_count)) {
+				$total_detalle = intval($row_count["TOTAL"]);
+			}
+		}
+	}
+
+	if ($total_detalle == 0 && $estado == 1) {
+		// Eliminar TODOS los correlativos de cabecera de esta programacion (uno por modalidad)
+		$q_del_cabs = "DELETE FROM correlativo_despacho
+								 WHERE id_programacion = " . $id_programacion . "
+									 AND id_planta = " . $id_planta;
+		mysqli_query($enlace, $q_del_cabs);
+
+		// Eliminar cabecera de programacion
+		$q_del_cab2 = "DELETE FROM despachos_segundotramo_programacion
+									WHERE Id = " . $id_programacion;
+		mysqli_query($enlace, $q_del_cab2);
 	}
 
 	// Vrificando si es Lote AUM y lo elimina de la tabla de Lotes y Validación de datos del Primer Tramo
@@ -745,266 +720,8 @@ function f_Eliminar_DespachoSegundoTramo_ProgramacionLote($enlace, $id_programac
 		$estado = 7;
 	}
 
-	// Creando los Correlativo de Planta para Colibrí
-	if ($id_planta == 3) {
-		f_SetCodigosPlanta($enlace, $id_planta, $id_programacion, $fechahora_registro, $usuario_registro);
-	}
-
-	// Recreando Códigos de Despachos
-	if ($estado == 1 && $recreate_codigo == 1) {
-		// Generando la regeneración del Código de Despacho
-		if ($recreate_codigo_despacho == 1) {
-			$id = '';
-			$cod_anho = '';
-			$id_programacion = '';
-			$id_planta = '';
-			$id_modalidadenvio = '';
-			$correlativo = '';
-			$codigo_programacion = '';
-			$fechahora_registro_x = '';
-			$usuario_registro_x = '';
-
-			$q_datos = "SELECT Id,
-																 cod_anho,
-																 id_programacion,
-																 id_planta,
-																 IFNULL(id_modalidadenvio, 'NULL') AS id_modalidadenvio,
-																 correlativo,
-																 codigo_programacion,
-																 fechahora_registro,
-																 usuario_registro
-														FROM correlativo_despacho
-													 WHERE codigo_programacion = '" . $codigo_despacho . "'";
-
-			if ($res_datos = mysqli_query($enlace, $q_datos)) {
-				if (mysqli_num_rows($res_datos) > 0) {
-					while ($row_datos = mysqli_fetch_array($res_datos)) {
-						$id = $row_datos["Id"];
-
-						$cod_anho = $row_datos["cod_anho"];
-						$cod_anho = ((strlen($cod_anho) == 0) ? 'NULL' : $cod_anho);
-
-						$id_programacion = $row_datos["id_programacion"];
-						$id_planta = $row_datos["id_planta"];
-						$id_modalidadenvio = $row_datos["id_modalidadenvio"];
-						$correlativo = trim($row_datos["correlativo"]);
-						$codigo_programacion = $row_datos["codigo_programacion"];
-						$fechahora_registro_x = $row_datos["fechahora_registro"];
-						$usuario_registro_x = $row_datos["usuario_registro"];
-					}
-				}
-			}
-
-			// Guardar Log del Correlativo
-			$q_log = "INSERT INTO correlativo_despacho_log (Id, cod_anho, id_programacion, id_planta, id_modalidadenvio, correlativo, codigo_programacion, fechahora_registro, usuario_registro, fechahora_log, usuario_log) VALUES (";
-			$q_log .= "			 " . $id . ", ";
-			$q_log .= "			 " . $cod_anho . ", ";
-			$q_log .= "			 " . $id_programacion . ", ";
-			$q_log .= "			 " . $id_planta . ", ";
-			$q_log .= "			 " . $id_modalidadenvio . ", ";
-			$q_log .= "			 " . $correlativo . ", ";
-			$q_log .= "			'" . $codigo_programacion . "', ";
-			$q_log .= "			'" . $fechahora_registro_x . "', ";
-			$q_log .= "			'" . $usuario_registro_x . "', ";
-			$q_log .= "			'" . $fechahora_registro . "', ";
-			$q_log .= "			'" . $usuario_registro . "')";
-
-			if ($res_log = mysqli_query($enlace, $q_log)) {
-				// Elimina el registro del Correlativo actual
-				$q_delete = "DELETE FROM correlativo_despacho";
-				$q_delete .= " WHERE Id = " . $id;
-
-				if ($res_delete = mysqli_query($enlace, $q_delete)) {
-					// Obtiene el Prefijo del correlativo según la Planta
-					$id_modalidadenvio_x = $id_modalidadenvio;
-
-					$correlativodespacho_prefijo = '';
-
-					$q_prefijo = "SELECT codigo_abv
-																			FROM correlativo_despacho_nomenclatura DN
-																		 WHERE id_planta = " . $id_planta;
-
-					if ($id_planta != 3) {
-						$q_prefijo .= "   AND id_modalidadenvio = " . $id_modalidadenvio_x;
-					}
-
-					if ($res_prefijo = mysqli_query($enlace, $q_prefijo)) {
-						if (mysqli_num_rows($res_prefijo) > 0) {
-							while ($row_prefijo = mysqli_fetch_array($res_prefijo)) {
-								$correlativodespacho_prefijo = $row_prefijo["codigo_abv"];
-							}
-						}
-					}
-
-					// Setea el WHERE para búsqueda por Planta y Modalidad de Envío
-					if ($id_planta == 4) {
-						if ($id_modalidadenvio == 3 || $id_modalidadenvio == 4 || $id_modalidadenvio == 5 || $id_modalidadenvio == 6) {
-							$id_modalidadenvio = '3, 4, 5';
-						}
-					}
-
-					// Actualizando los siguientes correlativos
-					$q_update = "UPDATE correlativo_despacho SET";
-					$q_update .= "   correlativo = correlativo - 1, ";
-					$q_update .= "   codigo_programacion = CONCAT('" . $correlativodespacho_prefijo . "', LPAD(correlativo, 4, '0')) ";
-					$q_update .= " WHERE id_planta = " . $id_planta;
-
-					if ($id_planta != 3) {
-						$q_update .= "   AND id_modalidadenvio IN (" . $id_modalidadenvio . ")";
-					}
-
-					$q_update .= "   AND correlativo > " . $correlativo;
-
-					if ($res_update = mysqli_query($enlace, $q_update)) {
-						// Actualiza los nuevos correlativos en la tabla de Programaciones
-						$q_update = "UPDATE despachos_segundotramo_programacion_detalle PD";
-						$q_update .= "		INNER JOIN correlativo_despacho CD ON PD.id_programacion = CD.id_programacion";
-						$q_update .= "		  AND PD.id_planta = CD.id_planta";
-						$q_update .= "		  AND CASE WHEN PD.id_planta = 4
-																										THEN CASE WHEN PD.id_modalidadenvio IN (3, 4)
-																													 THEN 3
-																												 ELSE PD.id_modalidadenvio
-																												 END
-																									ELSE CASE WHEN PD.id_modalidadenvio IS NULL THEN 999.999 ELSE PD.id_modalidadenvio END END =
-
-																									CASE WHEN CD.id_planta = 4
-																										THEN CASE WHEN CD.id_modalidadenvio IN (3, 4)
-																													 THEN 3
-																												 ELSE CD.id_modalidadenvio
-																												 END
-																									ELSE CASE WHEN CD.id_modalidadenvio IS NULL THEN 999.999 ELSE CD.id_modalidadenvio END END";
-						$q_update .= "   SET PD.codigo_despacho = CD.codigo_programacion";
-						$q_update .= " WHERE PD.id_planta = " . $id_planta;
-
-						if ($id_planta != 3) {
-							$q_update .= "   AND PD.id_modalidadenvio IN (" . $id_modalidadenvio . ")";
-						}
-
-						if ($res_update = mysqli_query($enlace, $q_update)) {
-						}
-					} else {
-						$estado = 4;
-					}
-				}
-			} else {
-				$estado = 3;
-			}
-		}
-
-		// Generando la regeneración de Códigos de Comercialización
-		if ($id_planta == 3) {
-			// Obtiene datos del correlativo
-			$id = '';
-			$cod_anho = '';
-			$id_programacion = '';
-			$id_planta = '';
-			$id_modalidadenvio = '';
-			$correlativo = '';
-			$codigo = '';
-			$fechahora_registro_x = '';
-			$usuario_registro_x = '';
-
-			$q_datos = "SELECT Id,
-																	 cod_anho,
-																	 id_programacion,
-																	 id_planta,
-																	 id_modalidadenvio,
-																	 correlativo,
-																	 codigo,
-																	 fechahora_registro,
-																	 usuario_registro
-															FROM correlativo_despacho_comercializacion
-														 WHERE codigo = '" . $codigo_comercializacion . "'";
-
-			if ($res_datos = mysqli_query($enlace, $q_datos)) {
-				if (mysqli_num_rows($res_datos) > 0) {
-					while ($row_datos = mysqli_fetch_array($res_datos)) {
-						$id = $row_datos["Id"];
-
-						$cod_anho = $row_datos["cod_anho"];
-						$cod_anho = ((strlen($cod_anho) == 0) ? 'NULL' : $cod_anho);
-
-						$id_programacion = $row_datos["id_programacion"];
-						$id_planta = $row_datos["id_planta"];
-						$id_modalidadenvio = $row_datos["id_modalidadenvio"];
-						$correlativo = trim($row_datos["correlativo"]);
-						$codigo = $row_datos["codigo"];
-						$fechahora_registro_x = $row_datos["fechahora_registro"];
-						$usuario_registro_x = $row_datos["usuario_registro"];
-					}
-				}
-			}
-
-			// Guardar Log del Correlativo
-			$q_log = "INSERT INTO correlativo_despacho_comercializacion_log (Id, cod_anho, id_programacion, id_planta, id_modalidadenvio, correlativo, codigo, fechahora_registro, usuario_registro, fechahora_log, usuario_log) VALUES (";
-			$q_log .= "			 " . $id . ", ";
-			$q_log .= "			 " . $cod_anho . ", ";
-			$q_log .= "			 " . $id_programacion . ", ";
-			$q_log .= "			 " . $id_planta . ", ";
-			$q_log .= "			 " . $id_modalidadenvio . ", ";
-			$q_log .= "			 " . $correlativo . ", ";
-			$q_log .= "			'" . $codigo . "', ";
-			$q_log .= "			'" . $fechahora_registro_x . "', ";
-			$q_log .= "			'" . $usuario_registro_x . "', ";
-			$q_log .= "			'" . $fechahora_registro . "', ";
-			$q_log .= "			'" . $usuario_registro . "')";
-
-			if ($res_log = mysqli_query($enlace, $q_log)) {
-				// Elimina el registro del Correlativo actual
-				$q_delete = "DELETE FROM correlativo_despacho_comercializacion";
-				$q_delete .= " WHERE Id = " . $id;
-
-				if ($res_delete = mysqli_query($enlace, $q_delete)) {
-					// Obtiene el Prefijo del correlativo según la Planta
-					$correlativocomercializacion_prefijo = '';
-
-					$q_prefijo = "SELECT " . (($id_modalidadenvio == 5) ? 'correlativo_prefijo_comercializacion_viiisac' : (($id_modalidadenvio == 6) ? 'correlativo_prefijo_comercializacion_48sac' : 'correlativo_prefijo_comercializacion')) . " AS correlativo_prefijo_comercializacion
-																				FROM tbconfig_plantas
-																			 WHERE Id = " . $id_planta;
-
-					if ($res_prefijo = mysqli_query($enlace, $q_prefijo)) {
-						if (mysqli_num_rows($res_prefijo) > 0) {
-							while ($row_prefijo = mysqli_fetch_array($res_prefijo)) {
-								$correlativocomercializacion_prefijo = $row_prefijo["correlativo_prefijo_comercializacion"];
-							}
-						}
-					}
-
-					// Actualizando los siguientes correlativos
-					$q_update = "UPDATE correlativo_despacho_comercializacion SET";
-					$q_update .= "   correlativo = correlativo - 1, ";
-					$q_update .= "   codigo = CONCAT('" . $correlativocomercializacion_prefijo . "', LPAD(correlativo, 4, '0')) ";
-					$q_update .= " WHERE id_planta = " . $id_planta;
-					$q_update .= "   AND id_modalidadenvio = " . $id_modalidadenvio;
-					$q_update .= "   AND correlativo > " . $correlativo;
-
-					if ($res_update = mysqli_query($enlace, $q_update)) {
-						// Actualiza los nuevos correlativos en la tabla de Programaciones
-						$q_update = "UPDATE despachos_segundotramo_programacion_detalle PD";
-						$q_update .= "		INNER JOIN correlativo_despacho_comercializacion CD ON PD.id_programacion = CD.id_programacion";
-						$q_update .= "		LEFT JOIN despachos_primertramo_validaciondatos V ON PD.cod_lote = V.lote_cod_lote";
-						$q_update .= "		LEFT JOIN catalogolotes L ON PD.cod_lote = L.ccod_Lote";
-						$q_update .= "		LEFT JOIN tbconfig_plantas P ON L.balanza_id_planta = P.Id";
-						$q_update .= "   SET PD.codigo_despacho_comercializacion = CD.codigo";
-						$q_update .= " WHERE PD.id_planta = " . $id_planta;
-						$q_update .= "   AND V.despacho_id_modalidadenvio = " . $id_modalidadenvio;
-						$q_update .= "   AND CD.id_modalidadenvio = " . $id_modalidadenvio;
-
-						if ($res_update = mysqli_query($enlace, $q_update)) {
-						}
-					} else {
-						$estado = 4;
-					}
-				}
-			} else {
-				$estado = 3;
-			}
-		}
-	}
-
 	return $estado;
 }
-
 // Proceso de eliminación de Lote de Distribución - Despachos Segundo tramo
 function f_Eliminar_DespachoSegundoTramo_DistribucionLote($enlace, $id_distribucionlote, $fechahora_registro, $usuario_registro)
 {
@@ -1752,6 +1469,215 @@ function f_SetCodigosComercializacion($enlace, $id_planta, $id_programacion, $fe
 		}
 	}
 }
+
+// =============================================================================
+// NUEVAS FUNCIONES PARA GENERACIÓN DE CÓDIGOS DE DESPACHO - 2DO TRAMO
+// Colibri (id_planta=3) y Solandra (id_planta=5) - Modalidades 5 (VIII) y 6 (48 SAC)
+// =============================================================================
+
+// Obtiene la campaña activa de una planta.  Devuelve null si no existe.
+function f_GetCampanaActiva($enlace, $id_planta)
+{
+	$id_campana = null;
+	$codigo_campana = '';
+	$fecha_inicio = '';
+
+	$q = "SELECT Id, codigo_campana, fecha_inicio
+					FROM tbconfig_plantas_campanas
+				 WHERE id_planta = " . intval($id_planta) . "
+					 AND estado = 'A'
+					 AND fecha_fin IS NULL
+				 ORDER BY Id DESC
+				 LIMIT 1";
+
+	if ($res = mysqli_query($enlace, $q)) {
+		if (mysqli_num_rows($res) > 0) {
+			while ($row = mysqli_fetch_array($res)) {
+				$id_campana = $row["Id"];
+				$codigo_campana = $row["codigo_campana"];
+				$fecha_inicio = $row["fecha_inicio"];
+			}
+		}
+	}
+
+	return array(
+		'id_campana' => $id_campana,
+		'codigo_campana' => $codigo_campana,
+		'fecha_inicio' => $fecha_inicio
+	);
+}
+
+// Devuelve el prefijo del detalle según la modalidad (5=VIII, 6=48 SAC)
+function f_GetPrefijoEmpresaDespacho($id_modalidadenvio)
+{
+	if ($id_modalidadenvio == 5) {
+		return 'VIII';
+	} elseif ($id_modalidadenvio == 6) {
+		return 'CO';
+	}
+	return '';
+}
+
+// Calcula el siguiente correlativo (cabecera o detalle) según:
+//   - planta (3=Colibri, 5=Solandra)
+//   - modalidad (5=VIII, 6=48 SAC) - SOLO para DET (el detalle es por empresa)
+//   - tipo: CAB = cabecera GLOBAL por planta
+//           DET = detalle por planta+modalidad
+//   - id_campana (solo para Solandra, NULL para Colibri)
+// El punto de partida se toma de las variables globales.
+// SIEMPRE compara contra el MAX existente en BD y toma el mayor.
+function f_CalcularSiguienteCorrelativoDespacho($enlace, $id_planta, $id_modalidadenvio, $tipo, $id_campana = null)
+{
+	$resultado = array(
+		'prefijo_cab' => '',
+		'prefijo_det' => '',
+		'correlativo' => 0,
+		'codigo' => '',
+		'id_campana' => null,
+		'codigo_campana' => null,
+		'error' => null
+	);
+
+	if ($id_planta != 3 && $id_planta != 5) {
+		$resultado['error'] = 'La planta seleccionada no aplica para esta logica.';
+		return $resultado;
+	}
+
+	// Validar modalidad (obligatoria para CAB y DET)
+	if ($id_modalidadenvio != 5 && $id_modalidadenvio != 6) {
+		$resultado['error'] = 'Solo las modalidades 5 (VIII) y 6 (48 SAC) generan codigo.';
+		return $resultado;
+	}
+
+	// 1. Determinar prefijo de cabecera según planta
+	if ($id_planta == 3) {
+		$resultado['prefijo_cab'] = 'C';
+	} elseif ($id_planta == 5) {
+		$campana = f_GetCampanaActiva($enlace, $id_planta);
+
+		if (is_null($campana['id_campana'])) {
+			$resultado['error'] = 'No existe una campana activa para Solandra. Cree una desde Administracion de Plantas.';
+			return $resultado;
+		}
+
+		$resultado['id_campana'] = $campana['id_campana'];
+		$resultado['codigo_campana'] = $campana['codigo_campana'];
+		// El usuario digita el codigo COMPLETO de la campana (ej. "CP31", "CPM33")
+		$resultado['prefijo_cab'] = $campana['codigo_campana'] . '-S';
+	}
+
+	$resultado['prefijo_det'] = f_GetPrefijoEmpresaDespacho($id_modalidadenvio);
+
+	// 2. Obtener el correlativo inicial desde las variables globales
+	$correlativo_inicial = 0;
+	$var_global = null;
+
+	if ($tipo == 'CAB') {
+		// Cabecera POR MODALIDAD (cada empresa tiene su propia numeracion)
+		if ($id_planta == 3 && $id_modalidadenvio == 5) {
+			$var_global = 'CORR_COLIBRI_VIII_CAB_INICIO';
+		} elseif ($id_planta == 3 && $id_modalidadenvio == 6) {
+			$var_global = 'CORR_COLIBRI_48SAC_CAB_INICIO';
+		} elseif ($id_planta == 5 && $id_modalidadenvio == 5) {
+			$var_global = 'CORR_SOLANDRA_VIII_CAB_INICIO';
+		} elseif ($id_planta == 5 && $id_modalidadenvio == 6) {
+			$var_global = 'CORR_SOLANDRA_48SAC_CAB_INICIO';
+		}
+	} else {
+		// Detalle por planta+modalidad
+		if ($id_planta == 3 && $id_modalidadenvio == 5) {
+			$var_global = 'CORR_COLIBRI_VIII_DET_INICIO';
+		} elseif ($id_planta == 3 && $id_modalidadenvio == 6) {
+			$var_global = 'CORR_COLIBRI_48SAC_DET_INICIO';
+		} elseif ($id_planta == 5 && $id_modalidadenvio == 5) {
+			$var_global = 'CORR_SOLANDRA_VIII_DET_INICIO';
+		} elseif ($id_planta == 5 && $id_modalidadenvio == 6) {
+			$var_global = 'CORR_SOLANDRA_48SAC_DET_INICIO';
+		}
+	}
+
+	if (!is_null($var_global) && isset($GLOBALS[$var_global]) && intval($GLOBALS[$var_global]) > 0) {
+		$correlativo_inicial = intval($GLOBALS[$var_global]);
+	}
+
+	// 2b. Verificar fecha global de vigencia del reset (evita retroactividad)
+	//     Si la fecha actual >= CORR_DESDE, las variables _INICIO sobrescriben el historico.
+	$aplica_reset = false;
+
+	if (!is_null($var_global) && $correlativo_inicial > 0 && isset($GLOBALS['CORR_DESDE']) && !empty($GLOBALS['CORR_DESDE'])) {
+		$fecha_desde = $GLOBALS['CORR_DESDE'];
+		$fecha_actual = isset($g_date) ? $g_date : date('Y-m-d');
+
+		if (strtotime($fecha_actual) >= strtotime($fecha_desde)) {
+			$aplica_reset = true;
+		}
+	}
+
+	// 3. Obtener el maximo correlativo actual (filtrando por modalidad en CAB y DET)
+	$tabla = ($tipo == 'CAB') ? 'correlativo_despacho' : 'correlativo_despacho_detalle';
+
+	$q_max = "SELECT MAX(correlativo) AS MAX_CORRELATIVO
+							FROM " . $tabla . "
+						 WHERE id_planta = " . intval($id_planta) . "
+							 AND id_modalidadenvio = " . intval($id_modalidadenvio);
+
+	if ($id_planta == 5 && $tipo == 'CAB' && !is_null($resultado['id_campana'])) {
+		$q_max .= " AND id_campana = " . intval($resultado['id_campana']);
+	}
+
+	// Filtrar por fecha CORR_DESDE para ignorar el historico antiguo
+	if (isset($GLOBALS['CORR_DESDE']) && !empty($GLOBALS['CORR_DESDE'])) {
+		$q_max .= " AND fechahora_registro >= '" . $GLOBALS['CORR_DESDE'] . " 00:00:00'";
+	}
+
+	$max_actual = 0;
+
+	if ($res_max = mysqli_query($enlace, $q_max)) {
+		if (mysqli_num_rows($res_max) > 0) {
+			while ($row_max = mysqli_fetch_array($res_max)) {
+				$max_actual = intval($row_max["MAX_CORRELATIVO"]);
+			}
+		}
+	}
+
+	// 4. Determinar el correlativo final
+	//    - Si max_actual = 0 (tabla vacia): usar la variable como punto de partida
+	//    - Si max_actual > 0 (hay datos): incrementar normalmente con max + 1
+	if ($max_actual == 0) {
+		$resultado['correlativo'] = max(1, $correlativo_inicial);
+	} else {
+		$resultado['correlativo'] = $max_actual + 1;
+	}
+
+	// 5. Construir el codigo
+	if ($tipo == 'CAB') {
+		$resultado['codigo'] = $resultado['prefijo_cab'] . $resultado['correlativo'];
+	} else {
+		$resultado['codigo'] = $resultado['prefijo_det'] . $resultado['correlativo'];
+	}
+
+	return $resultado;
+}
+
+// Construye el código de cabecera final: ej. "C556" o "CP31-S216"
+// El codigo_campana ya viene COMPLETO del usuario (ej. "CP31" o "CPM33")
+function f_ConstruirCodigoCabecera($id_planta, $codigo_campana, $numero)
+{
+	if ($id_planta == 3) {
+		return 'C' . $numero;
+	} elseif ($id_planta == 5 && !is_null($codigo_campana) && $codigo_campana !== '') {
+		return $codigo_campana . '-S' . $numero;
+	}
+	return '';
+}
+
+// Construye el código de detalle final: ej. "C1-VIII1" o "CP31-S1-VIII1"
+function f_ConstruirCodigoDetalle($codigo_cabecera, $prefijo_empresa, $numero)
+{
+	return $codigo_cabecera . '-' . $prefijo_empresa . $numero;
+}
+
+// =============================================================================
 
 // Función para Obtener la diferencia de horas
 function f_GetDiferenciaHoras($fecha_inicio, $fecha_fin)
@@ -26069,28 +25995,32 @@ switch ($_POST["accion"]) {
 		$estado = 0;
 
 		// Recupera variables
-		$id_planta = mysqli_real_escape_string($enlace, $_POST["id_planta"]);
+		$id_planta = intval(mysqli_real_escape_string($enlace, $_POST["id_planta"]));
 		$arr_lotes = mysqli_real_escape_string($enlace, $_POST["arr_lotes"]);
 		$usuario_registro = $_SESSION["usu_usuario"];
 
-		// Registra la cabecera
-		$q_save = "INSERT INTO despachos_segundotramo_programacion (id_planta, fechahora_registro, usuario_registro) VALUES (";
-		$q_save .= $id_planta . ', ';
-		$q_save .= "'" . $g_fecha . "', ";
-		$q_save .= "'" . $usuario_registro . "')";
-
-		if ($res_save = mysqli_query($enlace, $q_save)) {
-			$id_programacion = mysqli_insert_id($enlace);
-
-			$estado = 1;
-		} else {
-			echo json_encode(array('estado' => $estado));
+		// Pre-condición: sólo se permite registrar programación para Colibri (3) o Solandra (5)
+		if ($id_planta != 3 && $id_planta != 5 && $id_planta != 16) {
+			echo json_encode(array('estado' => $estado, 'mensaje' => 'La planta seleccionada no aplica para esta lógica.'));
 
 			return;
 		}
 
 		// MAX (06/09/2024 17:59): Solo para Lotes con estado MINERAL RETIRADO
 		if ($id_planta == 16) {
+			$q_save = "INSERT INTO despachos_segundotramo_programacion (id_planta, fechahora_registro, usuario_registro) VALUES (";
+			$q_save .= $id_planta . ', ';
+			$q_save .= "'" . $g_fecha . "', ";
+			$q_save .= "'" . $usuario_registro . "')";
+
+			if ($res_save = mysqli_query($enlace, $q_save)) {
+				$id_programacion = mysqli_insert_id($enlace);
+				$estado = 1;
+			} else {
+				echo json_encode(array('estado' => $estado));
+				return;
+			}
+
 			$l = 0;
 			$lotes_in = explode('|', $arr_lotes);
 
@@ -26122,700 +26052,523 @@ switch ($_POST["accion"]) {
 			return;
 		}
 
-		// Obtener la Modalidad de Envío de cada lote
-		$arr_modalidad = '';
-		$arr_modalidad_real = '';
+// ============================================================
+		// LOGICA NUEVA: Colibri (3) y Solandra (5)
+		// - Cabecera GLOBAL por planta (mismo codigo para todos los lotes de la programacion)
+		// - Detalle INDEPENDIENTE por empresa (5=VIII, 6=48 SAC)
+		// - Permite mezclar lotes de VIII y 48 SAC en la misma programacion
+		// ============================================================
+
 		$lotes_in = "'" . str_replace('|', "', '", $arr_lotes) . "'";
 
-		$q_modalidad = "SELECT despacho_id_modalidadenvio,
-															 ID_MODALIDADENVIO_REAL
-													FROM (SELECT CASE WHEN despacho_id_modalidadenvio = 3 OR
-																								 despacho_id_modalidadenvio = 4
-																				 THEN 3
-																			 ELSE despacho_id_modalidadenvio END despacho_id_modalidadenvio,
+		// 1. Obtener los lotes seleccionados con su modalidad
+		$lotes = array();
 
-																			 despacho_id_modalidadenvio AS ID_MODALIDADENVIO_REAL
-																	FROM despachos_primertramo_validaciondatos
-																 WHERE lote_cod_lote IN (" . $lotes_in . ")
-																GROUP BY despacho_id_modalidadenvio) AS DATOS";
+		$q_lotes_sel = "SELECT DISTINCT lote_cod_lote, despacho_id_modalidadenvio
+												 FROM despachos_primertramo_validaciondatos
+												WHERE lote_cod_lote IN (" . $lotes_in . ")
+											 ORDER BY lote_cod_lote";
 
-		if ($res_modalidad = mysqli_query($enlace, $q_modalidad)) {
-			if (mysqli_num_rows($res_modalidad) > 0) {
-				while ($row_modalidad = mysqli_fetch_array($res_modalidad)) {
-					$arr_modalidad .= $row_modalidad["despacho_id_modalidadenvio"] . '|';
-					$arr_modalidad_real .= $row_modalidad["ID_MODALIDADENVIO_REAL"] . '|';
+		if ($res_lotes_sel = mysqli_query($enlace, $q_lotes_sel)) {
+			if (mysqli_num_rows($res_lotes_sel) > 0) {
+				while ($row_lotes_sel = mysqli_fetch_array($res_lotes_sel)) {
+					$lotes[] = array(
+						'cod_lote' => $row_lotes_sel["lote_cod_lote"],
+						'id_modalidadenvio' => intval($row_lotes_sel["despacho_id_modalidadenvio"])
+					);
 				}
-
-				$arr_modalidad = substr($arr_modalidad, 0, -1);
-				$arr_modalidad_real = substr($arr_modalidad_real, 0, -1);
 			}
 		}
 
-		// Solo para Colibrí se debe generar un solo Código de Despacho
-		if ($id_planta == 3) {
-			$correlativo_despacho = 0;
-
-			$q_correlativo_1 = "SELECT IFNULL(MAX(correlativo), 0) + 1 AS CORRELATIVO";
-			$q_correlativo_1 .= "  FROM correlativo_despacho";
-			// $q_correlativo_1 .= " WHERE cod_anho = ".$g_anho;
-			$q_correlativo_1 .= " WHERE id_planta = " . $id_planta;
-
-			if ($res_correlativo_1 = mysqli_query($enlace, $q_correlativo_1)) {
-				if (mysqli_num_rows($res_correlativo_1) > 0) {
-					while ($row_correlativo_1 = mysqli_fetch_array($res_correlativo_1)) {
-						$correlativo_despacho = $row_correlativo_1["CORRELATIVO"];
-						$correlativo_despacho = str_pad($correlativo_despacho, 4, '0', STR_PAD_LEFT);
-					}
-				}
-			}
-
-			// Obtener Prefijo
-			$correlativo_prefijo = '';
-
-			$q_prefijo = "SELECT codigo_abv
-														FROM correlativo_despacho_nomenclatura
-													 WHERE id_planta = " . $id_planta;
-
-			if ($res_prefijo = mysqli_query($enlace, $q_prefijo)) {
-				if (mysqli_num_rows($res_prefijo) > 0) {
-					while ($row_prefijo = mysqli_fetch_array($res_prefijo)) {
-						$correlativo_prefijo = $row_prefijo["codigo_abv"];
-					}
-				}
-			}
-
-			// Setea el Código del Despacho
-			$codigo_despacho = $correlativo_prefijo . $correlativo_despacho;
+		if (count($lotes) == 0) {
+			echo json_encode(array('estado' => 6, 'mensaje' => 'No se encontraron lotes validos.'));
+			return;
 		}
 
-		// Recorre el Array por Modalidad de Envío
-		$m = 0;
-		$id_modalidad_x = 0;
-		$arr_modalidad = explode('|', $arr_modalidad);
-
-		while ($m < count($arr_modalidad)) {
-			// 1. Obtiene el Prefijo del correlativo según la Planta seleccionada
-			$correlativodespacho_prefijo = '';
-
-			$q_prefijo = "SELECT codigo_abv
-														FROM correlativo_despacho_nomenclatura DN
-													 WHERE id_planta = " . $id_planta . "
-														 AND id_modalidadenvio = " . (($arr_modalidad_real[$m] == 5) ? $arr_modalidad_real[$m] : $arr_modalidad[$m]);
-
-			if ($res_prefijo = mysqli_query($enlace, $q_prefijo)) {
-				if (mysqli_num_rows($res_prefijo) > 0) {
-					while ($row_prefijo = mysqli_fetch_array($res_prefijo)) {
-						$correlativodespacho_prefijo = $row_prefijo["codigo_abv"];
-					}
-				}
+		// 2. Agrupar lotes por modalidad para validar
+		$lotes_por_modalidad = array();
+		foreach ($lotes as $lote) {
+			$mod = $lote['id_modalidadenvio'];
+			if (!isset($lotes_por_modalidad[$mod])) {
+				$lotes_por_modalidad[$mod] = array();
 			}
-
-			// 2. Seteando el WHERE de "LAS LOMAS" para el caso de Modalidad 3 ó 4
-			$id_modalidad = (($arr_modalidad_real[$m] == 5) ? $arr_modalidad_real[$m] : $arr_modalidad[$m]);
-			$id_modalidad_x = $id_modalidad;
-
-			if ($id_planta == 4) {
-				if ($id_modalidad == 3 || $id_modalidad == 4 || $id_modalidad == 5) {
-					$id_modalidad = '3, 4, 5';
-				}
-			}
-
-			// 3. Genera los correlativos del despacho según Modalidad de Envío, para todas las plantas menos Colibrí
-			if ($id_planta != 3) {
-				$correlativo_despacho = 0;
-
-				$q_correlativo_1 = "SELECT IFNULL(MAX(correlativo), 0) + 1 AS CORRELATIVO";
-				$q_correlativo_1 .= "  FROM correlativo_despacho";
-				// $q_correlativo_1 .= " WHERE cod_anho = ".$g_anho;
-				$q_correlativo_1 .= " WHERE id_planta = " . $id_planta;
-				$q_correlativo_1 .= "   AND id_modalidadenvio IN (" . $id_modalidad . ")";
-
-				if ($res_correlativo_1 = mysqli_query($enlace, $q_correlativo_1)) {
-					if (mysqli_num_rows($res_correlativo_1) > 0) {
-						while ($row_correlativo_1 = mysqli_fetch_array($res_correlativo_1)) {
-							$correlativo_despacho = $row_correlativo_1["CORRELATIVO"];
-							$correlativo_despacho = str_pad($correlativo_despacho, 4, '0', STR_PAD_LEFT);
-						}
-					}
-				}
-
-				// Setea el Código del Despacho
-				$codigo_despacho = $correlativodespacho_prefijo . $correlativo_despacho;
-			}
-
-			// 3.1 Genera los correlativos para los lotes con Modalidad de Envío: "Comercialización (Directo a AUM)", solo para Colibrí
-			$codigo_comercializacion = 'NULL';
-
-			if ($id_planta == 3 && ($arr_modalidad[$m] == 3 || $arr_modalidad_real[$m] == 5)) {
-				// Obtiene el Prefijo de Comercialización
-				$correlativocomercializacion_prefijo = '';
-
-				$q_prefijo = "SELECT " . (($arr_modalidad_real[$m] == 5) ? 'correlativo_prefijo_comercializacion_viiisac' : (($arr_modalidad_real[$m] == 6) ? 'correlativo_prefijo_comercializacion_48sac' : 'correlativo_prefijo_comercializacion')) . " AS correlativo_prefijo_comercializacion
-																FROM tbconfig_plantas
-															 WHERE Id = " . $id_planta;
-
-				if ($res_prefijo = mysqli_query($enlace, $q_prefijo)) {
-					if (mysqli_num_rows($res_prefijo) > 0) {
-						while ($row_prefijo = mysqli_fetch_array($res_prefijo)) {
-							$correlativocomercializacion_prefijo = $row_prefijo["correlativo_prefijo_comercializacion"];
-						}
-					}
-				}
-
-				// Obtiene el Correlativo de Comercialización
-				$correlativo_comercializacion = 0;
-
-				$q_correlativo_comercializacion = "SELECT IFNULL(MAX(correlativo), 0) + 1 AS CORRELATIVO";
-				$q_correlativo_comercializacion .= "  FROM correlativo_despacho_comercializacion";
-				// $q_correlativo_comercializacion .= " WHERE cod_anho = ".$g_anho;
-				$q_correlativo_comercializacion .= " WHERE id_planta = " . $id_planta;
-				$q_correlativo_comercializacion .= "   AND id_modalidadenvio = " . (($arr_modalidad_real[$m] == 5) ? $arr_modalidad_real[$m] : $arr_modalidad[$m]);
-
-				if ($res_correlativo_comercializacion = mysqli_query($enlace, $q_correlativo_comercializacion)) {
-					if (mysqli_num_rows($res_correlativo_comercializacion) > 0) {
-						while ($row_correlativo_comercializacion = mysqli_fetch_array($res_correlativo_comercializacion)) {
-							$correlativo_comercializacion = $row_correlativo_comercializacion["CORRELATIVO"];
-							$correlativo_comercializacion = str_pad($correlativo_comercializacion, 4, '0', STR_PAD_LEFT);
-						}
-					}
-				}
-
-				// Setea el Código de Comercialización
-				$codigo_comercializacion = "'" . $correlativocomercializacion_prefijo . $correlativo_comercializacion . "'";
-			}
-
-			// 4. Separa los Lotes seleccionados según Modalidad de Envío
-			$cod_lote = '';
-
-			$q_lotes = "SELECT lote_cod_lote
-													FROM despachos_primertramo_validaciondatos
-												 WHERE lote_cod_lote IN (" . $lotes_in . ")
-													 AND despacho_id_modalidadenvio IN (" . $id_modalidad . ")
-												GROUP BY lote_cod_lote";
-
-			if ($res_lotes = mysqli_query($enlace, $q_lotes)) {
-				if (mysqli_num_rows($res_lotes) > 0) {
-					while ($row_lotes = mysqli_fetch_array($res_lotes)) {
-						$cod_lote = $row_lotes["lote_cod_lote"];
-
-						// a. Obtiene la Modalidad Original
-						$cod_modalidad = 0;
-
-						$q_modalidad = "SELECT despacho_id_modalidadenvio
-																			FROM despachos_primertramo_validaciondatos
-																		 WHERE lote_cod_lote = '" . $cod_lote . "'";
-
-						if ($res_modalidad = mysqli_query($enlace, $q_modalidad)) {
-							if (mysqli_num_rows($res_modalidad) > 0) {
-								while ($row_modalidad = mysqli_fetch_array($res_modalidad)) {
-									$cod_modalidad = $row_modalidad["despacho_id_modalidadenvio"];
-								}
-							}
-						}
-
-						// 1. Obtiene el Código de Planta Y Correlativo de Comercialización (Solo para COLIBRI)
-						$codigo_planta = 'NULL';
-
-						if ($id_planta == 3) {
-							// Obtiene el Prefijo de la Planta Y Comercialización
-							$correlativoplanta_prefijo = '';
-
-							$q_prefijo = "SELECT correlativo_prefijo
-																				FROM tbconfig_plantas
-																			 WHERE Id = " . $id_planta;
-
-							if ($res_prefijo = mysqli_query($enlace, $q_prefijo)) {
-								if (mysqli_num_rows($res_prefijo) > 0) {
-									while ($row_prefijo = mysqli_fetch_array($res_prefijo)) {
-										$correlativoplanta_prefijo = $row_prefijo["correlativo_prefijo"];
-									}
-								}
-							}
-
-							// MAX (25/01/2024 10:48): Se reemplazó la forma de asignar Códigos de Planta, ahora se hará al final de todo
-							// // Obtiene el Correlativo de la Planta
-							// 	$correlativo_planta = 0;
-
-							// 	$q_correlativo_2 = "SELECT IFNULL(MAX(correlativo), 0) + 1 AS CORRELATIVO";
-							// 	$q_correlativo_2 .= "  FROM correlativo_plantas";
-							// 	// $q_correlativo_2 .= " WHERE cod_anho = ".$g_anho;
-							// 	$q_correlativo_2 .= " WHERE id_planta = ".$id_planta;
-
-							// 	if ($res_correlativo_2 = mysqli_query($enlace, $q_correlativo_2)){
-							// 		if (mysqli_num_rows($res_correlativo_2) > 0) {
-							// 			while($row_correlativo_2 = mysqli_fetch_array($res_correlativo_2)){
-							// 				$correlativo_planta = $row_correlativo_2["CORRELATIVO"];
-							// 				$correlativo_planta = str_pad($correlativo_planta, 4, '0', STR_PAD_LEFT);
-							// 			}
-							// 		}
-							// 	}
-
-							// 	// Setea el Código de Planta
-							// 		$codigo_planta = "'".$correlativoplanta_prefijo.$correlativo_planta."'";
-						}
-
-						// 2. Registra el detalle
-						$id_detalle = 0;
-
-						$q_detalle = "INSERT INTO despachos_segundotramo_programacion_detalle (id_programacion, cod_lote, id_planta,
-																							id_modalidadenvio, codigo_despacho, codigo_despacho_comercializacion,
-																							codigo_planta, TMH, fechahora_registro, usuario_registro) VALUES (";
-						$q_detalle .= $id_programacion . ", ";
-						$q_detalle .= "'" . $cod_lote . "', ";
-						$q_detalle .= $id_planta . ", ";
-						// $q_detalle .= "NULL, ";
-						$q_detalle .= (($id_planta == 3) ? 'NULL' : $cod_modalidad) . ", ";
-						$q_detalle .= "'" . $codigo_despacho . "', ";
-						$q_detalle .= $codigo_comercializacion . ", ";
-						$q_detalle .= $codigo_planta . ", ";
-						$q_detalle .= "(SELECT SUM(lote_peso_neto) AS NETO_TMH
-																			FROM despachos_primertramo_validaciondatos
-																		 WHERE lote_cod_lote = '" . $cod_lote . "'), ";
-						$q_detalle .= "'" . $g_fecha . "', ";
-						$q_detalle .= "'" . $usuario_registro . "')";
-
-						if ($res_detalle = mysqli_query($enlace, $q_detalle)) {
-							$id_detalle = mysqli_insert_id($enlace);
-
-							// // 3. Registra el Correlativo de Planta
-							// 	if ($codigo_planta != 'NULL'){
-							// 		$q_correlativo_3 = "INSERT INTO correlativo_plantas (id_planta, id_programaciondetalle, correlativo, codigo_planta, fechahora_registro, usuario_registro) VALUES (";
-							// 		$q_correlativo_3 .= $id_planta.", ";
-							// 		$q_correlativo_3 .= $id_detalle.", ";
-							// 		$q_correlativo_3 .= $correlativo_planta.", ";
-							// 		$q_correlativo_3 .= $codigo_planta.", ";
-							// 		$q_correlativo_3 .= "'".$g_fecha."', ";
-							// 		$q_correlativo_3 .= "'".$usuario_registro."')";
-
-							// 		if ($res_correlativo_3 = mysqli_query($enlace, $q_correlativo_3)){
-							// 		}
-							// 		else{
-							// 			$estado = 0;
-							// 		}
-							// 	}
-						}
-					}
-				}
-			}
-
-			// 5. Registra el Correlativo de Despacho
-			if ($id_planta != 3) {
-				$q_correlativo_4 = "INSERT INTO correlativo_despacho (id_programacion, id_planta, id_modalidadenvio, correlativo, codigo_programacion, fechahora_registro, usuario_registro) VALUES (";
-				$q_correlativo_4 .= $id_programacion . ", ";
-				$q_correlativo_4 .= $id_planta . ", ";
-				$q_correlativo_4 .= $cod_modalidad . ", ";
-				$q_correlativo_4 .= $correlativo_despacho . ", ";
-				$q_correlativo_4 .= "'" . $codigo_despacho . "', ";
-				$q_correlativo_4 .= "'" . $g_fecha . "', ";
-				$q_correlativo_4 .= "'" . $usuario_registro . "')";
-
-				if ($res_correlativo_4 = mysqli_query($enlace, $q_correlativo_4)) {
-				} else {
-					$estado = 0;
-				}
-			}
-
-			// 6. Registra el Correlativo de Comercialización
-			if ($id_planta == 3 && $arr_modalidad[$m] == 3) {
-				$q_correlativo_5 = "INSERT INTO correlativo_despacho_comercializacion (id_programacion, id_planta, id_modalidadenvio, correlativo, codigo, fechahora_registro, usuario_registro) VALUES (";
-				$q_correlativo_5 .= $id_programacion . ", ";
-				$q_correlativo_5 .= $id_planta . ", ";
-				$q_correlativo_5 .= (($arr_modalidad_real[$m] == 5) ? $arr_modalidad_real[$m] : $arr_modalidad[$m]) . ", ";
-				$q_correlativo_5 .= $correlativo_comercializacion . ", ";
-				$q_correlativo_5 .= $codigo_comercializacion . ", ";
-				$q_correlativo_5 .= "'" . $g_fecha . "', ";
-				$q_correlativo_5 .= "'" . $usuario_registro . "')";
-
-				if ($res_correlativo_5 = mysqli_query($enlace, $q_correlativo_5)) {
-				} else {
-					$estado = 0;
-				}
-			}
-
-			$m++;
+			$lotes_por_modalidad[$mod][] = $lote['cod_lote'];
 		}
 
-		// Registrando el Correlativo de Despacho para Colibrí
-		if ($id_planta == 3) {
-			$q_correlativo_4 = "INSERT INTO correlativo_despacho (id_programacion, id_planta, correlativo, codigo_programacion, fechahora_registro, usuario_registro) VALUES (";
-			$q_correlativo_4 .= $id_programacion . ", ";
-			$q_correlativo_4 .= $id_planta . ", ";
-			$q_correlativo_4 .= $correlativo_despacho . ", ";
-			$q_correlativo_4 .= "'" . $codigo_despacho . "', ";
-			$q_correlativo_4 .= "'" . $g_fecha . "', ";
-			$q_correlativo_4 .= "'" . $usuario_registro . "')";
+		// 3. Para Solandra: validar campana activa
+		$id_campana = null;
+		$codigo_campana = null;
 
-			if ($res_correlativo_4 = mysqli_query($enlace, $q_correlativo_4)) {
+		if ($id_planta == 5) {
+			$campana = f_GetCampanaActiva($enlace, $id_planta);
+
+			if (is_null($campana['id_campana'])) {
+				echo json_encode(array(
+					'estado' => 4,
+					'mensaje' => 'No existe una campana activa para Solandra. Cree una desde Administracion de Plantas antes de continuar.'
+				));
+
+				return;
+			}
+
+			$id_campana = $campana['id_campana'];
+			$codigo_campana = $campana['codigo_campana'];
+		}
+
+		// 4. Calcular CABECERA y DETALLE POR CADA MODALIDAD (cada empresa tiene su propia numeracion)
+		$cabecera_por_modalidad = array();   // cab[5] = array('correlativo'=>N, 'codigo'=>'C1'), cab[6] = ...
+		$detalle_por_modalidad = array();    // det[5] = correlativo siguiente para VIII, det[6] = ...
+
+		foreach (array_keys($lotes_por_modalidad) as $mod) {
+			if ($mod != 5 && $mod != 6) {
+				continue;
+			}
+
+			// Calcular CABECERA por modalidad
+			$cab = f_CalcularSiguienteCorrelativoDespacho($enlace, $id_planta, $mod, 'CAB', $id_campana);
+
+			if (!is_null($cab['error'])) {
+				echo json_encode(array('estado' => 5, 'mensaje' => $cab['error']));
+				return;
+			}
+
+			$cabecera_por_modalidad[$mod] = array(
+				'correlativo' => intval($cab['correlativo']),
+				'codigo' => f_ConstruirCodigoCabecera($id_planta, $codigo_campana, $cab['correlativo'])
+			);
+
+			// Calcular DETALLE por modalidad (para los lotes que vienen)
+			$det = f_CalcularSiguienteCorrelativoDespacho($enlace, $id_planta, $mod, 'DET', $id_campana);
+
+			if (!is_null($det['error'])) {
+				echo json_encode(array('estado' => 5, 'mensaje' => $det['error']));
+				return;
+			}
+
+			// El detalle es UNICO por despacho + modalidad, no se incrementa entre lotes del mismo despacho
+			$detalle_por_modalidad[$mod] = intval($det['correlativo']);
+		}
+
+		// 5. Registra la CABECERA de la programacion (sin modalidad, es solo agrupador)
+		$q_save = "INSERT INTO despachos_segundotramo_programacion (id_planta, id_modalidadenvio, id_campana, fechahora_registro, usuario_registro) VALUES (";
+		$q_save .= $id_planta . ', ';
+		$q_save .= 'NULL, ';  // La cabecera de programacion es solo agrupador (las cabeceras por modalidad estan en correlativo_despacho)
+		$q_save .= (($id_campana === null) ? 'NULL' : $id_campana) . ', ';
+		$q_save .= "'" . $g_fecha . "', ";
+		$q_save .= "'" . $usuario_registro . "')";
+
+		if ($res_save = mysqli_query($enlace, $q_save)) {
+			$id_programacion = mysqli_insert_id($enlace);
+			$estado = 1;
+		} else {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'Error al registrar la cabecera.'));
+			return;
+		}
+
+		// 6. Registra los CORRELATIVOS DE CABECERA por modalidad (un registro por modalidad)
+		foreach ($cabecera_por_modalidad as $mod => $cab) {
+			$q_corr_cab = "INSERT INTO correlativo_despacho (id_programacion, id_planta, id_modalidadenvio, id_campana, correlativo, codigo_programacion, fechahora_registro, usuario_registro) VALUES (";
+			$q_corr_cab .= $id_programacion . ", ";
+			$q_corr_cab .= $id_planta . ", ";
+			$q_corr_cab .= $mod . ", ";
+			$q_corr_cab .= (($id_campana === null) ? 'NULL' : $id_campana) . ", ";
+			$q_corr_cab .= $cab['correlativo'] . ", ";
+			$q_corr_cab .= "'" . $cab['codigo'] . "', ";
+			$q_corr_cab .= "'" . $g_fecha . "', ";
+			$q_corr_cab .= "'" . $usuario_registro . "')";
+
+			if (!mysqli_query($enlace, $q_corr_cab)) {
+				$estado = 7;
+			}
+		}
+
+		// 7. Por cada lote: asigna codigo de cabecera y detalle segun su modalidad
+		//    IMPORTANTE: codigo_despacho_comercializacion es UNICO por despacho + modalidad
+		//    (todos los lotes de la misma modalidad comparten el mismo codigo)
+		$codigo_detalle_por_modalidad = array();
+		$correlativo_detalle_ya_insertado = array();
+
+		foreach ($lotes as $lote) {
+			$cod_lote = $lote['cod_lote'];
+			$mod_lote = $lote['id_modalidadenvio'];
+
+			$codigo_cabecera_lote = NULL;
+			$codigo_detalle_lote = NULL;
+
+			if ($mod_lote == 5 || $mod_lote == 6) {
+				// Cabecera por modalidad (misma para todos los lotes de esta modalidad)
+				$codigo_cabecera_lote = $cabecera_por_modalidad[$mod_lote]['codigo'];
+
+				// Detalle por modalidad: UN SOLO codigo compartido por todos los lotes de esta modalidad en este despacho
+				if (!isset($codigo_detalle_por_modalidad[$mod_lote])) {
+					$prefijo_empresa = f_GetPrefijoEmpresaDespacho($mod_lote);
+					$codigo_detalle_por_modalidad[$mod_lote] = f_ConstruirCodigoDetalle($codigo_cabecera_lote, $prefijo_empresa, $detalle_por_modalidad[$mod_lote]);
+				}
+
+				$codigo_detalle_lote = $codigo_detalle_por_modalidad[$mod_lote];
+			}
+
+			// a. Inserta el detalle
+			$q_detalle = "INSERT INTO despachos_segundotramo_programacion_detalle (id_programacion, cod_lote, id_planta,
+																				id_modalidadenvio, codigo_despacho, codigo_despacho_comercializacion,
+																				codigo_planta, TMH, fechahora_registro, usuario_registro) VALUES (";
+			$q_detalle .= $id_programacion . ", ";
+			$q_detalle .= "'" . $cod_lote . "', ";
+			$q_detalle .= $id_planta . ", ";
+			$q_detalle .= $mod_lote . ", ";
+			$q_detalle .= (($codigo_cabecera_lote === null) ? 'NULL' : "'" . $codigo_cabecera_lote . "'") . ", ";
+			$q_detalle .= (($codigo_detalle_lote === null) ? 'NULL' : "'" . $codigo_detalle_lote . "'") . ", ";
+			$q_detalle .= "NULL, ";
+			$q_detalle .= "(SELECT SUM(lote_peso_neto) AS NETO_TMH
+													 FROM despachos_primertramo_validaciondatos
+											  WHERE lote_cod_lote = '" . $cod_lote . "'), ";
+			$q_detalle .= "'" . $g_fecha . "', ";
+			$q_detalle .= "'" . $usuario_registro . "')";
+
+if ($res_detalle = mysqli_query($enlace, $q_detalle)) {
+				$id_detalle = mysqli_insert_id($enlace);
+
+				// b. Registra el correlativo de detalle SOLO UNA VEZ por despacho + modalidad
+			if ($codigo_detalle_lote !== null && !isset($correlativo_detalle_ya_insertado[$mod_lote])) {
+					$q_corr_det = "INSERT INTO correlativo_despacho_detalle (id_programacion, id_planta, id_modalidadenvio, id_campana, correlativo, codigo, fechahora_registro, usuario_registro) VALUES (";
+					$q_corr_det .= $id_programacion . ", ";
+					$q_corr_det .= $id_planta . ", ";
+					$q_corr_det .= $mod_lote . ", ";
+					$q_corr_det .= (($id_campana === null) ? 'NULL' : $id_campana) . ", ";
+					$q_corr_det .= $detalle_por_modalidad[$mod_lote] . ", ";
+					$q_corr_det .= "'" . $codigo_detalle_lote . "', ";
+					$q_corr_det .= "'" . $g_fecha . "', ";
+					$q_corr_det .= "'" . $usuario_registro . "')";
+
+					if (!mysqli_query($enlace, $q_corr_det)) {
+						$estado = 8;
+					}
+
+$correlativo_detalle_ya_insertado[$mod_lote] = true;
+				}
 			} else {
-				$estado = 0;
+				$estado = 9;
 			}
 		}
 
-		// Creando los Correlativo de Planta para Colibrí
-		if ($id_planta == 3) {
-			f_SetCodigosPlanta($enlace, $id_planta, $id_programacion, $g_fecha, $usuario_registro);
-			f_SetCodigosComercializacion($enlace, $id_planta, $id_programacion, $g_fecha, $usuario_registro, 0, $arr_modalidad_real[$m]);
-		}
-
-		echo json_encode(array('estado' => $estado));
+		echo json_encode(array(
+			'estado' => $estado,
+			'id_programacion' => $id_programacion,
+			'cabeceras' => $cabecera_por_modalidad,
+			'mensaje' => ($estado == 1) ? 'Programacion registrada correctamente.' : 'Hubo observaciones al registrar. Revise los codigos.'
+		));
 
 		break;
 
-	case 'confirmar_ProgramacionLote_AddLote':
+case 'confirmar_ProgramacionLote_AddLote':
 		$estado = 0;
 
 		// Recupera variables
-		$id_planta = mysqli_real_escape_string($enlace, $_POST["id_planta"]);
-		$id_programacion = mysqli_real_escape_string($enlace, $_POST["id_programacion"]);
+		$id_planta = intval(mysqli_real_escape_string($enlace, $_POST["id_planta"]));
+		$id_programacion = intval(mysqli_real_escape_string($enlace, $_POST["id_programacion"]));
 		$arr_lotes = mysqli_real_escape_string($enlace, $_POST["arr_lotes"]);
-		$is_loteaum = mysqli_real_escape_string($enlace, $_POST["is_loteaum"]);
+		$is_loteaum = intval(mysqli_real_escape_string($enlace, $_POST["is_loteaum"]));
 		$usuario_registro = $_SESSION["usu_usuario"];
 
-		// Recorriendo y evaluando cada lote
-		$l = 0;
-		$arr_lotes = explode('|', $arr_lotes);
+		// Solo aplica a Colibri y Solandra
+		if ($id_planta != 3 && $id_planta != 5) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'La planta seleccionada no aplica para esta logica.'));
 
-		while ($l < count($arr_lotes)) {
-			$cod_lote = $arr_lotes[$l];
+			return;
+		}
 
-			// Obtener la Modalidad de envío del lote
-			if ($is_loteaum == 1) {
-				$id_modalidadenvio = 1;
-				$id_modalidadenvio_x = $id_modalidadenvio;
-			} else {
-				$id_modalidadenvio_x = 0;
+		// ============================================================
+		// LOGICA NUEVA: Agregar lote(s) a una programacion existente.
+		// - Cada lote obtiene SU codigo_despacho (cabecera POR MODALIDAD).
+		// - Cada lote obtiene SU codigo de detalle segun su modalidad.
+		// ============================================================
 
-				$q_modalidad = "SELECT despacho_id_modalidadenvio
-																FROM despachos_primertramo_validaciondatos
-															 WHERE lote_cod_lote = '" . $cod_lote . "'";
+		// 1. Obtener cabecera existente (id_campana)
+		$id_campana_cabecera = null;
 
-				if ($res_modalidad = mysqli_query($enlace, $q_modalidad)) {
-					if (mysqli_num_rows($res_modalidad) > 0) {
-						while ($row_modalidad = mysqli_fetch_array($res_modalidad)) {
-							$id_modalidadenvio_x = $row_modalidad["despacho_id_modalidadenvio"];
-							$id_modalidadenvio = $id_modalidadenvio_x; // Modalidad Original
+		$q_cabecera = "SELECT id_campana
+												 FROM despachos_segundotramo_programacion
+												WHERE Id = " . $id_programacion . "
+													AND id_planta = " . $id_planta . "
+												LIMIT 1";
 
-							// Seteando el WHERE de "LAS LOMAS" para el caso de Modalidad 3 ó 4
-							if ($id_planta == 4) {
-								if ($id_modalidadenvio_x == 3 || $id_modalidadenvio_x == 4 || $id_modalidadenvio_x == 5) {
-									$id_modalidadenvio_x = '3, 4, 5';
-								}
-							}
-						}
+		if ($res_cabecera = mysqli_query($enlace, $q_cabecera)) {
+			if (mysqli_num_rows($res_cabecera) > 0) {
+				while ($row_cabecera = mysqli_fetch_array($res_cabecera)) {
+					$id_campana_cabecera = is_null($row_cabecera["id_campana"]) ? null : intval($row_cabecera["id_campana"]);
+				}
+			}
+		}
+
+		if (is_null($id_campana_cabecera) && $id_planta == 5) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'No se encontro la programacion o falta campana.'));
+			return;
+		}
+
+		// 2. Obtener cabecera por modalidad y ultimo detalle por modalidad
+		$cabecera_existente_por_modalidad = array();
+		$ultimo_detalle_por_modalidad = array();
+
+		$q_cabeceras = "SELECT id_modalidadenvio, correlativo, codigo_programacion
+											 FROM correlativo_despacho
+											WHERE id_programacion = " . $id_programacion . "
+												AND id_planta = " . $id_planta;
+
+		if ($res_cabeceras = mysqli_query($enlace, $q_cabeceras)) {
+			while ($row_cabeceras = mysqli_fetch_array($res_cabeceras)) {
+				$mod = intval($row_cabeceras["id_modalidadenvio"]);
+				if ($mod == 5 || $mod == 6) {
+					$cabecera_existente_por_modalidad[$mod] = array(
+						'correlativo' => intval($row_cabeceras["correlativo"]),
+						'codigo' => $row_cabeceras["codigo_programacion"]
+					);
+				}
+			}
+		}
+
+		$q_ultimo_det = "SELECT id_modalidadenvio, MAX(correlativo) AS MAX_CORR
+											 FROM correlativo_despacho_detalle
+											WHERE id_programacion = " . $id_programacion . "
+												AND id_planta = " . $id_planta . "
+										 GROUP BY id_modalidadenvio";
+
+		if ($res_ultimo_det = mysqli_query($enlace, $q_ultimo_det)) {
+			while ($row_ultimo_det = mysqli_fetch_array($res_ultimo_det)) {
+				$ultimo_detalle_por_modalidad[intval($row_ultimo_det["id_modalidadenvio"])] = intval($row_ultimo_det["MAX_CORR"]);
+			}
+		}
+
+		// 3. Procesar cada lote nuevo
+		$lotes_arr = explode('|', $arr_lotes);
+		$estado = 1;
+
+		foreach ($lotes_arr as $cod_lote) {
+			if (strlen(trim($cod_lote)) == 0) {
+				continue;
+			}
+
+			// Obtener la modalidad del lote
+			$modalidad_lote = 0;
+
+			$q_mod = "SELECT despacho_id_modalidadenvio
+								FROM despachos_primertramo_validaciondatos
+						 WHERE lote_cod_lote = '" . $cod_lote . "'";
+
+			if ($res_mod = mysqli_query($enlace, $q_mod)) {
+				if (mysqli_num_rows($res_mod) > 0) {
+					while ($row_mod = mysqli_fetch_array($res_mod)) {
+						$modalidad_lote = intval($row_mod["despacho_id_modalidadenvio"]);
 					}
 				}
 			}
 
-			// Verifica si existe otro registro con la misma modalidad de envío para la misma programación, de ser así se debe asignar al nuevo lote el mismo Código de Despacho
-			$codigo_despacho = '';
+			$codigo_cabecera_lote = NULL;
+			$codigo_detalle_lote = NULL;
 
-			$q_codigodespacho = "SELECT codigo_despacho
-																	 FROM despachos_segundotramo_programacion_detalle
-																	WHERE id_programacion = " . $id_programacion . "
-																		AND id_planta = " . $id_planta;
+			if ($modalidad_lote == 5 || $modalidad_lote == 6) {
+				// Cabecera existente por modalidad (o generar nueva si no existe)
+				if (isset($cabecera_existente_por_modalidad[$modalidad_lote])) {
+					$codigo_cabecera_lote = $cabecera_existente_por_modalidad[$modalidad_lote]['codigo'];
+				} else {
+					// Generar nueva cabecera por modalidad
+					$campana = ($id_planta == 5) ? f_GetCampanaActiva($enlace, $id_planta) : null;
+					$codigo_campana = is_null($campana) ? null : $campana['codigo_campana'];
 
-			if ($id_planta != 3) {
-				$q_codigodespacho .= "   AND id_modalidadenvio IN (" . $id_modalidadenvio_x . ")";
+					$cab = f_CalcularSiguienteCorrelativoDespacho($enlace, $id_planta, $modalidad_lote, 'CAB', $id_campana_cabecera);
+
+					if (!is_null($cab['error'])) {
+						echo json_encode(array('estado' => 5, 'mensaje' => $cab['error']));
+						return;
+					}
+
+					$codigo_cabecera_lote = f_ConstruirCodigoCabecera($id_planta, $codigo_campana, $cab['correlativo']);
+
+					// Insertar nueva cabecera por modalidad
+					$q_new_cab = "INSERT INTO correlativo_despacho (id_programacion, id_planta, id_modalidadenvio, id_campana, correlativo, codigo_programacion, fechahora_registro, usuario_registro) VALUES (";
+					$q_new_cab .= $id_programacion . ", ";
+					$q_new_cab .= $id_planta . ", ";
+					$q_new_cab .= $modalidad_lote . ", ";
+					$q_new_cab .= (($id_campana_cabecera === null) ? 'NULL' : $id_campana_cabecera) . ", ";
+					$q_new_cab .= $cab['correlativo'] . ", ";
+					$q_new_cab .= "'" . $codigo_cabecera_lote . "', ";
+					$q_new_cab .= "'" . $g_fecha . "', ";
+					$q_new_cab .= "'" . $usuario_registro . "')";
+					mysqli_query($enlace, $q_new_cab);
+
+					$cabecera_existente_por_modalidad[$modalidad_lote] = array(
+						'correlativo' => $cab['correlativo'],
+						'codigo' => $codigo_cabecera_lote
+					);
+				}
+
+				// Detalle por modalidad
+				if (!isset($ultimo_detalle_por_modalidad[$modalidad_lote])) {
+					$ultimo_detalle_por_modalidad[$modalidad_lote] = 0;
+				}
+
+				$ultimo_detalle_por_modalidad[$modalidad_lote]++;
+				$prefijo_empresa = f_GetPrefijoEmpresaDespacho($modalidad_lote);
+				$codigo_detalle_lote = f_ConstruirCodigoDetalle($codigo_cabecera_lote, $prefijo_empresa, $ultimo_detalle_por_modalidad[$modalidad_lote]);
 			}
 
-			$q_codigodespacho .= " GROUP BY codigo_despacho";
+			// Insertar detalle
+			$q_detalle = "INSERT INTO despachos_segundotramo_programacion_detalle (id_programacion, cod_lote, id_planta,
+																				id_modalidadenvio, codigo_despacho, codigo_despacho_comercializacion,
+																				codigo_planta, TMH, fechahora_registro, usuario_registro) VALUES (";
+			$q_detalle .= $id_programacion . ", ";
+			$q_detalle .= "'" . $cod_lote . "', ";
+			$q_detalle .= $id_planta . ", ";
+			$q_detalle .= $modalidad_lote . ", ";
+			$q_detalle .= (($codigo_cabecera_lote === null) ? 'NULL' : "'" . $codigo_cabecera_lote . "'") . ", ";
+			$q_detalle .= (($codigo_detalle_lote === null) ? 'NULL' : "'" . $codigo_detalle_lote . "'") . ", ";
+			$q_detalle .= "NULL, ";
+			$q_detalle .= "(SELECT SUM(lote_peso_neto) AS NETO_TMH
+													 FROM despachos_primertramo_validaciondatos
+											  WHERE lote_cod_lote = '" . $cod_lote . "'), ";
+			$q_detalle .= "'" . $g_fecha . "', ";
+			$q_detalle .= "'" . $usuario_registro . "')";
 
-			if ($res_codigodespacho = mysqli_query($enlace, $q_codigodespacho)) {
-				if (mysqli_num_rows($res_codigodespacho) > 0) {
-					while ($row_codigodespacho = mysqli_fetch_array($res_codigodespacho)) {
-						$codigo_despacho = $row_codigodespacho["codigo_despacho"];
+			if ($res_detalle = mysqli_query($enlace, $q_detalle)) {
+				$id_detalle = mysqli_insert_id($enlace);
 
-						// Obtiene el Código de Planta (Solo para COLIBRI)
-						$codigo_planta = 'NULL';
+				// Insertar correlativo de detalle
+				if ($codigo_detalle_lote !== null) {
+					$q_corr_det = "INSERT INTO correlativo_despacho_detalle (id_programacion, id_planta, id_modalidadenvio, id_campana, correlativo, codigo, fechahora_registro, usuario_registro) VALUES (";
+					$q_corr_det .= $id_programacion . ", ";
+					$q_corr_det .= $id_planta . ", ";
+					$q_corr_det .= $modalidad_lote . ", ";
+					$q_corr_det .= (($id_campana_cabecera === null || $id_campana_cabecera === 0) ? 'NULL' : $id_campana_cabecera) . ", ";
+					$q_corr_det .= $ultimo_detalle_por_modalidad[$modalidad_lote] . ", ";
+					$q_corr_det .= "'" . $codigo_detalle_lote . "', ";
+					$q_corr_det .= "'" . $g_fecha . "', ";
+					$q_corr_det .= "'" . $usuario_registro . "')";
 
-						if ($id_planta == 3) {
-							// Obtiene el Prefijo de la Planta
-							$correlativoplanta_prefijo = '';
-
-							$q_prefijo = "SELECT correlativo_prefijo
-																				FROM tbconfig_plantas
-																			 WHERE Id = " . $id_planta;
-
-							if ($res_prefijo = mysqli_query($enlace, $q_prefijo)) {
-								if (mysqli_num_rows($res_prefijo) > 0) {
-									while ($row_prefijo = mysqli_fetch_array($res_prefijo)) {
-										$correlativoplanta_prefijo = $row_prefijo["correlativo_prefijo"];
-									}
-								}
-							}
-
-							// Obtiene el Correlativo de la Planta
-							$correlativo_planta = 0;
-
-							$q_correlativo_2 = "SELECT IFNULL(MAX(correlativo), 0) + 1 AS CORRELATIVO";
-							$q_correlativo_2 .= "  FROM correlativo_plantas";
-							// $q_correlativo_2 .= " WHERE cod_anho = ".$g_anho;
-							$q_correlativo_2 .= " WHERE id_planta = " . $id_planta;
-
-							if ($res_correlativo_2 = mysqli_query($enlace, $q_correlativo_2)) {
-								if (mysqli_num_rows($res_correlativo_2) > 0) {
-									while ($row_correlativo_2 = mysqli_fetch_array($res_correlativo_2)) {
-										$correlativo_planta = $row_correlativo_2["CORRELATIVO"];
-										$correlativo_planta = str_pad($correlativo_planta, 4, '0', STR_PAD_LEFT);
-									}
-								}
-							}
-
-							// Setea el Código de Planta
-							$codigo_planta = "'" . $correlativoplanta_prefijo . $correlativo_planta . "'";
-
-							// Setea en NULL la Modalidad de Envío
-							$id_modalidadenvio = 'NULL';
-						}
-
-						// Grabar el nuevo registro con el Código de Despacho existente
-						// MAX - Referencia obtenida del case: "confirmar_ProgramacionLote", punto "// 2. Registra el detalle", dentro de: "// 4. Separa los Lotes seleccionados según Modalidad de Envío"
-						$id_detalle = 0;
-
-						$q_detalle = "INSERT INTO despachos_segundotramo_programacion_detalle (id_programacion, cod_lote, id_planta,
-																							id_modalidadenvio, codigo_despacho, codigo_planta, TMH,
-																							fechahora_registro, usuario_registro) VALUES (";
-						$q_detalle .= $id_programacion . ", ";
-						$q_detalle .= "'" . $cod_lote . "', ";
-						$q_detalle .= $id_planta . ", ";
-						$q_detalle .= $id_modalidadenvio . ", ";
-						$q_detalle .= "'" . $codigo_despacho . "', ";
-						$q_detalle .= $codigo_planta . ", ";
-						$q_detalle .= "(SELECT IFNULL(SUM(lote_peso_neto), 0) AS NETO_TMH
-																			FROM despachos_primertramo_validaciondatos
-																		 WHERE lote_cod_lote = '" . $cod_lote . "'), ";
-						$q_detalle .= "'" . $g_fecha . "', ";
-						$q_detalle .= "'" . $usuario_registro . "')";
-
-						if ($res_detalle = mysqli_query($enlace, $q_detalle)) {
-							$id_detalle = mysqli_insert_id($enlace);
-
-							$estado = 1;
-
-							// 3. Registra el Correlativo de Planta
-							if ($codigo_planta != 'NULL') {
-								$q_correlativo_3 = "INSERT INTO correlativo_plantas (id_planta, id_programaciondetalle, correlativo, codigo_planta, fechahora_registro, usuario_registro) VALUES (";
-								$q_correlativo_3 .= $id_planta . ", ";
-								$q_correlativo_3 .= $id_detalle . ", ";
-								$q_correlativo_3 .= $correlativo_planta . ", ";
-								$q_correlativo_3 .= $codigo_planta . ", ";
-								$q_correlativo_3 .= "'" . $g_fecha . "', ";
-								$q_correlativo_3 .= "'" . $usuario_registro . "')";
-
-								if ($res_correlativo_3 = mysqli_query($enlace, $q_correlativo_3)) {
-								} else {
-									$estado = 2;
-								}
-							}
-						} else {
-							$estado = 0;
-						}
-					}
-				} else {
-					// Obtiene el Prefijo del correlativo según la Planta
-					$correlativodespacho_prefijo = '';
-
-					$q_prefijo = "SELECT codigo_abv
-																	FROM correlativo_despacho_nomenclatura DN
-																 WHERE id_planta = " . $id_planta;
-
-					if ($id_planta != 3) {
-						$q_prefijo .= "   AND id_modalidadenvio = " . $id_modalidadenvio;
-					}
-
-					if ($res_prefijo = mysqli_query($enlace, $q_prefijo)) {
-						if (mysqli_num_rows($res_prefijo) > 0) {
-							while ($row_prefijo = mysqli_fetch_array($res_prefijo)) {
-								$correlativodespacho_prefijo = $row_prefijo["codigo_abv"];
-							}
-						}
-					}
-
-					// Identificar el Correlativo que le corresponde
-					$correlativo_despacho = 0;
-
-					$q_correlativo = "SELECT correlativo + 1 AS CORRELATIVO
-																			FROM correlativo_despacho
-																		 WHERE id_planta = " . $id_planta;
-
-					if ($id_planta != 3) {
-						$q_correlativo .= "   AND id_modalidadenvio IN (" . $id_modalidadenvio_x . ")";
-					}
-
-					$q_correlativo .= "   AND id_programacion < " . $id_programacion . "
-																		 ORDER BY id_programacion DESC
-																		 LIMIT 1";
-
-					if ($res_correlativo = mysqli_query($enlace, $q_correlativo)) {
-						if (mysqli_num_rows($res_correlativo) > 0) {
-							while ($row_correlativo = mysqli_fetch_array($res_correlativo)) {
-								$correlativo_despacho = $row_correlativo["CORRELATIVO"];
-								$correlativo_despacho = str_pad($correlativo_despacho, 4, '0', STR_PAD_LEFT);
-							}
-						} else {
-							$correlativo_despacho = '0001';
-						}
-					}
-
-					// Setea el Código del Despacho
-					$codigo_despacho = $correlativodespacho_prefijo . $correlativo_despacho;
-
-					// Obtiene el Código de Planta (Solo para COLIBRI)
-					$codigo_planta = 'NULL';
-
-					if ($id_planta == 3) {
-						// Obtiene el Prefijo de la Planta
-						$correlativoplanta_prefijo = '';
-
-						$q_prefijo = "SELECT correlativo_prefijo
-																			FROM tbconfig_plantas
-																		 WHERE Id = " . $id_planta;
-
-						if ($res_prefijo = mysqli_query($enlace, $q_prefijo)) {
-							if (mysqli_num_rows($res_prefijo) > 0) {
-								while ($row_prefijo = mysqli_fetch_array($res_prefijo)) {
-									$correlativoplanta_prefijo = $row_prefijo["correlativo_prefijo"];
-								}
-							}
-						}
-
-						// Obtiene el Correlativo de la Planta
-						$correlativo_planta = 0;
-
-						$q_correlativo_2 = "SELECT IFNULL(MAX(correlativo), 0) + 1 AS CORRELATIVO";
-						$q_correlativo_2 .= "  FROM correlativo_plantas";
-						// $q_correlativo_2 .= " WHERE cod_anho = ".$g_anho;
-						$q_correlativo_2 .= " WHERE id_planta = " . $id_planta;
-
-						if ($res_correlativo_2 = mysqli_query($enlace, $q_correlativo_2)) {
-							if (mysqli_num_rows($res_correlativo_2) > 0) {
-								while ($row_correlativo_2 = mysqli_fetch_array($res_correlativo_2)) {
-									$correlativo_planta = $row_correlativo_2["CORRELATIVO"];
-									$correlativo_planta = str_pad($correlativo_planta, 4, '0', STR_PAD_LEFT);
-								}
-							}
-						}
-
-						// Setea el Código de Planta
-						$codigo_planta = "'" . $correlativoplanta_prefijo . $correlativo_planta . "'";
-
-						// Setea en NULL la Modalidad de Envío
-						$id_modalidadenvio = 'NULL';
-					}
-
-					// Grabar el nuevo registro con el Código de Despacho existente
-					// MAX - Referencia obtenida del case: "confirmar_ProgramacionLote", punto "// 2. Registra el detalle", dentro de: "// 4. Separa los Lotes seleccionados según Modalidad de Envío"
-					$id_detalle = 0;
-
-					$q_detalle = "INSERT INTO despachos_segundotramo_programacion_detalle (id_programacion, cod_lote, id_planta,
-																						id_modalidadenvio, codigo_despacho, codigo_planta, TMH,
-																						fechahora_registro, usuario_registro) VALUES (";
-					$q_detalle .= $id_programacion . ", ";
-					$q_detalle .= "'" . $cod_lote . "', ";
-					$q_detalle .= $id_planta . ", ";
-					$q_detalle .= $id_modalidadenvio . ", ";
-					$q_detalle .= "'" . $codigo_despacho . "', ";
-					$q_detalle .= $codigo_planta . ", ";
-					$q_detalle .= "(SELECT SUM(lote_peso_neto) AS NETO_TMH
-																		FROM despachos_primertramo_validaciondatos
-																	 WHERE lote_cod_lote = '" . $cod_lote . "'), ";
-					$q_detalle .= "'" . $g_fecha . "', ";
-					$q_detalle .= "'" . $usuario_registro . "')";
-
-					if ($res_detalle = mysqli_query($enlace, $q_detalle)) {
-						$id_detalle = mysqli_insert_id($enlace);
-
-						// Registra el Correlativo de Despacho
-						$q_correlativo_4 = "INSERT INTO correlativo_despacho (id_programacion, id_planta, id_modalidadenvio, correlativo, codigo_programacion, fechahora_registro, usuario_registro) VALUES (";
-						$q_correlativo_4 .= $id_programacion . ", ";
-						$q_correlativo_4 .= $id_planta . ", ";
-						$q_correlativo_4 .= $id_modalidadenvio . ", ";
-						$q_correlativo_4 .= $correlativo_despacho . ", ";
-						$q_correlativo_4 .= "'" . $codigo_despacho . "', ";
-						$q_correlativo_4 .= "'" . $g_fecha . "', ";
-						$q_correlativo_4 .= "'" . $usuario_registro . "')";
-
-						if ($res_correlativo_4 = mysqli_query($enlace, $q_correlativo_4)) {
-						} else {
-							$estado = 4;
-						}
-
-						// Registra el Correlativo de Planta
-						if ($codigo_planta != 'NULL') {
-							$q_correlativo_3 = "INSERT INTO correlativo_plantas (id_planta, id_programaciondetalle, correlativo, codigo_planta, fechahora_registro, usuario_registro) VALUES (";
-							$q_correlativo_3 .= $id_planta . ", ";
-							$q_correlativo_3 .= $id_detalle . ", ";
-							$q_correlativo_3 .= $correlativo_planta . ", ";
-							$q_correlativo_3 .= $codigo_planta . ", ";
-							$q_correlativo_3 .= "'" . $g_fecha . "', ";
-							$q_correlativo_3 .= "'" . $usuario_registro . "')";
-
-							if ($res_correlativo_3 = mysqli_query($enlace, $q_correlativo_3)) {
-							} else {
-								$estado = 5;
-							}
-						}
-					} else {
+					if (!mysqli_query($enlace, $q_corr_det)) {
 						$estado = 3;
 					}
+				}
+			} else {
+				$estado = 4;
+			}
+		}
 
-					// Actualizando los siguientes correlativos
-					$q_update = "UPDATE correlativo_despacho SET";
-					$q_update .= "   correlativo = correlativo + 1, ";
-					$q_update .= "   codigo_programacion = CONCAT('" . $correlativodespacho_prefijo . "', LPAD(correlativo, 4, '0')) ";
-					$q_update .= " WHERE id_planta = " . $id_planta;
+		echo json_encode(array(
+			'estado' => $estado,
+			'mensaje' => ($estado == 1) ? 'Lotes agregados correctamente.' : 'Hubo observaciones al agregar los lotes.'
+		));
 
-					if ($id_planta != 3) {
-						$q_update .= "   AND id_modalidadenvio IN (" . $id_modalidadenvio_x . ")";
-					}
+		break;
 
-					$q_update .= "   AND id_programacion > " . $id_programacion;
+	// ====================================================================
+	// GESTIÓN DE CAMPAÑAS (Solandra)
+	// ====================================================================
+	case 'get_CampanaActivaPlanta':
+		$estado = 0;
+		$id_planta = intval($_POST["id_planta"]);
 
-					if ($res_update = mysqli_query($enlace, $q_update)) {
-						// Actualiza los nuevos correlativos en la tabla de Programaciones
-						$q_update = "UPDATE despachos_segundotramo_programacion_detalle PD";
-						$q_update .= "		INNER JOIN correlativo_despacho CD ON PD.id_programacion = CD.id_programacion";
-						$q_update .= "		  AND PD.id_planta = CD.id_planta";
-						$q_update .= "		  AND CASE WHEN PD.id_planta = 4
-																								THEN CASE WHEN PD.id_modalidadenvio IN (3, 4)
-																											 THEN 3
-																										 ELSE PD.id_modalidadenvio
-																										 END
-																							ELSE PD.id_modalidadenvio END =
+		$campana = f_GetCampanaActiva($enlace, $id_planta);
 
-																							CASE WHEN CD.id_planta = 4
-																								THEN CASE WHEN CD.id_modalidadenvio IN (3, 4)
-																											 THEN 3
-																										 ELSE CD.id_modalidadenvio
-																										 END
-																							ELSE CD.id_modalidadenvio END";
-						$q_update .= "   SET PD.codigo_despacho = CD.codigo_programacion";
-						$q_update .= " WHERE PD.id_planta = " . $id_planta;
-						$q_update .= "   AND PD.id_modalidadenvio IN (" . $id_modalidadenvio_x . ")";
+		if (!is_null($campana['id_campana'])) {
+			$estado = 1;
+		}
 
-						if ($res_update = mysqli_query($enlace, $q_update)) {
-							$estado = 1;
-						} else {
-							$estado = 7;
-						}
-					} else {
-						$estado = 6;
+		echo json_encode(array(
+			'estado' => $estado,
+			'id_campana' => $campana['id_campana'],
+			'codigo_campana' => $campana['codigo_campana'],
+			'fecha_inicio' => $campana['fecha_inicio']
+		));
+
+		break;
+
+	case 'get_ListadoCampanasPlanta':
+		$estado = 0;
+		$id_planta = intval($_POST["id_planta"]);
+		$res = array();
+
+		$q = "SELECT Id,
+										 id_planta,
+										 codigo_campana,
+										 fecha_inicio,
+										 fecha_fin,
+										 estado,
+										 fechahora_registro,
+										 usuario_registro
+							FROM tbconfig_plantas_campanas
+						 WHERE id_planta = " . $id_planta . "
+						 ORDER BY Id DESC";
+
+		if ($res_q = mysqli_query($enlace, $q)) {
+			if (mysqli_num_rows($res_q) > 0) {
+				$estado = 1;
+
+				while ($row = mysqli_fetch_array($res_q)) {
+					array_push($res, $row);
+				}
+			}
+		}
+
+		echo json_encode(array('estado' => $estado, 'res' => $res));
+
+		break;
+
+	case 'grabar_CampanaPlanta':
+		$estado = 0;
+		$id_planta = intval($_POST["id_planta"]);
+		$codigo_campana = strtoupper(trim(mysqli_real_escape_string($enlace, $_POST["codigo_campana"])));
+		$usuario_registro = $_SESSION["usu_usuario"];
+
+		// 1. Validar que el código de campaña no exista ya
+		$q_exists = "SELECT COUNT(Id) AS _EXISTS
+								 FROM tbconfig_plantas_campanas
+								WHERE id_planta = " . $id_planta . "
+									AND codigo_campana = '" . $codigo_campana . "'";
+
+		if ($res_exists = mysqli_query($enlace, $q_exists)) {
+			if (mysqli_num_rows($res_exists) > 0) {
+				while ($row_exists = mysqli_fetch_array($res_exists)) {
+					if ($row_exists["_EXISTS"] > 0) {
+						echo json_encode(array(
+							'estado' => 2,
+							'mensaje' => 'El codigo de campana "' . $codigo_campana . '" ya existe para esta planta.'
+						));
+						return;
 					}
 				}
 			}
-
-			$l++;
 		}
 
-		// Creando los Correlativo de Planta para Colibrí
-		if ($id_planta == 3) {
-			f_SetCodigosPlanta($enlace, $id_planta, $id_programacion, $g_fecha, $usuario_registro);
-			f_SetCodigosComercializacion($enlace, $id_planta, $id_programacion, $g_fecha, $usuario_registro, 1, $id_modalidadenvio);
+		// 2. Inactivar la campaña activa actual (si existe) y guardar fecha_fin
+		$q_inactivar = "UPDATE tbconfig_plantas_campanas
+										SET estado = 'I',
+												fecha_fin = NOW()
+									WHERE id_planta = " . $id_planta . "
+										AND estado = 'A'
+										AND fecha_fin IS NULL";
+
+		mysqli_query($enlace, $q_inactivar);
+
+		// 3. Insertar la nueva campaña activa
+		$q_insert = "INSERT INTO tbconfig_plantas_campanas (id_planta, codigo_campana, fecha_inicio, estado, fechahora_registro, usuario_registro)
+								 VALUES (
+									" . $id_planta . ",
+									'" . $codigo_campana . "',
+									NOW(),
+									'A',
+									NOW(),
+									'" . $usuario_registro . "')";
+
+		if ($res_insert = mysqli_query($enlace, $q_insert)) {
+			$estado = 1;
 		}
 
-		echo json_encode(array('estado' => $estado));
+		echo json_encode(array(
+			'estado' => $estado,
+			'mensaje' => ($estado == 1) ? 'Campana registrada correctamente.' : 'Error al registrar la campana.'
+		));
 
 		break;
+
 
 	case 'eliminar_Lote':
 		$estado = 0;
@@ -27918,7 +27671,7 @@ switch ($_POST["accion"]) {
 					$html .= '    <input id="td_programacionloteaum_' . $d . '" type="hidden" value="' . $is_loteaum . '">';
 					$html .= '  </td>';
 
-					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; background-color: #ffffff; font-weight: bold;" ' . (($id_planta != 3) ? 'hidden' : '') . '>';
+					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; background-color: #ffffff; font-weight: bold;" ' . (($id_planta != 3) ? '' : '') . '>';
 					$html .= '    ' . $row_datos["codigo_despacho_comercializacion"];
 					$html .= '  </td>';
 

@@ -56,6 +56,43 @@
 		$img_button_up = $url_images.'button_up.png';
 		$img_button_down = $url_images.'button_down.png';
 
+	// =============================================================================
+	// CONFIGURACION DE CORRELATIVOS INICIALES - DESPACHOS 2DO TRAMO (COLIBRI / SOLANDRA)
+	// =============================================================================
+	// Variable global de fecha de vigencia del reset (una sola para todos):
+	//   Si la fecha actual del servidor es >= CORR_DESDE, las variables _INICIO
+	//   sobrescriben el maximo historico de la BD.
+	//   Esto evita que el reset sea retroactivo.
+	//
+	// Estructura de los codigos (POR MODALIDAD, NO GLOBAL):
+	//   - Cabecera es INDEPENDIENTE por empresa/modalidad (5=VIII, 6=48 SAC).
+	//     Cada empresa lleva su propia numeracion de cabecera.
+	//     Ej. VIII: C560, C561...  Ej. 48 SAC: C560, C561...
+	//   - Detalle es INDEPENDIENTE por empresa/modalidad.
+	//     Ej. VIII: VIII745, VIII746...  Ej. 48 SAC: CO745, CO746...
+	//
+	// ============================================================================
+
+	$GLOBALS['CORR_DESDE'] = '2026-09-13';  // Fecha de vigencia del reset (una sola)
+
+	// COLIBRI - Cabecera por empresa
+	$GLOBALS['CORR_COLIBRI_VIII_CAB_INICIO']   = 569;     // Proxima cabecera VIII: C1
+	$GLOBALS['CORR_COLIBRI_48SAC_CAB_INICIO']  = 568;     // Proxima cabecera 48 SAC: C1
+
+	// COLIBRI - Detalle por empresa
+	$GLOBALS['CORR_COLIBRI_VIII_DET_INICIO']   = 139;     // Proximo detalle VIII
+	$GLOBALS['CORR_COLIBRI_48SAC_DET_INICIO']  = 13;     // Proximo detalle CO
+
+	// SOLANDRA - Cabecera por empresa
+	$GLOBALS['CORR_SOLANDRA_VIII_CAB_INICIO']   = 217;     // Proxima cabecera VIII: CP31-S1
+	$GLOBALS['CORR_SOLANDRA_48SAC_CAB_INICIO']  = 216;     // Proxima cabecera 48 SAC: CP31-S1
+
+	// SOLANDRA - Detalle por empresa
+	$GLOBALS['CORR_SOLANDRA_VIII_DET_INICIO']  = 90;     // Proximo detalle VIII
+	$GLOBALS['CORR_SOLANDRA_48SAC_DET_INICIO'] = 10;     // Proximo detalle CO
+
+	// =============================================================================
+
 	// Matriz de 50 colores aleatorios
 		$arr_colores = [
 								    "#FFCDD2", "#F8BBD0", "#E1BEE7", "#D1C4E9", "#C5CAE9",
