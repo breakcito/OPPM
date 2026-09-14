@@ -1,7 +1,8 @@
 <?php
 
 	session_start();
-
+	$serie_guia = "";
+	$numero_guia = "";
 	include('cnx/cnx.php');
 	include('global/variables.php');
 
@@ -301,12 +302,14 @@ ini_set('display_startuo_errors', 0);
 					$id_planta = $row_datos["id_planta"];
 					$id_modalidadenvio = $row_datos["guias_idmodalidadenvio"];
 
-					// Determina el proveedor minero (mismo criterio que print_rci.php)
-					if (($id_planta == 3 || $id_planta == 15) && ($id_modalidadenvio == 3 || $id_modalidadenvio == 4 || $id_modalidadenvio == 5)) {
-						$proveedor_key = trim($row_datos["REMITENTE_SOLO"]);
-					} else {
-						$proveedor_key = trim($row_datos["PROVEEDOR_MINERO"]);
-					}
+					$proveedor_key = trim($row_datos["PROVEEDOR_MINERO"]);
+					$plantita = trim($row_datos["REMITENTE_SOLO"]);
+					// // Determina el proveedor minero (mismo criterio que print_rci.php)
+					// if (($id_planta == 3 || $id_planta == 15) && ($id_modalidadenvio == 3 || $id_modalidadenvio == 4 || $id_modalidadenvio == 5)) {
+					// 	$proveedor_key = trim($row_datos["REMITENTE_SOLO"]);
+					// } else {
+					// 	$proveedor_key = trim($row_datos["PROVEEDOR_MINERO"]);
+					// }
 
 					if (strlen($proveedor_key) == 0) {
 						$proveedor_key = 'SIN PROVEEDOR';
@@ -398,7 +401,7 @@ ini_set('display_startuo_errors', 0);
 			$html .= $cabecera_doc;
 
 			// Etiqueta dinámica del encabezado LOTE <PROVEEDOR>
-			$etiqueta_lote = 'LOTE ' . mb_strtoupper($proveedor_key);
+			$etiqueta_lote = 'LOTE ' . mb_strtoupper($plantita);
 
 			// Apertura de la tabla con sus encabezados
 			$colspan_cab = (($id_destino == 3) ? '5' : '4');
