@@ -367,7 +367,12 @@ SELECT
         WHERE DL_x.Id = DL.Id
     ) AS COMPLEMENTO_PESODISTRIBUIDO2,
     
-    COALESCE(usu.usu_usuario, CL.fechahora_usuario)  as usuario_registro
+    COALESCE(usu.usu_usuario, CL.fechahora_usuario)  as usuario_registro,
+    CONCAT_WS(' ',
+        NULLIF(TRIM(emp.apellido_paterno), ''),
+        NULLIF(TRIM(emp.apellido_materno), ''),
+        NULLIF(TRIM(emp.nombres), '')
+    ) AS empleado_registro
 
 FROM despachos_segundotramo_programacion_detalle PD
 LEFT JOIN despachos_segundotramo_programacion P ON PD.id_programacion = P.Id
@@ -386,7 +391,9 @@ LEFT JOIN tbconfig_remitentessegundotramo RE ON DL.guias_iddestino = RE.id_desti
 LEFT JOIN tbconfig_producto PR ON V.lote_id_producto = PR.Id
 LEFT JOIN tbconfig_tipomineral TM ON V.lote_id_tipomineral = TM.Id
 LEFT JOIN consolidado_lotes_cierrecontable CL ON DL.Id = CL.id_registro AND CL.id_tipoingreso = 2
-LEFT JOIN tb_usuario usu on usu.Id = CL.fechahora_usuario
+
+LEFT JOIN tb_usuario usu on usu.Id = CL.fechahora_usuario or usu.usu_usuario = CL.fechahora_usuario
+LEFT JOIN tb_empleados emp on emp.Id = usu.id_empleado 
 
 WHERE MD5(DL.Id) = '" . $id_md5 . "'";
 
@@ -415,7 +422,7 @@ if ($res_datos = mysqli_query($enlace, $q_datos)) {
 			$observacion = $row_datos["observacion"];
 			$guia_remitente = $row_datos["guiaremitente_serie"] . '-' . $row_datos["guiaremitente_numero"];
 			$guia_transportista = $row_datos["guiatransportista_serie"] . '-' . $row_datos["guiatransportista_numero"];
-			$usuario_registro = $row_datos["usuario_registro"];
+			$usuario_registro = $row_datos["empleado_registro"];
 
 			// Obteniendo Peso Neto
 			$peso_neto = $row_datos["peso_neto"] * 1000;
@@ -648,7 +655,7 @@ if ($id_tipocarga == 5) {
 // 									<label>'.((strlen(trim($observacion)) == 0) ? '---' : $observacion);
 
 $html .= '			<div class="row" style="margin-top: -5px; margin-left: 10px; text-align: left;">
-											<label style="font-family: AgencyFBb;">Operario: </label>
+											<label style="font-family: AgencyFBb;">Operador: </label>
 											<label>' . ((strlen(trim($usuario_registro)) == 0) ? '---' : $usuario_registro) . '</label>
 										</div>
 

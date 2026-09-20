@@ -408,15 +408,21 @@ SELECT
     COALESCE(V.guiatransportista_serie, lot.serie_guia_transportista) as guiatransportista_serie,
     COALESCE(V.guiatransportista_numero, lot.numero_guia_transportista) as guiatransportista_numero,
 
-    COALESCE(usu.usu_usuario, tk.usuario_registro) as usuario_registro
-FROM
-    despachos_primertramo_validaciondatos V
+    usu.usu_usuario as usuario_registro,
+    CONCAT_WS(' ',
+        NULLIF(TRIM(emp.apellido_paterno), ''),
+        NULLIF(TRIM(emp.apellido_materno), ''),
+        NULLIF(TRIM(emp.nombres), '')
+    ) AS empleado_registro
+    
+FROM despachos_primertramo_validaciondatos V
 
 INNER JOIN catalogolotes lot on lot.id_CatalogoLotes = V.lote_id_lote
 
 -- para saber quien hizo el registro
 LEFT JOIN correlativo_ticketsbalanza tk on tk.id_lote = lot.id_CatalogoLotes and tk.is_primertramo = 1
-LEFT JOIN tb_usuario usu on usu.Id = tk.usuario_registro
+LEFT JOIN tb_usuario usu on usu.Id = tk.usuario_registro or usu.usu_usuario = tk.usuario_registro
+LEFT JOIN tb_empleados emp on emp.Id = usu.id_empleado 
 
 INNER JOIN controlingresovehiculo ctrl on ctrl.id_controlIngresoVehiculo = lot.id_controlIngresoVehiculo
 LEFT JOIN transporte T ON V.balanza_placa = T.cplaca
@@ -465,7 +471,7 @@ if ($res_balanza = mysqli_query($enlace, $q_balanza)) {
 			$observacion = $row_balanza["despacho_observacion"];
 			$guia_remitente = $row_balanza["guiaremitente_serie"] . '-' . $row_balanza["guiaremitente_numero"];
 			$guia_transportista = $row_balanza["guiatransportista_serie"] . '-' . $row_balanza["guiatransportista_numero"];
-			$usuario_registro = $row_balanza["usuario_registro"];
+			$usuario_registro = $row_balanza["empleado_registro"];
 
 			$peso_inicial = $row_balanza["lote_peso_bruto"];
 			$pesoinicial_fechahora = $row_balanza["lote_pesoinicial_fechahoraregistro"];
@@ -661,7 +667,7 @@ if ($id_proveedor_minero != 73) {
 }
 
 $html .= '			<div class="row" style="margin-top: -5px; margin-left: 10px; text-align: left;">
-											<label style="font-family: AgencyFBb;">Operario: </label>
+											<label style="font-family: AgencyFBb;">Operador: </label>
 											<label>' . ((strlen(trim($usuario_registro)) == 0) ? '---' : $usuario_registro) . '</label>
 										</div>
 
