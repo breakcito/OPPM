@@ -1599,10 +1599,13 @@ if (!isset($_SESSION["Id"])) {
 
 		function f_VerifyLoteCerrado() {
 			// Verifica Lote Cerrado para Placa 1 y Fecha de Inicio de Peso
+			// NOTA: Por requerimiento, los campos de información de unidad ahora siempre
+			// quedan editables, incluso si existe un lote cerrado con la misma Placa 1
+			// y Fecha de Peso Inicial. La verificación se conserva sólo a modo informativo
+			// y para mantener la firma de la función compatible con otros puntos del módulo.
 			var d = 1;
 			var placa1 = '';
 			var fecha_inicio = '';
-			var is_disabled = false;
 
 			$("#tbl_distribucion tr").each(function() {
 				// Obteniendo Placa 1
@@ -1611,7 +1614,7 @@ if (!isset($_SESSION["Id"])) {
 				// Obteniendo Fecha de Inicio de Pesado
 				fecha_inicio = $("#id_distribucion_7_" + d).val();
 
-				// Verificando si está cerrado
+				// Verificando si está cerrado (sólo consulta; ya no se aplica disabled)
 				$.ajax({
 					type: "POST",
 					url: "apis/backend.php",
@@ -1621,15 +1624,7 @@ if (!isset($_SESSION["Id"])) {
 						fecha_inicio: fecha_inicio
 					},
 					dataType: "json",
-					async: false, // Configurar la solicitud como síncrona
-					success: function(data) {
-						is_disabled = false;
-						if (data.is_disabled == 1) {
-							is_disabled = true;
-						}
-
-						$(".info_unidad_" + d).prop('disabled', is_disabled);
-					}
+					async: false // Configurar la solicitud como síncrona
 				});
 
 				d++;
@@ -1991,11 +1986,22 @@ if (!isset($_SESSION["Id"])) {
 							$("#id_distribucion_7_" + _item).val(_valor);
 						}
 
-						if (_orden_campo == 10 || _orden_campo == 11) {
-							var peso_tara = $("#id_distribucion_10_" + _item).val();
-							var peso_neto = $("#id_distribucion_11_" + _item).val();
+						if (_orden_campo == 9) {
+							var peso_bruto = parseFloat($("#id_distribucion_9_" + _item).val());
+							var peso_neto = parseFloat($("#id_distribucion_11_" + _item).val());
 
-							$("#id_distribucion_9_" + _item).val(f_RedondearDecimales(parseFloat(peso_tara) + parseFloat(peso_neto), 2));
+							if (!isNaN(peso_bruto) && !isNaN(peso_neto)) {
+								$("#id_distribucion_10_" + _item).val(f_RedondearDecimales(peso_bruto - peso_neto, 2));
+							}
+						}
+
+						if (_orden_campo == 10 || _orden_campo == 11) {
+							var peso_tara = parseFloat($("#id_distribucion_10_" + _item).val());
+							var peso_neto = parseFloat($("#id_distribucion_11_" + _item).val());
+
+							if (!isNaN(peso_tara) && !isNaN(peso_neto)) {
+								$("#id_distribucion_9_" + _item).val(f_RedondearDecimales(peso_tara + peso_neto, 2));
+							}
 
 							if (_orden_campo == 11) {
 								f_GetTotalDistribuido();

@@ -32617,7 +32617,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 
 					// Cargando lista de Tipos de Vehículos
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-weight: bold; min-width: 100px;">';
-					$html .= '		<select id="id_distribucion_1_' . $d . '" class="form-select select_editx info_unidad_' . $d . '" data-placeholder="Elija una opción..." style="text-align: left; font-size: 14px;" ' . (($is_cerrado == 1) ? 'disabled' : '') . ' onchange="f_EditDistribucion(1, ' . $d . ', 1);">';
+					$html .= '		<select id="id_distribucion_1_' . $d . '" class="form-select select_editx info_unidad_' . $d . '" data-placeholder="Elija una opción..." style="text-align: left; font-size: 14px;" onchange="f_EditDistribucion(1, ' . $d . ', 1);">';
 
 					$selected_x = '';
 
@@ -32636,7 +32636,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 
 					// Cargando lista de Unidades
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-weight: bold; min-width: 100px;">';
-					$html .= '		<select id="id_distribucion_2_' . $d . '" class="form-select select_edit" data-placeholder="Elija una opción..." style="text-align: left; font-size: 14px;" ' . (($is_cerrado == 1) ? 'disabled' : '') . ' onchange="f_EditDistribucion(2, ' . $d . ');">';
+					$html .= '		<select id="id_distribucion_2_' . $d . '" class="form-select select_edit" data-placeholder="Elija una opción..." style="text-align: left; font-size: 14px;" onchange="f_EditDistribucion(2, ' . $d . ');">';
 
 					$selected_x = '';
 
@@ -32656,20 +32656,20 @@ case 'confirmar_ProgramacionLote_AddLote':
 					// Setea la Capacidad
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; min-width: 100px;">';
 
-					$html .= '      <input id="id_distribucion_4_' . $d . '" type="number" class="is_programacerrado_object_' . $d . ' info_unidad_' . $d . ' form-control col-md-12 col-xs-12" style="text-align: center; font-size: 13px; font-weight: bold;" onblur="f_EditDistribucion(4, ' . $d . ', 1);" value="' . number_format(($row_datos["CAPACIDAD"] / 1000), 2, '.', ',') . '" ' . (($is_cerrado == 1) ? 'disabled' : '') . '>';
+					$html .= '      <input id="id_distribucion_4_' . $d . '" type="number" class="is_programacerrado_object_' . $d . ' info_unidad_' . $d . ' form-control col-md-12 col-xs-12" style="text-align: center; font-size: 13px; font-weight: bold;" onblur="f_EditDistribucion(4, ' . $d . ', 1);" value="' . number_format(($row_datos["CAPACIDAD"] / 1000), 2, '.', ',') . '">';
 
 					$html .= '  </td>';
 
 					// Setea la Tara
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; min-width: 100px;">';
 
-					$html .= '      <input id="id_distribucion_5_' . $d . '" type="number" class="is_programacerrado_object_' . $d . ' info_unidad_' . $d . ' form-control col-md-12 col-xs-12" style="text-align: center; font-size: 13px; font-weight: bold;" onblur="f_EditDistribucion(5, ' . $d . ', 1);" value="' . number_format(($row_datos["TARA"] / 1000), 2, '.', ',') . '" ' . (($is_cerrado == 1) ? 'disabled' : '') . '>';
+					$html .= '      <input id="id_distribucion_5_' . $d . '" type="number" class="is_programacerrado_object_' . $d . ' info_unidad_' . $d . ' form-control col-md-12 col-xs-12" style="text-align: center; font-size: 13px; font-weight: bold;" onblur="f_EditDistribucion(5, ' . $d . ', 1);" value="' . number_format(($row_datos["TARA"] / 1000), 2, '.', ',') . '">';
 
 					$html .= '  </td>';
 
 					// Cargando lista de Marcas de Vehículos
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-weight: bold; min-width: 100px;">';
-					$html .= '		<select id="id_distribucion_6_' . $d . '" class="form-select select_editx info_unidad_' . $d . '" data-placeholder="Elija una opción..." style="text-align: left; font-size: 14px;" ' . (($is_cerrado == 1) ? 'disabled' : '') . ' onchange="f_EditDistribucion(6, ' . $d . ', 1);">';
+					$html .= '		<select id="id_distribucion_6_' . $d . '" class="form-select select_editx info_unidad_' . $d . '" data-placeholder="Elija una opción..." style="text-align: left; font-size: 14px;" onchange="f_EditDistribucion(6, ' . $d . ', 1);">';
 
 					$selected_x = '';
 
@@ -32685,7 +32685,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 					// Cargando lista de Unidades 2
 					$html .= '  <td rowspan="' . $row_datos["TOTAL_LOTES"] . '" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-weight: bold; min-width: 100px;">';
 					$html .= '		<div id="td_distribucion_3_' . $d . '" style="' . (($row_datos["tiene_carreta"] == 0) ? 'display: none;' : '') . '">';
-					$html .= '			<select id="id_distribucion_3_' . $d . '" class="form-select select_edit info_unidad_' . $d . '" data-placeholder="Elija una opción..." style="text-align: left; font-size: 14px;" ' . (($is_cerrado == 1) ? 'disabled' : '') . ' onchange="f_EditDistribucion(3, ' . $d . ', 1);">';
+					$html .= '			<select id="id_distribucion_3_' . $d . '" class="form-select select_edit info_unidad_' . $d . '" data-placeholder="Elija una opción..." style="text-align: left; font-size: 14px;" onchange="f_EditDistribucion(3, ' . $d . ', 1);">';
 
 					$selected_x = '';
 
@@ -32706,21 +32706,21 @@ case 'confirmar_ProgramacionLote_AddLote':
 					// Setea la Capacidad 2
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; min-width: 100px;">';
 
-					$html .= '      <input id="id_distribucion_12_' . $d . '" type="number" class="is_programacerrado_object_' . $d . ' info_unidad_' . $d . ' form-control col-md-12 col-xs-12" style="text-align: center; font-size: 13px; font-weight: bold; ' . (($row_datos["tiene_carreta"] == 0) ? 'display: none;' : '') . '" onblur="f_EditDistribucion(12, ' . $d . ', 1);" value="' . number_format(($row_datos["CAPACIDAD2"] / 1000), 2, '.', ',') . '" ' . (($is_cerrado == 1) ? 'disabled' : '') . '>';
+					$html .= '      <input id="id_distribucion_12_' . $d . '" type="number" class="is_programacerrado_object_' . $d . ' info_unidad_' . $d . ' form-control col-md-12 col-xs-12" style="text-align: center; font-size: 13px; font-weight: bold; ' . (($row_datos["tiene_carreta"] == 0) ? 'display: none;' : '') . '" onblur="f_EditDistribucion(12, ' . $d . ', 1);" value="' . number_format(($row_datos["CAPACIDAD2"] / 1000), 2, '.', ',') . '">';
 
 					$html .= '  </td>';
 
 					// Setea la Tara 2
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; min-width: 100px;">';
 
-					$html .= '      <input id="id_distribucion_13_' . $d . '" type="number" class="is_programacerrado_object_' . $d . ' info_unidad_' . $d . ' form-control col-md-12 col-xs-12" style="text-align: center; font-size: 13px; font-weight: bold; ' . (($row_datos["tiene_carreta"] == 0) ? 'display: none;' : '') . '	" onblur="f_EditDistribucion(13, ' . $d . ', 1);" value="' . number_format(($row_datos["TARA2"] / 1000), 2, '.', ',') . '" ' . (($is_cerrado == 1) ? 'disabled' : '') . '>';
+					$html .= '      <input id="id_distribucion_13_' . $d . '" type="number" class="is_programacerrado_object_' . $d . ' info_unidad_' . $d . ' form-control col-md-12 col-xs-12" style="text-align: center; font-size: 13px; font-weight: bold; ' . (($row_datos["tiene_carreta"] == 0) ? 'display: none;' : '') . '	" onblur="f_EditDistribucion(13, ' . $d . ', 1);" value="' . number_format(($row_datos["TARA2"] / 1000), 2, '.', ',') . '">';
 
 					$html .= '  </td>';
 
 					// Cargando lista de Marcas de Vehículos 2
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-weight: bold; min-width: 100px;">';
 					$html .= '		<div id="td_distribucion_14_' . $d . '" style="' . (($row_datos["tiene_carreta"] == 0) ? 'display: none;' : '') . '">';
-					$html .= '			<select id="id_distribucion_14_' . $d . '" class="form-select select_editx info_unidad_' . $d . '" data-placeholder="Elija una opción..." style="text-align: left; font-size: 14px;" ' . (($is_cerrado == 1) ? 'disabled' : '') . ' onchange="f_EditDistribucion(14, ' . $d . ', 1);">';
+					$html .= '			<select id="id_distribucion_14_' . $d . '" class="form-select select_editx info_unidad_' . $d . '" data-placeholder="Elija una opción..." style="text-align: left; font-size: 14px;" onchange="f_EditDistribucion(14, ' . $d . ', 1);">';
 
 					$selected_x = '';
 
@@ -32736,35 +32736,35 @@ case 'confirmar_ProgramacionLote_AddLote':
 					// Setea la Fecha de Peso Inicial
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
 
-					$html .= '		<input id="id_distribucion_7_' . $d . '" type="date" class="form-control" style="text-align: center; font-size: 14px;" value="' . substr($row_datos["lote_pesoinicial_fechahoraregistro"], 0, 10) . '" ' . (($is_cerrado == 1) ? 'disabled' : '') . ' onchange="f_EditDistribucion(7, ' . $d . ')">';
+					$html .= '		<input id="id_distribucion_7_' . $d . '" type="date" class="form-control" style="text-align: center; font-size: 14px;" value="' . substr($row_datos["lote_pesoinicial_fechahoraregistro"], 0, 10) . '" onchange="f_EditDistribucion(7, ' . $d . ')">';
 
 					$html .= '  </td>';
 
 					// Setea la Fecha de Peso Final
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
 
-					$html .= '		<input id="id_distribucion_8_' . $d . '" type="date" class="form-control" style="text-align: center; font-size: 14px;" value="' . substr($row_datos["lote_pesofinal_fechahoraregistro"], 0, 10) . '" ' . (($is_cerrado == 1) ? 'disabled' : '') . ' onchange="f_EditDistribucion(8, ' . $d . ')">';
+					$html .= '		<input id="id_distribucion_8_' . $d . '" type="date" class="form-control" style="text-align: center; font-size: 14px;" value="' . substr($row_datos["lote_pesofinal_fechahoraregistro"], 0, 10) . '" onchange="f_EditDistribucion(8, ' . $d . ')">';
 
 					$html .= '  </td>';
 
 					// Setea el Peso Bruto
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; min-width: 100px;">';
 
-					$html .= '		<input id="id_distribucion_9_' . $d . '" type="number" class="form-control" style="text-align: center; font-size: 13px; font-weight: bold;" value="' . number_format(($row_datos["lote_peso_inicial"] / 1000), 2, '.', '') . '" disabled onchange="f_EditDistribucion(9, ' . $d . ')">';
+					$html .= '		<input id="id_distribucion_9_' . $d . '" type="number" class="form-control" style="text-align: center; font-size: 13px; font-weight: bold;" value="' . number_format(($row_datos["lote_peso_inicial"] / 1000), 2, '.', '') . '" onchange="f_EditDistribucion(9, ' . $d . ')">';
 
 					$html .= '  </td>';
 
 					// Setea la Tara
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; min-width: 100px;">';
 
-					$html .= '		<input id="id_distribucion_10_' . $d . '" type="number" class="form-control" style="text-align: center; font-size: 13px; font-weight: bold;" ' . (($is_cerrado == 1) ? 'disabled' : '') . ' value="' . number_format(($row_datos["lote_peso_final"] / 1000), 2, '.', '') . '" onchange="f_EditDistribucion(10, ' . $d . ')">';
+					$html .= '		<input id="id_distribucion_10_' . $d . '" type="number" class="form-control" style="text-align: center; font-size: 13px; font-weight: bold;" value="' . number_format(($row_datos["lote_peso_final"] / 1000), 2, '.', '') . '" onchange="f_EditDistribucion(10, ' . $d . ')">';
 
 					$html .= '  </td>';
 
 					// Setea el Peso Neto
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; min-width: 100px;">';
 
-					$html .= '		<input id="id_distribucion_11_' . $d . '" type="number" class="form-control" style="text-align: center; font-size: 13px; font-weight: bold;" ' . (($is_cerrado == 1) ? 'disabled' : '') . ' value="' . number_format(($row_datos["lote_peso_neto"] / 1000), 2, '.', '') . '" onchange="f_EditDistribucion(11, ' . $d . ')">';
+					$html .= '		<input id="id_distribucion_11_' . $d . '" type="number" class="form-control" style="text-align: center; font-size: 13px; font-weight: bold;" value="' . number_format(($row_datos["lote_peso_neto"] / 1000), 2, '.', '') . '" onchange="f_EditDistribucion(11, ' . $d . ')">';
 
 					$html .= '  </td>';
 
@@ -32872,6 +32872,12 @@ case 'confirmar_ProgramacionLote_AddLote':
 
 		if ($orden_campo == 8) {
 			$campo = 'lote_pesofinal_fechahoraregistro';
+		}
+
+		if ($orden_campo == 9) {
+			$campo = 'lote_peso_inicial';
+
+			$valor = ((strlen($valor) > 0) ? ($valor * 1000) : 'NULL');
 		}
 
 		if ($orden_campo == 10) {
@@ -32989,7 +32995,22 @@ case 'confirmar_ProgramacionLote_AddLote':
 		if ($res_save = mysqli_query($enlace, $q_save)) {
 			$estado = 1;
 
-			// Actualizando el Peso Neto
+			// Reglas de consistencia de Peso Bruto / Tara / Neto:
+			//   - Si el usuario edita el BRUTO (orden_campo == 9): no tocar el neto,
+			//     recalcular la TARA = BRUTO - NETO.
+			//   - Si el usuario edita la TARA  (orden_campo == 10): no tocar el neto,
+			//     recalcular el BRUTO = TARA + NETO.
+			//   - Si el usuario edita el NETO  (orden_campo == 11): no tocar la tara,
+			//     recalcular el BRUTO = TARA + NETO_nuevo.
+			if ($orden_campo == 9) {
+				$q_update = "UPDATE despachos_primertramo_validaciondatos";
+				$q_update .= "  SET lote_peso_final = lote_peso_inicial - lote_peso_neto";
+				$q_update .= " WHERE Id = " . $id_registro;
+
+				if ($res_update = mysqli_query($enlace, $q_update)) {
+				}
+			}
+
 			if ($orden_campo == 10 || $orden_campo == 11) {
 				$q_update = "UPDATE despachos_primertramo_validaciondatos";
 				$q_update .= "  SET lote_peso_inicial = lote_peso_final + lote_peso_neto";
@@ -33081,6 +33102,29 @@ case 'confirmar_ProgramacionLote_AddLote':
 						}
 					}
 				}
+			}
+
+			// Re-sincronizar el Ticket Contable (consolidado_lotes_cierrecontable)
+			// si el registro ya fue cerrado o si ya fue migrado previamente.
+			// La función f_MigrarLotes_CierreContable es idempotente: si ya existe,
+			// actualiza los datos; si no, los inserta. Así, cualquier corrección
+			// hecha desde el módulo de Validación y Distribución se ve reflejada
+			// en el ticket contable.
+			$q_chk_migrado = "SELECT COUNT(Id) AS _COUNT
+														FROM consolidado_lotes_cierrecontable
+													 WHERE id_tipoingreso = 1
+														 AND id_registro = " . $id_registro;
+
+			$chk_migrado = 0;
+
+			if ($res_chk_migrado = mysqli_query($enlace, $q_chk_migrado)) {
+				if ($row_chk_migrado = mysqli_fetch_array($res_chk_migrado)) {
+					$chk_migrado = intval($row_chk_migrado["_COUNT"]);
+				}
+			}
+
+			if ($chk_migrado > 0) {
+				f_MigrarLotes_CierreContable($enlace, 1, $id_registro, $g_fecha, $usuario_registro);
 			}
 		}
 
