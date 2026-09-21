@@ -10,7 +10,9 @@
 
 	use Dompdf\Dompdf;
 	use Dompdf\Options;
-
+error_reporting(0);
+ini_set('display_errors', 0);
+ini_set('display_startuo_errors', 0);
 	$cod_despacho = $_GET["x"];
 
 	// Funciones
@@ -160,9 +162,10 @@
 		$x = 1;
 		$id_distribucionunidad = 0;
 
-		// Estructura para acumular filas por proveedor
-		$detalles_por_proveedor = array();
-		$orden_proveedores = array();
+		// Estructura para acumular filas por empresita
+		$detalles_por_empresita = array();
+		$orden_empresitas = array();
+		$correlativos_por_empresita = array();
 
 		$q_datos = "SELECT DISTINCT DU.Id AS ID_DISTRIBUCIONUNIDAD,
 											 PD.codigo_planta,
@@ -174,6 +177,8 @@
 											 DL.num_bigbag,
 											 PM.documento AS PROVEEDORMINERO_RUC,
 							         PM.razon_social AS PROVEEDORMINERO_RAZONSOCIAL,
+											 PD.codigo_despacho,
+											 PD.codigo_despacho_comercializacion,
 							         DL.guiaremitente_serie,
 							         DL.guiaremitente_numero,
 							         DL.guiatransportista_serie,
@@ -249,7 +254,12 @@
 
 											 (SELECT COUNT(DL_x.Id) AS _COUNT
 											 		FROM despachos_segundotramo_distribucion_lotes DL_x
-											 	 WHERE DL_x.cod_lote = PD.cod_lote) AS TOTAL_PARTES
+											 	 WHERE DL_x.cod_lote = PD.cod_lote) AS TOTAL_PARTES,
+
+											 pl.Id AS id_empresita,
+											 pl.nombre_comercial AS empresita,
+											 pl.descripcion AS empresita_razon_social,
+											 pl.ruc AS empresita_ruc
 
 							   FROM despachos_segundotramo_distribucion_unidades DU
 							   			INNER JOIN despachos_segundotramo_programacion P ON DU.id_programacion = P.Id
@@ -265,38 +275,49 @@
 							        LEFT JOIN tbconfig_encargadosmuestra EM ON VD.lote_id_encargadomuestra = EM.Id
 							        INNER JOIN correlativo_despacho CD ON P.Id = CD.id_programacion
 							        INNER JOIN tbconfig_tipocarga TC ON DL.id_tipocarga = TC.Id
+							        LEFT JOIN catalogolotes lot ON lot.ccod_Lote = DL.cod_lote
+							        LEFT JOIN tbconfig_plantas pl ON pl.Id = lot.balanza_id_planta
 WHERE DU.id_programacion = '".$id_programacion."'
 							AND MD5(PD.codigo_despacho) = '".$cod_despacho."'
-					 ORDER BY PROVEEDORMINERO_RAZONSOCIAL, DU.Id, DL.cod_lote";
+					 ORDER BY empresita, DU.Id, DL.cod_lote";
 
 		if ($res_datos = mysqli_query($enlace, $q_datos)){
       if (mysqli_num_rows($res_datos) > 0) {
         while($row_datos = mysqli_fetch_array($res_datos)){
-					$proveedor_key = trim($row_datos["PROVEEDORMINERO_RAZONSOCIAL"]);
-					if (strlen($proveedor_key) == 0) {
-						$proveedor_key = 'SIN PROVEEDOR';
+					$empresita_key = trim($row_datos["empresita"]);
+					if (strlen($empresita_key) == 0) {
+						$empresita_key = 'SIN EMPRESITA';
 					}
 
-					if (!isset($detalles_por_proveedor[$proveedor_key])) {
-						$detalles_por_proveedor[$proveedor_key] = array();
-						$orden_proveedores[] = $proveedor_key;
+					if (!isset($detalles_por_empresita[$empresita_key])) {
+						$detalles_por_empresita[$empresita_key] = array();
+						$orden_empresitas[] = $empresita_key;
+						$correlativos_por_empresita[$empresita_key] = array();
 					}
 
-					$detalles_por_proveedor[$proveedor_key][] = $row_datos;
+					// Acumula correlativos únicos por empresita
+					$cod_desp = trim($row_datos["codigo_despacho"]);
+					$cod_desp_comer = trim($row_datos["codigo_despacho_comercializacion"]);
+					$correlativo_item = ((strlen($cod_desp_comer) > 0) ? $cod_desp.' / '.$cod_desp_comer : $cod_desp);
+					if (!in_array($correlativo_item, $correlativos_por_empresita[$empresita_key])) {
+						$correlativos_por_empresita[$empresita_key][] = $correlativo_item;
+					}
+
+					$detalles_por_empresita[$empresita_key][] = $row_datos;
 
 					$d ++;
         }
       }
     }
 
-		// 3. Renderiza el HTML iterando por proveedor (page-break entre grupos)
+		// 3. Renderiza el HTML iterando por empresita (page-break entre grupos)
 		$cabecera_doc = '	<div class="row" style="margin-top: 20px; margin-left: 50px; margin-right: 50px;">
 												<table style="width: 100%;">
 													<tr style="font-size: 20px;">
 														<td style="vertical-align: middle; text-align: center; height: 60px;">
 															<div style="font-family: AgencyFBb;">
 																<label style="font-family: AgencyFBb;">
-																	DISTRIBUCIÓN DE DESPACHO ('.$correlativo_despacho.')
+																	DISTRIBUCIÓN DE DESPACHO ({{CORRELATIVO}})
 																</label>
 															</div>
 														</td>
@@ -351,28 +372,31 @@ WHERE DU.id_programacion = '".$id_programacion."'
 
 																<tbody>';
 
-		// Contador global de unidades (no se reinicia por proveedor)
+		// Contador global de unidades (no se reinicia por empresita)
 		$x = 1;
 
-		foreach ($orden_proveedores as $idx_prov => $proveedor_key) {
-			// Page-break entre proveedores (no antes del primero)
-			if ($idx_prov > 0) {
+		foreach ($orden_empresitas as $idx_emp => $empresita_key) {
+			// Page-break entre empresitas (no antes de la primera)
+			if ($idx_emp > 0) {
 				$html .= '<div style="page-break-before: always; break-before: page;"></div>';
 			}
 
-			// Cabecera del documento
-			$html .= $cabecera_doc;
+			// Construye correlativo específico para esta empresita
+			$correlativo_emp = implode('/', $correlativos_por_empresita[$empresita_key]);
 
-			// Etiqueta dinámica del encabezado LOTE <PROVEEDOR>
-			$etiqueta_lote = 'LOTE ' . mb_strtoupper($proveedor_key);
+			// Cabecera del documento con el correlativo de la empresita actual
+			$html .= str_replace('{{CORRELATIVO}}', $correlativo_emp, $cabecera_doc);
+
+			// Etiqueta dinámica del encabezado LOTE <EMPRESITA>
+			$etiqueta_lote = 'LOTE ' . mb_strtoupper($empresita_key);
 
 			// Apertura de tabla con encabezado dinámico
 			$html .= str_replace('__ETIQUETA_LOTE__', $etiqueta_lote, $encabezado_tabla_html);
 
-			// Reset del ID por proveedor (control de rowspan dentro del grupo)
+			// Reset del ID por empresita (control de rowspan dentro del grupo)
 			$id_distribucionunidad = 0;
 
-			foreach ($detalles_por_proveedor[$proveedor_key] as $row_datos) {
+			foreach ($detalles_por_empresita[$empresita_key] as $row_datos) {
 				$codigo_planta = $row_datos["codigo_planta"];
 				$num_parte = $row_datos["num_parte"];
 				$cod_lote = $row_datos["cod_lote"];
@@ -384,7 +408,7 @@ WHERE DU.id_programacion = '".$id_programacion."'
 				$proveedorminero_razonsocial = $row_datos["PROVEEDORMINERO_RAZONSOCIAL"];
 				$guia_remitente = $row_datos["guiaremitente_serie"].' '.$row_datos["guiaremitente_numero"];
 				$guia_transportista = $row_datos["guiatransportista_serie"].' '.$row_datos["guiatransportista_numero"];
-				$total_guias = $row_datos["TOTAL_GUIAS"].' GRR / '.$row_datos["TOTAL_GUIAS"].' GRT';
+				$total_guias = $row_datos["TOTAL_GUIAS"];
 				$id_planta = $row_datos["id_planta"];
 				$cmh_codigodocumentos = $row_datos["CMH_CODIGODOCUMENTOS"];
 				$cmh_codigoguias = $row_datos["CMH_CODIGOGUIAS"];
@@ -442,7 +466,8 @@ WHERE DU.id_programacion = '".$id_programacion."'
 					$html .= '						</td>';
 
 					$html .= '						<td rowspan="'.$row_datos["TOTAL_LOTES"].'" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
-					$html .= '							'.$total_guias;
+					// $html .= '							'.$total_guias;
+					$html .= '							' . 1;
 					$html .= '						</td>';
 
 					$x ++;
