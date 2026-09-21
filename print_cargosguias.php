@@ -135,7 +135,7 @@ ini_set('display_startuo_errors', 0);
 								  		 INNER JOIN tb_clientes ET ON TR.id_Transportista = ET.Id
 									  	 INNER JOIN tbconfig_tipocarga TC ON DL.id_tipocarga = TC.Id
 								 WHERE MD5(U.Id) = '".$id_distribucionunidad."'
-								 	 AND DL.guias_idmodalidadenvio = ".$id_modalidadenvio."
+								 	 /*AND DL.guias_idmodalidadenvio = ".$id_modalidadenvio."*/
 								 	 /*AND MD5(DL.guiaremitente_serie) = '".$serie_guia."'
 									 AND MD5(DL.guiaremitente_numero) = '".$numero_guia."'*/";
 
@@ -241,60 +241,84 @@ ini_set('display_startuo_errors', 0);
 		$cod_lote = '';
 		$num_parte = '';
 
-		// Estructura para acumular filas agrupadas por proveedor
-		$detalles_por_proveedor = array();
-		$orden_proveedores = array();
+		// Estructura para acumular filas agrupadas por empresita
+		$detalles_por_empresita = array();
+		$orden_empresitas = array();
 
-		$q_datos = "SELECT DISTINCT
-											 DL.cod_lote,
-											 DB.descripcion AS DESCRIPCION_BIEN,
-											 DL.guias_pesonetoajustado,
-											 PD.codigo_planta,
-											 DL.cod_lote,
-											 DL.num_parte,
-											 DL.id_tipocarga,
-								       TC.descripcion AS TIPO_CARGA,
-								       DL.num_bigbag,
-								       DL.guiaremitente_serie,
-								       DL.guiaremitente_numero,
-								       DL.guiatransportista_serie,
-								       DL.guiatransportista_numero,
-								       DL.guias_idmodalidadenvio,
-
-								       CASE WHEN (DL.guias_idmodalidadenvio = 3 OR DL.guias_idmodalidadenvio = 4 OR DL.guias_idmodalidadenvio = 5) AND (P.id_planta = 3 OR P.id_planta = 15)
-								       	 THEN UPPER(DL.guias_remitenterazonsocial)
-								       ELSE UPPER((SELECT PM.razon_social
-															 FROM despachos_primertramo_validaciondatos V
-																		INNER JOIN tb_clientes PM ON V.lote_id_proveedorminero = PM.Id
-															WHERE V.lote_cod_lote = DL.cod_lote
-															LIMIT 1)) END AS PROVEEDOR_MINERO,
-
-							      	 (SELECT CONCAT (ruc, ' - ', razon_social)
-													FROM tbconfig_remitentessegundotramo
-												 WHERE id_destino = DL.guias_iddestino
-													 AND id_modalidadenvio = DL.guias_idmodalidadenvio) AS REMITENTE_RAZONSOCIAL,
-							      	 (SELECT CONCAT (razon_social)
-													FROM tbconfig_remitentessegundotramo
-												 WHERE id_destino = DL.guias_iddestino
-													 AND id_modalidadenvio = DL.guias_idmodalidadenvio) AS REMITENTE_SOLO,
-											 P.id_planta,
-											 IFNULL(PD.cmh_codigodocumentos, '') AS CMH_CODIGODOCUMENTOS,
-											 IFNULL(PD.cmh_codigoguias, '') AS CMH_CODIGOGUIAS,
-
-											 (SELECT COUNT(DL_x.Id) AS _COUNT
-											 		FROM despachos_segundotramo_distribucion_lotes DL_x
-											 	 WHERE DL_x.cod_lote = PD.cod_lote) AS TOTAL_PARTES
-
-								  FROM despachos_segundotramo_programacion_detalle PD
-											 INNER JOIN despachos_segundotramo_programacion P ON PD.id_programacion = P.Id
-										   INNER JOIN despachos_segundotramo_distribucion_unidades U ON P.Id = U.id_programacion
-							         INNER JOIN despachos_segundotramo_distribucion_lotes DL ON U.Id = DL.id_distribucionunidad
-							           AND PD.cod_lote = DL.cod_lote
-								  		 INNER JOIN tbconfig_segundotramo_guiasdescripcionbien DB ON DL.guias_iddescripcionbien = DB.Id
-									  	 INNER JOIN tbconfig_tipocarga TC ON DL.id_tipocarga = TC.Id
-								 WHERE MD5(U.Id) = '".$id_distribucionunidad."'
-								 	 AND DL.guias_idmodalidadenvio = ".$id_modalidadenvio."
-								ORDER BY PROVEEDOR_MINERO, DL.cod_lote";
+		$q_datos = "
+SELECT DISTINCT
+    DL.cod_lote,
+    DB.descripcion AS DESCRIPCION_BIEN,
+    DL.guias_pesonetoajustado,
+    PD.codigo_planta,
+    DL.num_parte,
+    DL.id_tipocarga,
+    TC.descripcion AS TIPO_CARGA,
+    DL.num_bigbag,
+    DL.guiaremitente_serie,
+    DL.guiaremitente_numero,
+    DL.guiatransportista_serie,
+    DL.guiatransportista_numero,
+    DL.guias_idmodalidadenvio,
+    CASE WHEN DL.guias_idmodalidadenvio IN(3, 4, 5) AND P.id_planta IN(3, 15) THEN UPPER(DL.guias_remitenterazonsocial) ELSE UPPER(
+        (
+        SELECT
+            PM.razon_social
+        FROM
+            despachos_primertramo_validaciondatos V
+        INNER JOIN tb_clientes PM ON
+            V.lote_id_proveedorminero = PM.Id
+        WHERE
+            V.lote_cod_lote = DL.cod_lote
+        LIMIT 1
+    )
+    )
+END AS PROVEEDOR_MINERO,(
+    SELECT
+        CONCAT(ruc, ' - ', razon_social)
+    FROM
+        tbconfig_remitentessegundotramo
+    WHERE
+        id_destino = DL.guias_iddestino AND id_modalidadenvio = DL.guias_idmodalidadenvio
+    LIMIT 1
+) AS REMITENTE_RAZONSOCIAL,(
+    SELECT
+        razon_social
+    FROM
+        tbconfig_remitentessegundotramo
+    WHERE
+        id_destino = DL.guias_iddestino AND id_modalidadenvio = DL.guias_idmodalidadenvio
+    LIMIT 1
+) AS REMITENTE_SOLO, P.id_planta, IFNULL(PD.cmh_codigodocumentos, '') AS CMH_CODIGODOCUMENTOS, IFNULL(PD.cmh_codigoguias, '') AS CMH_CODIGOGUIAS,(
+    SELECT
+        COUNT(DL_x.Id)
+    FROM
+        despachos_segundotramo_distribucion_lotes DL_x
+    WHERE
+        DL_x.cod_lote = PD.cod_lote
+) AS TOTAL_PARTES,
+pl.Id AS id_empresita,
+pl.nombre_comercial AS empresita,
+pl.descripcion AS empresita_razon_social,
+pl.ruc AS empresita_ruc
+FROM
+    despachos_segundotramo_programacion_detalle PD
+INNER JOIN despachos_segundotramo_programacion P ON
+    PD.id_programacion = P.Id
+INNER JOIN despachos_segundotramo_distribucion_unidades U ON
+    P.Id = U.id_programacion
+INNER JOIN despachos_segundotramo_distribucion_lotes DL ON
+    U.Id = DL.id_distribucionunidad AND PD.cod_lote = DL.cod_lote
+INNER JOIN tbconfig_segundotramo_guiasdescripcionbien DB ON
+    DL.guias_iddescripcionbien = DB.Id
+INNER JOIN tbconfig_tipocarga TC ON
+    DL.id_tipocarga = TC.Id
+LEFT JOIN catalogolotes lot ON
+    lot.ccod_Lote = PD.cod_lote
+LEFT JOIN tbconfig_plantas pl ON
+    pl.Id = lot.balanza_id_planta
+WHERE MD5(U.Id) = '".$id_distribucionunidad."'
+ORDER BY empresita, DL.cod_lote";
 
 		if ($res_datos = mysqli_query($enlace, $q_datos)){
       if (mysqli_num_rows($res_datos) > 0) {
@@ -302,33 +326,27 @@ ini_set('display_startuo_errors', 0);
 					$id_planta = $row_datos["id_planta"];
 					$id_modalidadenvio = $row_datos["guias_idmodalidadenvio"];
 
-					$proveedor_key = trim($row_datos["PROVEEDOR_MINERO"]);
+					$empresita_key = trim($row_datos["empresita"]);
 					$plantita = trim($row_datos["REMITENTE_SOLO"]);
-					// // Determina el proveedor minero (mismo criterio que print_rci.php)
-					// if (($id_planta == 3 || $id_planta == 15) && ($id_modalidadenvio == 3 || $id_modalidadenvio == 4 || $id_modalidadenvio == 5)) {
-					// 	$proveedor_key = trim($row_datos["REMITENTE_SOLO"]);
-					// } else {
-					// 	$proveedor_key = trim($row_datos["PROVEEDOR_MINERO"]);
-					// }
 
-					if (strlen($proveedor_key) == 0) {
-						$proveedor_key = 'SIN PROVEEDOR';
+					if (strlen($empresita_key) == 0) {
+						$empresita_key = 'SIN EMPRESITA';
 					}
 
-					if (!isset($detalles_por_proveedor[$proveedor_key])) {
-						$detalles_por_proveedor[$proveedor_key] = array();
-						$orden_proveedores[] = $proveedor_key;
+					if (!isset($detalles_por_empresita[$empresita_key])) {
+						$detalles_por_empresita[$empresita_key] = array();
+						$orden_empresitas[] = $empresita_key;
 					}
 
-					$detalles_por_proveedor[$proveedor_key][] = $row_datos;
+					$detalles_por_empresita[$empresita_key][] = $row_datos;
 
 					$d ++;
         }
       }
     }
 
-		// 3. Renderiza el HTML iterando por proveedor (page-break entre grupos)
-		$total_proveedores = count($orden_proveedores);
+		// 3. Renderiza el HTML iterando por empresita (page-break entre grupos)
+		$total_empresitas = count($orden_empresitas);
 
 		// Fragmentos reutilizables (cabecera y pie del documento)
 		$cabecera_doc = '	<div class="row">
@@ -336,7 +354,7 @@ ini_set('display_startuo_errors', 0);
 													<tr style="font-size: 14px;">
 														<td style="text-align: left; vertical-align: top; max-width: 10%;">
 															<div style="font-family: AgencyFB; font-size: 16px;">
-																'.$remitente_razonsocial.'
+																{{REMITENTE}}
 															</div>
 														</td>
 													</tr>
@@ -391,17 +409,21 @@ ini_set('display_startuo_errors', 0);
 											</table>
 										</div>';
 
-		foreach ($orden_proveedores as $idx_prov => $proveedor_key) {
-			// Page-break entre proveedores (no antes del primero)
-			if ($idx_prov > 0) {
+		foreach ($orden_empresitas as $idx_emp => $empresita_key) {
+			// Page-break entre empresitas (no antes de la primera)
+			if ($idx_emp > 0) {
 				$html .= '<div style="page-break-before: always; break-before: page;"></div>';
 			}
 
-			// Cabecera del documento en cada página
-			$html .= $cabecera_doc;
+			// Para colibri (id_destino == 3) el receptor es la empresita (VIII o 48);
+			// para solandra y otros se muestra el remitente de la carga.
+			$remitente_emp = ($id_destino == 3) ? $empresita_key : $remitente_razonsocial;
 
-			// Etiqueta dinámica del encabezado LOTE <PROVEEDOR>
-			$etiqueta_lote = 'LOTE ' . mb_strtoupper($plantita);
+			// Cabecera del documento en cada página
+			$html .= str_replace('{{REMITENTE}}', $remitente_emp, $cabecera_doc);
+
+			// Etiqueta dinámica del encabezado LOTE <EMPRESITA>
+			$etiqueta_lote = 'LOTE ' . mb_strtoupper($empresita_key);
 
 			// Apertura de la tabla con sus encabezados
 			$colspan_cab = (($id_destino == 3) ? '5' : '4');
@@ -451,8 +473,8 @@ ini_set('display_startuo_errors', 0);
 
 										<tbody>';
 
-			// Filas del detalle del proveedor actual
-			foreach ($detalles_por_proveedor[$proveedor_key] as $row_datos) {
+			// Filas del detalle de la empresita actual
+			foreach ($detalles_por_empresita[$empresita_key] as $row_datos) {
 				$cod_planta = $row_datos["codigo_planta"];
 				$cod_lote = $row_datos["cod_lote"];
 				$num_parte = $row_datos["num_parte"];
@@ -461,11 +483,17 @@ ini_set('display_startuo_errors', 0);
 				$num_bigbag = $row_datos["num_bigbag"];
 				$guia_remitente = $row_datos["guiaremitente_serie"].'-'.$row_datos["guiaremitente_numero"];
 				$guia_transportista = $row_datos["guiatransportista_serie"].'-'.$row_datos["guiatransportista_numero"];
-				$proveedor_minero = ((($id_destino == 3 || $id_destino == 15) && ($id_modalidadenvio == 3 || $id_modalidadenvio == 4 || $id_modalidadenvio == 5)) ? $row_datos["REMITENTE_RAZONSOCIAL"] : $row_datos["PROVEEDOR_MINERO"]);
+				$proveedor_minero = ((($id_destino == 3 || $id_destino == 15) && ($row_datos["guias_idmodalidadenvio"] == 3 || $row_datos["guias_idmodalidadenvio"] == 4 || $row_datos["guias_idmodalidadenvio"] == 5)) ? $row_datos["REMITENTE_RAZONSOCIAL"] : $row_datos["PROVEEDOR_MINERO"]);
 				$id_planta = $row_datos["id_planta"];
 				$cmh_codigodocumentos = $row_datos["CMH_CODIGODOCUMENTOS"];
 				$cmh_codigoguias = $row_datos["CMH_CODIGOGUIAS"];
 				$total_partes = $row_datos["TOTAL_PARTES"];
+				$empresita_ruc = $row_datos["empresita_ruc"];
+				$empresita_razon_social = $row_datos["empresita_razon_social"];
+
+				// Si la planta es Colibri (id_destino == 3) muestra datos de la empresita,
+				// sino muestra los datos reales del proveedor.
+				$campo_proveedor = ($id_destino == 3) ? ($empresita_ruc . ' - ' . $empresita_razon_social) : $proveedor_minero;
 
 				if ($id_planta == 15){
 					$cmh_codigodocumentos = $cmh_codigodocumentos.(($total_partes > 1) ? ' ('.$num_parte.'/'.$total_partes.')' : '');
@@ -490,7 +518,7 @@ ini_set('display_startuo_errors', 0);
 				}
 
 				$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
-				$html .= '							'.$proveedor_minero;
+				$html .= '							'.$campo_proveedor;
 				$html .= '						</td>';
 
 				$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
