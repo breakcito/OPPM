@@ -64,32 +64,41 @@
 	//   sobrescriben el maximo historico de la BD.
 	//   Esto evita que el reset sea retroactivo.
 	//
-	// Estructura de los codigos (POR MODALIDAD, NO GLOBAL):
-	//   - Cabecera es INDEPENDIENTE por empresa/modalidad (5=VIII, 6=48 SAC).
-	//     Cada empresa lleva su propia numeracion de cabecera.
-	//     Ej. VIII: C560, C561...  Ej. 48 SAC: C560, C561...
+	// Estructura de los codigos:
+	//   - Cabecera es GLOBAL por planta (Colibri) o por planta+campana (Solandra).
+	//     NO se reinicia por empresa. La numeracion es continua para todas las
+	//     modalidades (5=VIII, 6=48 SAC).
+	//     Ej. Colibri:  C560, C561, C562, C563...
+	//     Ej. Solandra: CP31-S560, CP31-S561, CP31-S562... (mientras la campana
+	//                   31 este vigente; en una nueva campana vuelve a 1).
 	//   - Detalle es INDEPENDIENTE por empresa/modalidad.
 	//     Ej. VIII: VIII745, VIII746...  Ej. 48 SAC: CO745, CO746...
 	//
 	// ============================================================================
 
-	$GLOBALS['CORR_DESDE'] = '2026-09-13';  // Fecha de vigencia del reset (una sola)
+	$GLOBALS['CORR_DESDE'] = '2026-09-18';  // Fecha de vigencia del reset
 
-	// COLIBRI - Cabecera por empresa
-	$GLOBALS['CORR_COLIBRI_VIII_CAB_INICIO']   = 569;     // Proxima cabecera VIII: C1
-	$GLOBALS['CORR_COLIBRI_48SAC_CAB_INICIO']  = 568;     // Proxima cabecera 48 SAC: C1
+	// ===========================================================
+
+	// COLIBRI - Cabecera
+	$GLOBALS['CORR_COLIBRI_CAB_INICIO']   = 570; // tomara este numero como el proximo correlativo
 
 	// COLIBRI - Detalle por empresa
-	$GLOBALS['CORR_COLIBRI_VIII_DET_INICIO']   = 139;     // Proximo detalle VIII
-	$GLOBALS['CORR_COLIBRI_48SAC_DET_INICIO']  = 13;     // Proximo detalle CO
+	// colibri ft VIII
+	$GLOBALS['CORR_COLIBRI_VIII_DET_INICIO']   = 140; // tomara este numero como el proximo correlativo
+	// colibri ft 48
+	$GLOBALS['CORR_COLIBRI_48SAC_DET_INICIO']  = 14;  // tomara este numero como el proximo correlativo
 
-	// SOLANDRA - Cabecera por empresa
-	$GLOBALS['CORR_SOLANDRA_VIII_CAB_INICIO']   = 217;     // Proxima cabecera VIII: CP31-S1
-	$GLOBALS['CORR_SOLANDRA_48SAC_CAB_INICIO']  = 216;     // Proxima cabecera 48 SAC: CP31-S1
+	// ===========================================================
+
+	// SOLANDRA - Cabecera
+	$GLOBALS['CORR_SOLANDRA_CAB_INICIO']   = 218; // tomara este numero como el proximo correlativo
 
 	// SOLANDRA - Detalle por empresa
-	$GLOBALS['CORR_SOLANDRA_VIII_DET_INICIO']  = 90;     // Proximo detalle VIII
-	$GLOBALS['CORR_SOLANDRA_48SAC_DET_INICIO'] = 10;     // Proximo detalle CO
+	// solandra ft VIII
+	$GLOBALS['CORR_SOLANDRA_VIII_DET_INICIO']  = 90; // tomara este numero como el proximo correlativo
+	// solandra ft 48
+	$GLOBALS['CORR_SOLANDRA_48SAC_DET_INICIO'] = 11; // tomara este numero colo el proximo correlativo
 
 	// =============================================================================
 
