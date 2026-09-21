@@ -1,113 +1,115 @@
 <?php
 
-	session_start();
+session_start();
 
-	include('cnx/cnx.php');
-	include('global/variables.php');
+include('cnx/cnx.php');
+include('global/variables.php');
 
-	require('libs/phpqrcode/qrlib.php');
-	require_once 'dompdf/autoload.inc.php';
+require('libs/phpqrcode/qrlib.php');
+require_once 'dompdf/autoload.inc.php';
 
-	use Dompdf\Dompdf;
-	use Dompdf\Options;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 error_reporting(0);
 ini_set('display_errors', 0);
 ini_set('display_startuo_errors', 0);
-	$id_distribucionunidad = $_GET["x"];
-	// $id_modalidadenvio = $_GET["m"];
+$id_distribucionunidad = $_GET["x"];
+// $id_modalidadenvio = $_GET["m"];
 
-	// Funciones
-		function formatearFecha($fecha) {
-	    // Separar fecha
-				$dia = str_pad(explode('-', $fecha)[2], 2, '0', STR_PAD_LEFT);
-				$mes = nombre_meses(explode('-', $fecha)[1]);
-				$anho = explode('-', $fecha)[0];
+// Funciones
+function formatearFecha($fecha)
+{
+	// Separar fecha
+	$dia = str_pad(explode('-', $fecha)[2], 2, '0', STR_PAD_LEFT);
+	$mes = nombre_meses(explode('-', $fecha)[1]);
+	$anho = explode('-', $fecha)[0];
 
-	    return $dia.' de '.$mes.' del '.$anho;
-		}
+	return $dia . ' de ' . $mes . ' del ' . $anho;
+}
 
-		function nombre_meses($num_mes){
-			if ($num_mes == 1){
-				return "ENERO";
-			}
-			if ($num_mes == 2){
-				return "FEBRERO";
-			}
-			if ($num_mes == 3){
-				return "MARZO";
-			}
-			if ($num_mes == 4){
-				return "ABRIL";
-			}
-			if ($num_mes == 5){
-				return "MAYO";
-			}
-			if ($num_mes == 6){
-				return "JUNIO";
-			}
-			if ($num_mes == 7){
-				return "JULIO";
-			}
-			if ($num_mes == 8){
-				return "AGOSTO";
-			}
-			if ($num_mes == 9){
-				return "SEPTIEMBRE";
-			}
-			if ($num_mes == 10){
-				return "OCTUBRE";
-			}
-			if ($num_mes == 11){
-				return "NOVIEMBRE";
-			}
-			if ($num_mes == 12){
-				return "DICIEMBRE";
-			}
-		}
+function nombre_meses($num_mes)
+{
+	if ($num_mes == 1) {
+		return "ENERO";
+	}
+	if ($num_mes == 2) {
+		return "FEBRERO";
+	}
+	if ($num_mes == 3) {
+		return "MARZO";
+	}
+	if ($num_mes == 4) {
+		return "ABRIL";
+	}
+	if ($num_mes == 5) {
+		return "MAYO";
+	}
+	if ($num_mes == 6) {
+		return "JUNIO";
+	}
+	if ($num_mes == 7) {
+		return "JULIO";
+	}
+	if ($num_mes == 8) {
+		return "AGOSTO";
+	}
+	if ($num_mes == 9) {
+		return "SEPTIEMBRE";
+	}
+	if ($num_mes == 10) {
+		return "OCTUBRE";
+	}
+	if ($num_mes == 11) {
+		return "NOVIEMBRE";
+	}
+	if ($num_mes == 12) {
+		return "DICIEMBRE";
+	}
+}
 
-	// Ruta imágenes
-    $ruta_images_x = 'https://'.$_SERVER["HTTP_HOST"].$_SERVER["REQUEST_URI"];
-    $ruta_images = substr($ruta_images_x, 0, strpos($ruta_images_x, 'print_rci.php')).'images/tipo_vehiculos/';
+// Ruta imágenes
+$ruta_images_x = 'https://' . $_SERVER["HTTP_HOST"] . $_SERVER["REQUEST_URI"];
+$ruta_images = substr($ruta_images_x, 0, strpos($ruta_images_x, 'print_rci.php')) . 'images/tipo_vehiculos/';
 
-	// 1. Obteniendo Destino
-    $id_destino = 0;
-    $destino = '';
+// 1. Obteniendo Destino
+$id_destino = 0;
+$destino = '';
 
-		$q_datos = "SELECT P.id_planta,
+$q_datos = "SELECT P.id_planta,
 											 UPPER(D.descripcion) AS DESTINO
 								  FROM despachos_segundotramo_distribucion_unidades U
 											 INNER JOIN despachos_segundotramo_programacion P ON U.id_programacion = P.Id
 									     INNER JOIN tbconfig_plantas D ON P.id_planta = D.Id
-								 WHERE MD5(U.Id) = '".$id_distribucionunidad."'";
+								 WHERE MD5(U.Id) = '" . $id_distribucionunidad . "'";
 
-		if ($res_datos = mysqli_query($enlace, $q_datos)){
-			if (mysqli_num_rows($res_datos) > 0) {
-				$estado = 1;
+if ($res_datos = mysqli_query($enlace, $q_datos)) {
+	if (mysqli_num_rows($res_datos) > 0) {
+		$estado = 1;
 
-				while($row_datos = mysqli_fetch_array($res_datos)){
-					$id_destino = $row_datos["id_planta"];
-					$destino = $row_datos["DESTINO"];
-        }
-      }
-    }
+		while ($row_datos = mysqli_fetch_array($res_datos)) {
+			$id_destino = $row_datos["id_planta"];
+			$destino = $row_datos["DESTINO"];
+		}
+	}
+}
 
-  // 2. Obteniendo Guías
-    $g = 1;
-    $guia_remitente = '';
-    $guia_transportista = '';
-    $arr_guias = '';
+// 2. Obteniendo Guías
+$g = 1;
+$guia_remitente = '';
+$guia_transportista = '';
+$arr_guias = '';
 
-    $fecha_guias = '';
+$fecha_guias = '';
 
-    $conductor_dni = '';
-    $conductor_nombres = '';
+$conductor_dni = '';
+$conductor_nombres = '';
 
-    $placa_1 = '';
-    $placa_2 = '';
-    $tipo_vehiculo = '';
-    $img_tipovehiculo = '';
+$placa_1 = '';
+$placa_2 = '';
+$tipo_vehiculo = '';
+$img_tipovehiculo = '';
 
-		$q_datos = "SELECT DISTINCT DL.guiaremitente_serie,
+$q_datos = "SELECT DISTINCT DL.guiaremitente_serie,
 																DL.guiaremitente_numero,
 												        DL.guiatransportista_serie,
 												        DL.guiatransportista_numero,
@@ -131,45 +133,45 @@ ini_set('display_startuo_errors', 0);
 												        LEFT JOIN transporte T ON U.id_unidad = T.id_transporte
 												        LEFT JOIN transporte T_x ON U.id_unidad2 = T_x.id_transporte
 												        LEFT JOIN tbconfig_tipovehiculo TV ON T.id_tipovehiculo = TV.Id
-													WHERE MD5(U.Id) = '".$id_distribucionunidad."'";
-														// AND DL.guias_idmodalidadenvio = ".$id_modalidadenvio;
+													WHERE MD5(U.Id) = '" . $id_distribucionunidad . "'";
+// AND DL.guias_idmodalidadenvio = ".$id_modalidadenvio;
 
-		if ($res_datos = mysqli_query($enlace, $q_datos)){
-			if (mysqli_num_rows($res_datos) > 0) {
-				while($row_datos = mysqli_fetch_array($res_datos)){
-					$guia_remitente = $row_datos["guiaremitente_serie"].' '.$row_datos["guiaremitente_numero"];
-    			$guia_transportista = $row_datos["guiatransportista_serie"].' '.$row_datos["guiatransportista_numero"];
+if ($res_datos = mysqli_query($enlace, $q_datos)) {
+	if (mysqli_num_rows($res_datos) > 0) {
+		while ($row_datos = mysqli_fetch_array($res_datos)) {
+			$guia_remitente = $row_datos["guiaremitente_serie"] . ' ' . $row_datos["guiaremitente_numero"];
+			$guia_transportista = $row_datos["guiatransportista_serie"] . ' ' . $row_datos["guiatransportista_numero"];
 
-    			$arr_guias .= '('.$guia_remitente.((strlen($guia_transportista) == 0) ? '' : '/'.$guia_transportista).') ';
+			$arr_guias .= '(' . $guia_remitente . ((strlen($guia_transportista) == 0) ? '' : '/' . $guia_transportista) . ') ';
 
-    			// Datos del conductor
-	    			if ($g == 1){
-	    				$conductor_dni = $row_datos["licencia_conducir"];
-	    				$conductor_nombres = $row_datos["CONDUCTOR_NOMBRES"];
-	    				$placa_1 = $row_datos["cplaca"];
-    					$placa_2 = $row_datos["PLACA2"];
-    					$tipo_vehiculo = $row_datos["TIPO_VEHICULO"];
-    					$img_tipovehiculo = $row_datos["IMG_TIPOVEHICULO"];
-	    				$fecha_guias = $row_datos["guias_fecha"];
-	    				$guias_fecha = $row_datos["guias_fecha"];
-							$inforci_fechasalida = $row_datos["inforci_fechasalida"];
-							$inforci_horasalida = $row_datos["inforci_horasalida"];
-							$inforci_infoprecintos = $row_datos["inforci_infoprecintos"];
-							$inforci_telefono = $row_datos["inforci_telefono"];
-	    			}
+			// Datos del conductor
+			if ($g == 1) {
+				$conductor_dni = $row_datos["licencia_conducir"];
+				$conductor_nombres = $row_datos["CONDUCTOR_NOMBRES"];
+				$placa_1 = $row_datos["cplaca"];
+				$placa_2 = $row_datos["PLACA2"];
+				$tipo_vehiculo = $row_datos["TIPO_VEHICULO"];
+				$img_tipovehiculo = $row_datos["IMG_TIPOVEHICULO"];
+				$fecha_guias = $row_datos["guias_fecha"];
+				$guias_fecha = $row_datos["guias_fecha"];
+				$inforci_fechasalida = $row_datos["inforci_fechasalida"];
+				$inforci_horasalida = $row_datos["inforci_horasalida"];
+				$inforci_infoprecintos = $row_datos["inforci_infoprecintos"];
+				$inforci_telefono = $row_datos["inforci_telefono"];
+			}
 
-    			$g ++;
-        }
+			$g++;
+		}
 
-        $arr_guias = substr($arr_guias, 0, -2).')';
-      }
-    }
+		$arr_guias = substr($arr_guias, 0, -2) . ')';
+	}
+}
 
-	// 1. Arma la estructura de Cabeceera
-    $html = '	<!DOCTYPE html>
+// 1. Arma la estructura de Cabeceera
+$html = '	<!DOCTYPE html>
 						 	<html lang="es">
 								<head>
-									<title>RCI '.$destino.'</title>
+									<title>RCI ' . $destino . '</title>
 
 									<style>
 										@font-face {
@@ -212,116 +214,171 @@ ini_set('display_startuo_errors', 0);
 
 <body style="margin-left: 10px; margin-right: 10px;">';
 
-	// 2. Arma la estructura de Detalle (agrupada por proveedor minero)
-		$d = 1;
-		$total_TNE = 0;
+// 2. Arma la estructura de Detalle (agrupada por proveedor minero)
+$d = 1;
+$total_TNE = 0;
 
-		$cod_planta = '';
-		$cod_lote = '';
-		$num_parte = '';
+$cod_planta = '';
+$cod_lote = '';
+$num_parte = '';
 
-		// Estructura para acumular filas e info_lotes por proveedor
-		$detalles_por_proveedor = array();
-		$info_lotes_por_proveedor = array();
-		$orden_proveedores = array();
+// Estructura para acumular filas e info_lotes por empresita
+$detalles_por_empresita = array();
+$info_lotes_por_empresita = array();
+$guias_por_empresita = array();
+$orden_empresitas = array();
 
-		$q_datos = "SELECT DISTINCT
-											 DL.cod_lote,
-											 DB.descripcion AS DESCRIPCION_BIEN,
-											 DL.guias_pesonetoajustado,
-											 PD.codigo_planta,
-											 DL.cod_lote,
-											 DL.num_parte,
-											 DL.id_tipocarga,
-								       TC.descripcion AS TIPO_CARGA,
-								       DL.num_bigbag,
-								       DL.guiaremitente_serie,
-								       DL.guiaremitente_numero,
-								       DL.guiatransportista_serie,
-								       DL.guiatransportista_numero,
+$q_datos = "
+		SELECT DISTINCT
+			DL.cod_lote,
+			DB.descripcion AS DESCRIPCION_BIEN,
+			DL.guias_pesonetoajustado,
+			PD.codigo_planta,
+			DL.cod_lote,
+			DL.num_parte,
+			DL.id_tipocarga,
+			TC.descripcion AS TIPO_CARGA,
+			DL.num_bigbag,
+			DL.guiaremitente_serie,
+			DL.guiaremitente_numero,
+			DL.guiatransportista_serie,
+			DL.guiatransportista_numero,
+			CASE WHEN(
+				DL.guias_idmodalidadenvio = 3 OR DL.guias_idmodalidadenvio = 4 OR DL.guias_idmodalidadenvio = 5
+			) AND(
+				PD.id_planta = 3 OR PD.id_planta = 15
+			) THEN UPPER(DL.guias_remitenterazonsocial) ELSE UPPER(
+				(
+				SELECT
+					PM.razon_social
+				FROM
+					despachos_primertramo_validaciondatos V
+				INNER JOIN tb_clientes PM ON
+					V.lote_id_proveedorminero = PM.Id
+				WHERE
+					V.lote_cod_lote = DL.cod_lote
+				LIMIT 1
+			)
+			)
+		END AS PROVEEDOR_MINERO_RAZONSOCIAL, CASE WHEN(
+			DL.guias_idmodalidadenvio = 3 OR DL.guias_idmodalidadenvio = 4 OR DL.guias_idmodalidadenvio = 5
+		) AND(
+			PD.id_planta = 3 OR PD.id_planta = 15
+		) THEN CONCAT(
+			DL.guias_remitenteruc,
+			' - ',
+			DL.guias_remitenterazonsocial
+		) ELSE(
+			SELECT DISTINCT
+				CONCAT(
+					PM.documento,
+					' - ',
+					PM.razon_social
+				)
+			FROM
+				despachos_primertramo_validaciondatos V
+			INNER JOIN tb_clientes PM ON
+				V.lote_id_proveedorminero = PM.Id
+			WHERE
+				V.lote_cod_lote = DL.cod_lote
+		)
+		END AS PROVEEDOR_MINERO,
+		P.id_planta,
+		IFNULL(PD.cmh_codigodocumentos, '') AS CMH_CODIGODOCUMENTOS,
+		IFNULL(PD.cmh_codigoguias, '') AS CMH_CODIGOGUIAS,
+		(
+			SELECT
+				COUNT(DL_x.Id) AS _COUNT
+			FROM
+				despachos_segundotramo_distribucion_lotes DL_x
+			WHERE
+				DL_x.cod_lote = PD.cod_lote
+		) AS TOTAL_PARTES,
+		pl.Id as id_empresita,
+		pl.nombre_comercial as empresita,
+		pl.descripcion as empresita_razon_social,
+		pl.ruc as empresita_ruc
+		FROM
+			despachos_segundotramo_programacion_detalle PD
+		INNER JOIN despachos_segundotramo_programacion P ON
+			PD.id_programacion = P.Id
+		INNER JOIN despachos_segundotramo_distribucion_unidades U ON
+			P.Id = U.id_programacion
+		INNER JOIN despachos_segundotramo_distribucion_lotes DL ON
+			U.Id = DL.id_distribucionunidad AND PD.cod_lote = DL.cod_lote
+		LEFT JOIN tbconfig_segundotramo_guiasdescripcionbien DB ON
+			DL.guias_iddescripcionbien = DB.Id
+		INNER JOIN tbconfig_tipocarga TC ON
+			DL.id_tipocarga = TC.Id
+		LEFT JOIN catalogolotes lot on lot.ccod_Lote = PD.cod_lote
+		LEFT JOIN tbconfig_plantas pl on pl.Id = lot.balanza_id_planta
+		WHERE
+			MD5(U.Id) = '" . $id_distribucionunidad . "'
+		ORDER BY PROVEEDOR_MINERO_RAZONSOCIAL, DL.cod_lote";
 
-								       CASE WHEN (DL.guias_idmodalidadenvio = 3 OR DL.guias_idmodalidadenvio = 4 OR DL.guias_idmodalidadenvio = 5) AND (PD.id_planta = 3 OR PD.id_planta = 15)
-								       	 THEN UPPER(DL.guias_remitenterazonsocial)
-								       ELSE UPPER((SELECT PM.razon_social
-															 FROM despachos_primertramo_validaciondatos V
-																		INNER JOIN tb_clientes PM ON V.lote_id_proveedorminero = PM.Id
-															WHERE V.lote_cod_lote = DL.cod_lote
-															LIMIT 1)) END AS PROVEEDOR_MINERO_RAZONSOCIAL,
-
-								       CASE WHEN (DL.guias_idmodalidadenvio = 3 OR DL.guias_idmodalidadenvio = 4 OR DL.guias_idmodalidadenvio = 5) AND (PD.id_planta = 3 OR PD.id_planta = 15)
-								       	 THEN CONCAT(DL.guias_remitenteruc, ' - ', DL.guias_remitenterazonsocial)
-								       ELSE (SELECT DISTINCT CONCAT(PM.documento, ' - ', PM.razon_social)
-															 FROM despachos_primertramo_validaciondatos V
-																		INNER JOIN tb_clientes PM ON V.lote_id_proveedorminero = PM.Id
-															WHERE V.lote_cod_lote = DL.cod_lote) END AS PROVEEDOR_MINERO,
-
-											 P.id_planta,
-											 IFNULL(PD.cmh_codigodocumentos, '') AS CMH_CODIGODOCUMENTOS,
-											 IFNULL(PD.cmh_codigoguias, '') AS CMH_CODIGOGUIAS,
-
-											 (SELECT COUNT(DL_x.Id) AS _COUNT
-											 		FROM despachos_segundotramo_distribucion_lotes DL_x
-											 	 WHERE DL_x.cod_lote = PD.cod_lote) AS TOTAL_PARTES
-
-								  FROM despachos_segundotramo_programacion_detalle PD
-											 INNER JOIN despachos_segundotramo_programacion P ON PD.id_programacion = P.Id
-										   INNER JOIN despachos_segundotramo_distribucion_unidades U ON P.Id = U.id_programacion
-							         INNER JOIN despachos_segundotramo_distribucion_lotes DL ON U.Id = DL.id_distribucionunidad
-							           AND PD.cod_lote = DL.cod_lote
-								  		 LEFT JOIN tbconfig_segundotramo_guiasdescripcionbien DB ON DL.guias_iddescripcionbien = DB.Id
-									  	 INNER JOIN tbconfig_tipocarga TC ON DL.id_tipocarga = TC.Id
-								 WHERE MD5(U.Id) = '".$id_distribucionunidad."'
-								ORDER BY PROVEEDOR_MINERO_RAZONSOCIAL, DL.cod_lote";
-
-		if ($res_datos = mysqli_query($enlace, $q_datos)){
-      if (mysqli_num_rows($res_datos) > 0) {
-        while($row_datos = mysqli_fetch_array($res_datos)){
-					$id_planta_row = $row_datos["id_planta"];
-					$proveedor_key = trim($row_datos["PROVEEDOR_MINERO"]); // explode(' - ', $proveedor_minero)[1]
-					$proveedor_key = explode(' - ', $proveedor_key)[1];
+if ($res_datos = mysqli_query($enlace, $q_datos)) {
+	if (mysqli_num_rows($res_datos) > 0) {
+		while ($row_datos = mysqli_fetch_array($res_datos)) {
+			$id_planta_row = $row_datos["id_planta"];
+			$empresita = $row_datos["empresita"];
+			$proveedor_key = trim($row_datos["PROVEEDOR_MINERO"]); // explode(' - ', $proveedor_minero)[1]
+			$proveedor_key = explode(' - ', $proveedor_key)[1];
 
 			if (strlen($proveedor_key) == 0) {
-						$proveedor_key = 'SIN PROVEEDOR';
-					}
+				$proveedor_key = 'SIN PROVEEDOR';
+			}
 
-					$id_planta_row_val = $row_datos["id_planta"];
-					$num_bigbag_row = $row_datos["num_bigbag"];
-					$tipo_carga_row = $row_datos["TIPO_CARGA"];
-					$cod_lote_row = $row_datos["cod_lote"];
-					$num_parte_row = $row_datos["num_parte"];
-					$cmh_codigodocumentos_row = $row_datos["CMH_CODIGODOCUMENTOS"];
-					$total_partes_row = $row_datos["TOTAL_PARTES"];
+			$id_planta_row_val = $row_datos["id_planta"];
+			$num_bigbag_row = $row_datos["num_bigbag"];
+			$tipo_carga_row = $row_datos["TIPO_CARGA"];
+			$cod_lote_row = $row_datos["cod_lote"];
+			$num_parte_row = $row_datos["num_parte"];
+			$cmh_codigodocumentos_row = $row_datos["CMH_CODIGODOCUMENTOS"];
+			$total_partes_row = $row_datos["TOTAL_PARTES"];
 
-					if ($id_planta_row == 15){
-						$cmh_codigodocumentos_row = $cmh_codigodocumentos_row.(($total_partes_row > 1) ? ' ('.$num_parte_row.'/'.$total_partes_row.')' : '');
-						$info_lotes_line = $cmh_codigodocumentos_row.' - '.((strlen($num_bigbag_row) == 0) ? 'A' : $num_bigbag_row).' '.$tipo_carga_row;
-					}
-					else{
-						$info_lotes_line = $cod_lote_row.((strlen($num_parte_row) == 0) ? '' : ' (PARTE '.$num_parte_row.')').' - '.((strlen($num_bigbag_row) == 0) ? 'A' : $num_bigbag_row).' '.$tipo_carga_row;
-					}
+			if ($id_planta_row == 15) {
+				$cmh_codigodocumentos_row = $cmh_codigodocumentos_row . (($total_partes_row > 1) ? ' (' . $num_parte_row . '/' . $total_partes_row . ')' : '');
+				$info_lotes_line = $cmh_codigodocumentos_row . ' - ' . ((strlen($num_bigbag_row) == 0) ? 'A' : $num_bigbag_row) . ' ' . $tipo_carga_row;
+			} else {
+				$info_lotes_line = $cod_lote_row . ((strlen($num_parte_row) == 0) ? '' : ' (PARTE ' . $num_parte_row . ')') . ' - ' . ((strlen($num_bigbag_row) == 0) ? 'A' : $num_bigbag_row) . ' ' . $tipo_carga_row;
+			}
 
-					if (!isset($detalles_por_proveedor[$proveedor_key])) {
-						$detalles_por_proveedor[$proveedor_key] = array();
-						$info_lotes_por_proveedor[$proveedor_key] = '';
-						$orden_proveedores[] = $proveedor_key;
-					}
+			$empresita_key = trim($empresita);
+			if (strlen($empresita_key) == 0) {
+				$empresita_key = 'SIN EMPRESITA';
+			}
 
-					$detalles_por_proveedor[$proveedor_key][] = $row_datos;
-					$info_lotes_por_proveedor[$proveedor_key] .= $info_lotes_line."<br>";
+			$guia_remitente_row = $row_datos["guiaremitente_serie"] . ' ' . $row_datos["guiaremitente_numero"];
+			$guia_transportista_row = $row_datos["guiatransportista_serie"] . ' ' . $row_datos["guiatransportista_numero"];
+			$guia_completa = $guia_remitente_row . ((strlen($guia_transportista_row) == 0) ? '' : '/' . $guia_transportista_row);
 
-					$d ++;
-        }
-      }
-    }
+			if (!isset($detalles_por_empresita[$empresita_key])) {
+				$detalles_por_empresita[$empresita_key] = array();
+				$info_lotes_por_empresita[$empresita_key] = '';
+				$guias_por_empresita[$empresita_key] = array();
+				$orden_empresitas[] = $empresita_key;
+			}
 
-		// 3. Fragmentos reutilizables del documento
-		$cabecera_doc = '	<div class="row" style="margin-top: 10px; margin-left: 30px; margin-right: 30px;">
+			if (!in_array($guia_completa, $guias_por_empresita[$empresita_key])) {
+				$guias_por_empresita[$empresita_key][] = $guia_completa;
+			}
+
+			$detalles_por_empresita[$empresita_key][] = $row_datos;
+			$info_lotes_por_empresita[$empresita_key] .= $info_lotes_line . "<br>";
+
+			$d++;
+		}
+	}
+}
+
+// 3. Fragmentos reutilizables del documento
+$cabecera_doc = '	<div class="row" style="margin-top: 10px; margin-left: 30px; margin-right: 30px;">
 												<table style="width: 100%; border-spacing: -1px;">
 													<tr>
 														<td style="vertical-align: middle; text-align: center; height: 40px;">
 															<div style="font-family: AgencyFBb;">
 																<label style="font-family: AgencyFBb; font-size: 25px;">
-																	RCI '.$destino.'
+																	RCI ' . $destino . '
 																</label>
 															</div>
 														</td>
@@ -330,7 +387,7 @@ ini_set('display_startuo_errors', 0);
 													<tr style="font-size: 20px;">
 														<td style="vertical-align: middle; text-align: center; background-color: #FFFF00;">
 															<label style="font-family: AgencyFBb; font-size: 16px;">
-																REPORTE CONTROL INTERNO SEGÚN GR '.$arr_guias.'
+																REPORTE CONTROL INTERNO SEGÚN GR {{GUIAS}}
 															</label>
 														</td>
 													</tr>
@@ -345,7 +402,7 @@ ini_set('display_startuo_errors', 0);
 														</td>
 
 														<td style="vertical-align: middle; text-align: center; text-align: center; border: solid; border-width: 1px;">
-															'.mb_strtoupper($conductor_nombres).'
+															' . mb_strtoupper($conductor_nombres) . '
 														</td>
 
 														<td style="vertical-align: middle; text-align: center; background-color: #ED7D31; text-align: center; border: solid; border-width: 1px;">
@@ -353,7 +410,7 @@ ini_set('display_startuo_errors', 0);
 														</td>
 
 														<td style="vertical-align: middle; text-align: center; text-align: center; border: solid; border-width: 1px;">
-															'.$conductor_dni.'
+															' . $conductor_dni . '
 														</td>
 													</tr>
 
@@ -363,7 +420,7 @@ ini_set('display_startuo_errors', 0);
 														</td>
 
 														<td style="vertical-align: middle; text-align: center; text-align: center; border: solid; border-width: 1px;">
-															'.$placa_1.((strlen($placa_2) == 0) ? '' : ' / '.$placa_2).'
+															' . $placa_1 . ((strlen($placa_2) == 0) ? '' : ' / ' . $placa_2) . '
 														</td>
 
 														<td style="vertical-align: middle; text-align: center; background-color: #ED7D31; text-align: center; border: solid; border-width: 1px;">
@@ -371,7 +428,7 @@ ini_set('display_startuo_errors', 0);
 														</td>
 
 														<td style="vertical-align: middle; text-align: center; text-align: center; border: solid; border-width: 1px;">
-															'.$inforci_telefono.'
+															' . $inforci_telefono . '
 														</td>
 													</tr>
 
@@ -381,7 +438,7 @@ ini_set('display_startuo_errors', 0);
 														</td>
 
 														<td style="vertical-align: middle; text-align: center; text-align: center; border: solid; border-width: 1px;">
-															'.$inforci_fechasalida.'
+															' . $inforci_fechasalida . '
 														</td>
 
 														<td style="vertical-align: middle; text-align: center; background-color: #ED7D31; text-align: center; border: solid; border-width: 1px;">
@@ -389,33 +446,42 @@ ini_set('display_startuo_errors', 0);
 														</td>
 
 														<td style="vertical-align: middle; text-align: center; text-align: center; border: solid; border-width: 1px;">
-															'.$inforci_horasalida.'
+															' . $inforci_horasalida . '
 														</td>
 													</tr>
 												</table>
 											</div>';
 
-		// 4. Renderiza el HTML iterando por proveedor (page-break entre grupos)
-		$total_proveedores = count($orden_proveedores);
-		$colspan_despacho = (($id_destino == 3) ? '7' : '6');
+// 4. Renderiza el HTML iterando por empresita (page-break entre grupos)
+$total_empresitas = count($orden_empresitas);
+$colspan_despacho = (($id_destino == 3) ? '7' : '6');
 
-		foreach ($orden_proveedores as $idx_prov => $proveedor_key) {
-			$info_lotes = $info_lotes_por_proveedor[$proveedor_key];
-			$etiqueta_lote = 'LOTE ' . mb_strtoupper($proveedor_key);
+foreach ($orden_empresitas as $idx_emp => $empresita_key) {
+	$info_lotes = $info_lotes_por_empresita[$empresita_key];
+	$etiqueta_lote = 'LOTE ' . mb_strtoupper($empresita_key);
 
-			// Page-break entre proveedores (no antes del primero)
-			if ($idx_prov > 0) {
-				$html .= '<div style="page-break-before: always; break-before: page;"></div>';
-			}
+	// Construye arr_guias específico para esta empresita (solo guías que coinciden)
+	$arr_guias_emp = '';
+	foreach ($guias_por_empresita[$empresita_key] as $g_unica) {
+		$arr_guias_emp .= '(' . $g_unica . ') ';
+	}
+	if (strlen($arr_guias_emp) > 0) {
+		$arr_guias_emp = substr($arr_guias_emp, 0, -2) . ')';
+	}
 
-			// Cabecera del documento
-			$html .= $cabecera_doc;
+	// Page-break entre empresitas (no antes de la primera)
+	if ($idx_emp > 0) {
+		$html .= '<div style="page-break-before: always; break-before: page;"></div>';
+	}
 
-			// Apertura de tabla con encabezado dinámico
-			$html .= '	<div class="row" style="margin-top: 20px; margin-left: 30px; margin-right: 30px;">
+	// Cabecera del documento con las guías específicas de esta empresita
+	$html .= str_replace('{{GUIAS}}', $arr_guias_emp, $cabecera_doc);
+
+	// Apertura de tabla con encabezado dinámico
+	$html .= '	<div class="row" style="margin-top: 20px; margin-left: 30px; margin-right: 30px;">
 									<table style="width: 100%; border-spacing: -1px;">
 										<tr style="font-size: 14px; font-family: AgencyFBb;">
-											<td colspan="'.$colspan_despacho.'" style="text-align: center; border: solid; border-width: 1px; background-color: #DBDBDB; vertical-align: middle;">
+											<td colspan="' . $colspan_despacho . '" style="text-align: center; border: solid; border-width: 1px; background-color: #DBDBDB; vertical-align: middle;">
 												INFORMACIÓN DE DESPACHO
 											</td>
 
@@ -430,14 +496,14 @@ ini_set('display_startuo_errors', 0);
 
 										<tr style="font-size: 14px; font-family: AgencyFBb;">';
 
-			if ($id_destino == 3){
-				$html .= '					<td style="text-align: center; border: solid; border-width: 1px; background-color: #00B0F0; vertical-align: middle; width: 100px;">
+	if ($id_destino == 3) {
+		$html .= '					<td style="text-align: center; border: solid; border-width: 1px; background-color: #00B0F0; vertical-align: middle; width: 100px;">
 														LOTE COLIBRI
 													</td>';
-			}
+	}
 
-			$html .= '						<td style="text-align: center; border: solid; border-width: 1px; background-color: #00B0F0; vertical-align: middle;">
-														'.$etiqueta_lote.'
+	$html .= '						<td style="text-align: center; border: solid; border-width: 1px; background-color: #00B0F0; vertical-align: middle;">
+														' . $etiqueta_lote . '
 													</td>
 
 													<td style="text-align: center; border: solid; border-width: 1px; background-color: #00B0F0; vertical-align: middle; width: 200px;">
@@ -480,90 +546,91 @@ ini_set('display_startuo_errors', 0);
 
 											<tbody>';
 
-			// Filas del detalle del proveedor actual
-			foreach ($detalles_por_proveedor[$proveedor_key] as $row_datos) {
-				$cod_planta = $row_datos["codigo_planta"];
-				$cod_lote = $row_datos["cod_lote"];
-				$num_parte = $row_datos["num_parte"];
-				$id_tipocarga = $row_datos["id_tipocarga"];
-				$tipo_carga = $row_datos["TIPO_CARGA"];
-				$num_bigbag = $row_datos["num_bigbag"];
-				$guia_remitente = $row_datos["guiaremitente_serie"].' '.$row_datos["guiaremitente_numero"];
-				$guia_transportista = $row_datos["guiatransportista_serie"].' '.$row_datos["guiatransportista_numero"];
-				$proveedor_minero = $row_datos["PROVEEDOR_MINERO"];
-				$pesoneto_ajustado = $row_datos["guias_pesonetoajustado"];
-				$id_planta = $row_datos["id_planta"];
-				$cmh_codigodocumentos = $row_datos["CMH_CODIGODOCUMENTOS"];
-				$cmh_codigoguias = $row_datos["CMH_CODIGOGUIAS"];
-				$total_partes = $row_datos["TOTAL_PARTES"];
+	// Filas del detalle de la empresita actual
+	foreach ($detalles_por_empresita[$empresita_key] as $row_datos) {
+		$cod_planta = $row_datos["codigo_planta"];
+		$cod_lote = $row_datos["cod_lote"];
+		$num_parte = $row_datos["num_parte"];
+		$id_tipocarga = $row_datos["id_tipocarga"];
+		$tipo_carga = $row_datos["TIPO_CARGA"];
+		$num_bigbag = $row_datos["num_bigbag"];
+		$guia_remitente = $row_datos["guiaremitente_serie"] . ' ' . $row_datos["guiaremitente_numero"];
+		$guia_transportista = $row_datos["guiatransportista_serie"] . ' ' . $row_datos["guiatransportista_numero"];
+		$proveedor_minero = $row_datos["PROVEEDOR_MINERO"];
+		$pesoneto_ajustado = $row_datos["guias_pesonetoajustado"];
+		$id_planta = $row_datos["id_planta"];
+		$empresita_razon_social = $row_datos["empresita_razon_social"];
+		$empresita_ruc = $row_datos["empresita_ruc"];
+		$cmh_codigodocumentos = $row_datos["CMH_CODIGODOCUMENTOS"];
+		$cmh_codigoguias = $row_datos["CMH_CODIGOGUIAS"];
+		$total_partes = $row_datos["TOTAL_PARTES"];
 
-				$html .= '					<tr style="font-size: 14px; font-family: AgencyFB;">';
+		$html .= '					<tr style="font-size: 14px; font-family: AgencyFB;">';
 
-				if ($id_destino == 3){
-					$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
-					$html .= '							'.((strlen($cod_planta) > 0) ? $cod_planta : '').((strlen($num_parte) > 0) ? '<br>PARTE '.$num_parte : '');
-					$html .= '						</td>';
-				}
+		if ($id_destino == 3) {
+			$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
+			$html .= '							' . ((strlen($cod_planta) > 0) ? $cod_planta : '') . ((strlen($num_parte) > 0) ? '<br>PARTE ' . $num_parte : '');
+			$html .= '						</td>';
+		}
 
-				$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
+		$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
 
-				if ($id_planta == 15){
-					$html .= '							'.$cmh_codigodocumentos;
-				}
-				else{
-					$html .= '							'.$cod_lote.((strlen($num_parte) > 0) ? '<br>PARTE '.$num_parte : '');
-				}
+		if ($id_planta == 15) {
+			$html .= '							' . $cmh_codigodocumentos;
+		} else {
+			$html .= '							' . $cod_lote . ((strlen($num_parte) > 0) ? '<br>PARTE ' . $num_parte : '');
+		}
 
-				$html .= '						</td>';
+		$html .= '						</td>';
 
-				$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
-				$html .= '							'.explode(' - ', $proveedor_minero)[1];
-				$html .= '						</td>';
+		$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
+		$html .= '							' . (($destino == 'MINERA COLIBRI S.A.C.') ? $empresita_razon_social : explode(' - ', $proveedor_minero)[1]);
+		$html .= '						</td>';
 
-				$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
-				$html .= '							'.explode(' - ', $proveedor_minero)[0];
-				$html .= '						</td>';
+		$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
+		$html .= '							' . (($destino == 'MINERA COLIBRI S.A.C.') ? $empresita_ruc : explode(' - ', $proveedor_minero)[0]);
+		$html .= '						</td>';
 
-				$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
-				$html .= '							'.$num_bigbag;
-				$html .= '						</td>';
+		$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
+		$html .= '							' . $num_bigbag;
+		$html .= '						</td>';
 
-				$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
-				$html .= '							'.((strlen($num_bigbag) == 0) ? 'X' : '');
-				$html .= '						</td>';
+		$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
+		$html .= '							' . ((strlen($num_bigbag) == 0) ? 'X' : '');
+		$html .= '						</td>';
 
-				$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
-				$html .= '							'.number_format($pesoneto_ajustado, 2, '.', '');
-				$html .= '						</td>';
+		$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
+		$html .= '							' . number_format($pesoneto_ajustado, 2, '.', '');
+		$html .= '						</td>';
 
-				$html .= '						<td>';
-				$html .= '						</td>';
+		$html .= '						<td>';
+		$html .= '						</td>';
 
-				$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
-				$html .= '						</td>';
+		$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
+		$html .= '						</td>';
 
-				$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
-				$html .= '						</td>';
+		$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
+		$html .= '						</td>';
 
-				$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
-				$html .= '						</td>';
-				$html .= '					</tr>';
-			}
+		$html .= '						<td style="border: solid; border-width: 1px; vertical-align: middle; text-align: center;">';
+		$html .= '						</td>';
+		$html .= '					</tr>';
+	}
 
-			// Filas adicionales (precintos, conformidad) por proveedor
-			$colspan_final = (($id_destino == 3) ? '6' : '5');
-			$html .= '				<tr style="font-size: 14px; font-family: AgencyFB;">
+	// Filas adicionales (precintos, conformidad) por proveedor
+	$colspan_final = (($id_destino == 3) ? '6' : '5');
+	$html .= '				<tr style="font-size: 14px; font-family: AgencyFB;">
 													<td style="height: 40px;">
 													</td>
 												</tr>
 
 												<tr style="font-size: 14px; font-family: AgencyFB;">
-													<td colspan="'.$colspan_final.'" style="text-align: center; border: solid; border-width: 1px; background-color: #00B0F0; vertical-align: middle;">
+													<td colspan="' . $colspan_final . '" style="text-align: center; border: solid; border-width: 1px; background-color: #00B0F0; vertical-align: middle;">
 														PRECINTO DE SEGURIDAD
 													</td>
 
 													<td colspan="5" style="text-align: center; border: solid; border-width: 1px;">
-														'.$inforci_infoprecintos.'
+														' . $inforci_infoprecintos . '
 													</td>
 												</tr>
 
@@ -573,7 +640,7 @@ ini_set('display_startuo_errors', 0);
 												</tr>
 
 												<tr style="font-size: 14px; font-family: AgencyFB;">
-													<td colspan="'.$colspan_final.'" style="text-align: center; border: solid; border-width: 1px; background-color: #00B0F0; vertical-align: middle;">
+													<td colspan="' . $colspan_final . '" style="text-align: center; border: solid; border-width: 1px; background-color: #00B0F0; vertical-align: middle;">
 														CONFORMIDAD PLANTA
 													</td>
 
@@ -585,34 +652,34 @@ ini_set('display_startuo_errors', 0);
 										</table>
 									</div>';
 
-			// Imagen del vehículo y cuadro resumen por proveedor
-			$html .= '			<div class="row" style="margin-top: 20px; margin-left: 30px; margin-right: 30px; text-align: center;">';
-			$html .= '				<img src="'.$ruta_images.$img_tipovehiculo.'" style="width: 550px; height: 220"/>';
-			$html .= '			</div>';
+	// Imagen del vehículo y cuadro resumen por proveedor
+	$html .= '			<div class="row" style="margin-top: 20px; margin-left: 30px; margin-right: 30px; text-align: center;">';
+	$html .= '				<img src="' . $ruta_images . $img_tipovehiculo . '" style="width: 550px; height: 220"/>';
+	$html .= '			</div>';
 
-			$html .= '			<div class="row" style="border: solid; border-width: 1px; vertical-align: middle; text-align: center; margin-left: 420px; margin-right: 420px; background-color: #DEEBF7; margin-top: -250px; font-family: AgencyFBb; font-size: 16px;">';
-			$html .= '				<div class="row">';
-			$html .= '					'.$placa_1.((strlen($placa_2) == 0) ? '' : ' / '.$placa_2);
-			$html .= '				</div>';
+	$html .= '			<div class="row" style="border: solid; border-width: 1px; vertical-align: middle; text-align: center; margin-left: 420px; margin-right: 420px; background-color: #DEEBF7; margin-top: -250px; font-family: AgencyFBb; font-size: 16px;">';
+	$html .= '				<div class="row">';
+	$html .= '					' . $placa_1 . ((strlen($placa_2) == 0) ? '' : ' / ' . $placa_2);
+	$html .= '				</div>';
 
-			$html .= '				<div class="row">';
-			$html .= '					'.mb_strtoupper($info_lotes);
-			$html .= '				</div>';
-			$html .= '			</div>';
-		}
+	$html .= '				<div class="row">';
+	$html .= '					' . mb_strtoupper($info_lotes);
+	$html .= '				</div>';
+	$html .= '			</div>';
+}
 
-	// Cierra html
-    $html .= '	</body>
+// Cierra html
+$html .= '	</body>
 							</html>';
 // echo '$html: '.$html;
 // return;
-	$options = new Options();
-  $options->set('isRemoteEnabled', TRUE);
-  $document = new Dompdf($options);
+$options = new Options();
+$options->set('isRemoteEnabled', TRUE);
+$document = new Dompdf($options);
 
-	$document -> loadHtml($html, 'UTF-8');
-	$document -> setPaper('A4', 'landscape');
-	$document -> render();
-	$document -> stream('Modelo de Guía de '.$nom_archivo.' - '.$nom_archivo_guia, array('Attachment' => 0));
+$document->loadHtml($html, 'UTF-8');
+$document->setPaper('A4', 'landscape');
+$document->render();
+$document->stream('Modelo de Guía de ' . $nom_archivo . ' - ' . $nom_archivo_guia, array('Attachment' => 0));
 
 ?>
