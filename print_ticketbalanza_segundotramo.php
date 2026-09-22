@@ -377,7 +377,9 @@ SELECT
 FROM despachos_segundotramo_programacion_detalle PD
 LEFT JOIN despachos_segundotramo_programacion P ON PD.id_programacion = P.Id
 LEFT JOIN despachos_segundotramo_distribucion_unidades U ON P.Id = U.id_programacion
+
 LEFT JOIN despachos_segundotramo_distribucion_lotes DL ON U.Id = DL.id_distribucionunidad AND PD.cod_lote = DL.cod_lote
+
 LEFT JOIN transporte UN ON U.id_unidad = UN.id_transporte
 LEFT JOIN transporte UN2 ON U.id_unidad2 = UN2.id_transporte
 LEFT JOIN tb_clientes TR ON UN.id_Transportista = TR.Id
@@ -392,7 +394,7 @@ LEFT JOIN tbconfig_producto PR ON V.lote_id_producto = PR.Id
 LEFT JOIN tbconfig_tipomineral TM ON V.lote_id_tipomineral = TM.Id
 LEFT JOIN consolidado_lotes_cierrecontable CL ON DL.Id = CL.id_registro AND CL.id_tipoingreso = 2
 
-LEFT JOIN tb_usuario usu on usu.Id = CL.fechahora_usuario or usu.usu_usuario = CL.fechahora_usuario
+LEFT JOIN tb_usuario usu on usu.usu_usuario = DL.peso_tara_usuarioregistro
 LEFT JOIN tb_empleados emp on emp.Id = usu.id_empleado 
 
 WHERE MD5(DL.Id) = '" . $id_md5 . "'";
