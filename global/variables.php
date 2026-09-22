@@ -81,24 +81,24 @@
 	// ===========================================================
 
 	// COLIBRI - Cabecera
-	$GLOBALS['CORR_COLIBRI_CAB_INICIO']   = 570; // tomara este numero como el proximo correlativo
+	$GLOBALS['CORR_COLIBRI_CAB_INICIO']   = 576; // tomara este numero como el proximo correlativo
 
 	// COLIBRI - Detalle por empresa
 	// colibri ft VIII
-	$GLOBALS['CORR_COLIBRI_VIII_DET_INICIO']   = 140; // tomara este numero como el proximo correlativo
+	$GLOBALS['CORR_COLIBRI_VIII_DET_INICIO']   = 147; // tomara este numero como el proximo correlativo
 	// colibri ft 48
-	$GLOBALS['CORR_COLIBRI_48SAC_DET_INICIO']  = 14;  // tomara este numero como el proximo correlativo
+	$GLOBALS['CORR_COLIBRI_48SAC_DET_INICIO']  = 20;  // tomara este numero como el proximo correlativo
 
 	// ===========================================================
 
 	// SOLANDRA - Cabecera
-	$GLOBALS['CORR_SOLANDRA_CAB_INICIO']   = 218; // tomara este numero como el proximo correlativo
+	$GLOBALS['CORR_SOLANDRA_CAB_INICIO']   = 223; // tomara este numero como el proximo correlativo
 
 	// SOLANDRA - Detalle por empresa
 	// solandra ft VIII
-	$GLOBALS['CORR_SOLANDRA_VIII_DET_INICIO']  = 90; // tomara este numero como el proximo correlativo
+	$GLOBALS['CORR_SOLANDRA_VIII_DET_INICIO']  = 96; // tomara este numero como el proximo correlativo
 	// solandra ft 48
-	$GLOBALS['CORR_SOLANDRA_48SAC_DET_INICIO'] = 11; // tomara este numero colo el proximo correlativo
+	$GLOBALS['CORR_SOLANDRA_48SAC_DET_INICIO'] = 14; // tomara este numero colo el proximo correlativo
 
 	// =============================================================================
 

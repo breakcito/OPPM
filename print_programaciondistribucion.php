@@ -295,7 +295,7 @@ WHERE MD5(DU.id_programacion) = '".$id_programacion."'
 					// Acumula correlativos únicos por empresita
 					$cod_desp = trim($row_datos["codigo_despacho"]);
 					$cod_desp_comer = trim($row_datos["codigo_despacho_comercializacion"]);
-					$correlativo_item = ((strlen($cod_desp_comer) > 0) ? $cod_desp.' / '.$cod_desp_comer : $cod_desp);
+					$correlativo_item = ((strlen($cod_desp_comer) > 0) ? $cod_desp_comer : $cod_desp);
 					if (!in_array($correlativo_item, $correlativos_por_empresita[$empresita_key])) {
 						$correlativos_por_empresita[$empresita_key][] = $correlativo_item;
 					}
@@ -382,8 +382,8 @@ WHERE MD5(DU.id_programacion) = '".$id_programacion."'
 				$html .= '<div style="page-break-before: always; break-before: page;"></div>';
 			}
 
-			// Construye correlativo específico para esta empresita
-			$correlativo_emp = implode('/', $correlativos_por_empresita[$empresita_key]);
+			// Construye correlativo específico para esta empresita (sin slash si solo hay un registro)
+			$correlativo_emp = implode(' / ', $correlativos_por_empresita[$empresita_key]);
 
 			// Cabecera del documento con el correlativo de la empresita actual
 			$html .= str_replace('{{CORRELATIVO}}', $correlativo_emp, $cabecera_doc);
