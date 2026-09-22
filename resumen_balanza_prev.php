@@ -124,7 +124,7 @@
 										</div>
 									</div>
 
-									<div class="col-md-3 col-sm-3 col-xs-12" style="padding: 2px;">
+									<div class="col-md-2 col-sm-2 col-xs-2" style="padding: 2px;">
 										<div style="border: solid; border-width: 1px; border-color: #E6E9ED; border-radius: 7px; padding: 10px;">
 											<div class="row" style="padding-left: 10px; padding-right: 10px;">
 												<h6 style="font-size: 14px;">Por Emp. de Transporte</h6>
@@ -172,6 +172,26 @@
 
 											<div class="d-flex" style="margin-top: -5px; padding-left: 10px; padding-right: 10px;">
 												<input id="filtro_placa" type="text" class="form-control" style="font-size: 14px;">
+											</div>
+										</div>
+									</div>
+								</div>
+
+								<div id="div_filtroempresitas" class="row" style="padding-left: 30px; margin-top: -10px; margin-bottom: 10px; font-size: 13px; display: none;">
+									<div class="col-md-2 col-sm-2 col-xs-2" style="padding: 2px;">
+										<div style="border: solid; border-width: 1px; border-color: #E6E9ED; border-radius: 7px; padding: 10px;">
+											<div class="row" style="padding-left: 10px; padding-right: 10px;">
+												<h6 style="font-size: 14px;">Por Empresa</h6>
+											</div>
+
+											<div class="row" style="margin-top: 1px; padding-left: 20px; padding-right: 20px;">
+												<hr style="border-color: #D9D9D9;"/>
+											</div>
+
+											<div class="d-flex" style="margin-top: -5px; padding-left: 10px; padding-right: 10px;">
+												<select id="filtro_empresitas" class="form-select obj_cab" style="text-align: left; font-size: 14px;" onchange="f_AplicarFiltroEmpresitas();">
+													
+												</select>
 											</div>
 										</div>
 									</div>
@@ -1586,6 +1606,9 @@
 				// Setea el campo de Placa 2 (Carreta)
 					f_TieneCarreta();
 
+				// Inicializa visibilidad del filtro de Planta / Empresitas según Condición de Ingreso
+					f_ShowFiltroPlanta();
+
 				// Carga el detalle de información
 					f_LoadResultados();
 			}
@@ -1764,10 +1787,21 @@
 
         $("#tbl_detalle").html('');
 
-        $.post( "apis/backend.php", { accion: "get_ListaResumenBalanza", fecha_inicio: fecha_inicio, fecha_fin: fecha_fin, filtro_condicioningreso: filtro_condicioningreso, filtro_transportista: filtro_transportista, filtro_placa: filtro_placa, filtro_lote: filtro_lote, filtro_planta: filtro_planta }, 
+        $.post( "apis/backend.php", { accion: "get_ListaResumenBalanza", fecha_inicio: fecha_inicio, fecha_fin: fecha_fin, filtro_condicioningreso: filtro_condicioningreso, filtro_transportista: filtro_transportista, filtro_placa: filtro_placa, filtro_lote: filtro_lote, filtro_planta: filtro_planta },
           function( data ) {
             if(data.estado == 1){
               $("#tbl_detalle").html(data.html);
+
+              // Carga el dropdown de Empresitas con la lista única devuelta por el backend
+              if ($.isArray(data.arr_empresitas)){
+                f_PopulateFiltroEmpresitas(data.arr_empresitas);
+              }
+              else{
+                f_PopulateFiltroEmpresitas([]);
+              }
+
+              // Aplica el filtro de Empresitas si hay uno seleccionado previamente
+              f_AplicarFiltroEmpresitas();
             }
 
             f_LoadingResumen(0);
@@ -2717,11 +2751,11 @@
 
     	function f_PrintTicketBakanza(_tipo_ingreso, _id_md5){
     		if (_tipo_ingreso == 1){
-    			url = 'print_ticketbalanza_prev.php?x=' + _id_md5;
+    			url = 'print_ticketbalanza.php?x=' + _id_md5;
     		}
 
     		if (_tipo_ingreso == 2){
-    			url = 'print_ticketdespacho.php?x=' + _id_md5;
+    			url = 'print_ticketbalanza_segundotramo.php?x=' + _id_md5;
     		}
 				
 				window.open(url, '_blank');
@@ -3131,13 +3165,60 @@
 	    	var filtro_condicioningreso = $("#filtro_condicioningreso").val();
 
 	    	$("#div_filtroplanta").hide();
+	    	$("#div_filtroempresitas").hide();
 
 	    	if ($("#filtro_condicioningreso").val() == 2){
 	    		$("#div_filtroplanta").show();
+	    		$("#div_filtroempresitas").show();
 	    	}
 	    	else{
 	    		$("#filtro_plantas").val('');
+	    		$("#filtro_empresitas").val('');
 	    	}
+	    }
+
+	    function f_PopulateFiltroEmpresitas(_arr_empresitas){
+	    	var _html = '<option value="">Todas las Empresitas...</option>';
+
+	    	$("#filtro_empresitas").html('');
+
+	    	if ($.isArray(_arr_empresitas) && _arr_empresitas.length > 0){
+	    		$.each(_arr_empresitas, function(key, val){
+	    			_html += '<option value="' + val.id_empresita + '">' + val.empresita + '</option>';
+	    		});
+	    	}
+
+	    	$("#filtro_empresitas").html(_html);
+	    }
+
+	    function f_AplicarFiltroEmpresitas(){
+	    	var _id_emp = $("#filtro_empresitas").val();
+	    	var _id_emp_int = parseInt(_id_emp, 10);
+
+	    	// Si no hay filtro, mostrar todas las filas
+	    	if (isNaN(_id_emp_int) || _id_emp_int <= 0){
+	    		$("#tbl_detalle tr").show();
+	    		return;
+	    	}
+
+	    	// Mostrar/ocultar filas según Empresita seleccionada (campo escalar data-empresita-id)
+	    	$("#tbl_detalle tr").each(function(){
+	    		var _row = $(this);
+	    		var _data_id = _row.attr('data-empresita-id');
+
+	    		// Si la fila no tiene el atributo (no es Despacho de Mineral), ocultar
+	    		if (typeof _data_id === 'undefined' || _data_id === false){
+	    			_row.hide();
+	    			return;
+	    		}
+
+	    		if (parseInt(_data_id, 10) === _id_emp_int){
+	    			_row.show();
+	    		}
+	    		else{
+	    			_row.hide();
+	    		}
+	    	});
 	    }
 
       function f_SelectListaEncargadosMuestra(_id_encargadomuestra){

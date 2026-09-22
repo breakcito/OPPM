@@ -2244,6 +2244,194 @@ function f_MigrarLotes_CierreContable($enlace, $id_tipoingreso, $arr_idregistros
 }
 
 // ----------------------------------------------------------------------------------------------------------
+// Re-sincroniza el Ticket Contable (consolidado_lotes_cierrecontable) cuando se edita un valor
+// desde el módulo "Resumen de Balanza" (case 'grabar_EditBalanza'). Esta función se encarga de:
+//   1. Para Recepción de Mineral (tipo_condicion == 1):
+//      - Localiza el id_CatalogoLotes relacionado (id_registro si $is_tablalotes == 1, o
+//        lo busca por id_controlIngresoVehiculo si es un campo de controlingresovehiculo).
+//      - Encuentra el Id de la fila en despachos_primertramo_validaciondatos (donde
+//        lote_id_lote = id_CatalogoLotes) que es la fuente real del Ticket Contable.
+//      - Propaga el cambio al campo correspondiente de despachos_primertramo_validaciondatos.
+//      - Si el registro ya fue migrado a consolidado_lotes_cierrecontable, lo re-sincroniza
+//        llamando a f_MigrarLotes_CierreContable con id_tipoingreso = 1.
+//   2. Para Despacho de Mineral (tipo_condicion == 2):
+//      - El id_registro ya es el Id de despachos_segundotramo_distribucion_lotes (tabla que
+//        es fuente directa del Ticket Contable para Segundo Tramo).
+//      - Si el registro ya fue migrado a consolidado_lotes_cierrecontable, lo re-sincroniza
+//        llamando a f_MigrarLotes_CierreContable con id_tipoingreso = 2.
+function f_ResyncTicketContable_ResumenBalanza($enlace, $id_registro, $item, $valor_original, $tipo_condicion, $is_tablalotes, $is_tabladistribucionlotes, $g_fecha, $usuario_registro)
+{
+	$id_tipoingreso_sync = 0;
+	$id_registro_sync = 0;
+
+	if ($tipo_condicion == 1) {
+		// 1. Resolver el id_CatalogoLotes
+		$id_catalogo_lotes = 0;
+
+		if ($is_tablalotes == 1) {
+			// $id_registro ya es catalogolotes.Id
+			$id_catalogo_lotes = intval($id_registro);
+		} else {
+			// $id_registro es controlingresovehiculo.Id. Buscar el catalogolotes relacionado.
+			$q_lookup = "SELECT id_CatalogoLotes
+										 FROM catalogolotes
+										WHERE id_controlIngresoVehiculo = " . intval($id_registro) . "
+										ORDER BY id_CatalogoLotes DESC
+										LIMIT 1";
+
+			if ($res_lookup = mysqli_query($enlace, $q_lookup)) {
+				if ($row_lookup = mysqli_fetch_assoc($res_lookup)) {
+					$id_catalogo_lotes = intval($row_lookup["id_CatalogoLotes"]);
+				}
+			}
+		}
+
+		if ($id_catalogo_lotes <= 0) {
+			return;
+		}
+
+		// 2. Encontrar el Id de la fila en despachos_primertramo_validaciondatos
+		$q_lookup_vd = "SELECT Id
+											FROM despachos_primertramo_validaciondatos
+										 WHERE lote_id_lote = " . $id_catalogo_lotes . "
+										 ORDER BY Id DESC
+										 LIMIT 1";
+
+		$id_vd = 0;
+		if ($res_lookup_vd = mysqli_query($enlace, $q_lookup_vd)) {
+			if ($row_lookup_vd = mysqli_fetch_assoc($res_lookup_vd)) {
+				$id_vd = intval($row_lookup_vd["Id"]);
+			}
+		}
+
+		if ($id_vd <= 0) {
+			return;
+		}
+
+		// 3. Propagar el cambio al campo correspondiente de despachos_primertramo_validaciondatos
+		//    según el item que se está editando.
+		$vd_campo = '';
+		$vd_valor_sql = '';
+
+		switch (intval($item)) {
+			case 2:
+				$vd_campo = 'balanza_placa';
+				break;
+			case 3:
+				$vd_campo = 'balanza_placa2';
+				break;
+			case 5:
+				$vd_campo = 'balanza_id_tipovehiculo';
+				break;
+			case 6:
+				$vd_campo = 'balanza_id_chofer';
+				break;
+			case 7:
+				$vd_campo = 'lote_id_tipocarga';
+				break;
+			case 8:
+				$vd_campo = 'lote_id_zonaorigen';
+				break;
+			case 9:
+				$vd_campo = 'lote_id_proveedorminero';
+				break;
+			case 10:
+				$vd_campo = 'lote_id_encargadomuestra';
+				break;
+			case 11:
+				$vd_campo = 'lote_id_producto';
+				break;
+			case 12:
+				$vd_campo = 'lote_id_tipomineral';
+				break;
+			case 13:
+				$vd_campo = 'lote_peso_inicial';
+				$vd_valor_sql = "(" . floatval($valor_original) . " * 1000)";
+				break;
+			case 14:
+				$vd_campo = 'lote_peso_final';
+				$vd_valor_sql = "(" . floatval($valor_original) . " * 1000)";
+				break;
+			case 15:
+				$vd_campo = 'despacho_observacion';
+				break;
+			default:
+				// Items 1, 4, 18 no tienen contraparte directa en despachos_primertramo_validaciondatos
+				// para el Ticket Contable.
+				break;
+		}
+
+		if (strlen($vd_campo) == 0) {
+			return;
+		}
+
+		if (strlen($vd_valor_sql) == 0) {
+			if (strlen(trim($valor_original)) == 0) {
+				$vd_valor_sql = 'NULL';
+			} else {
+				$vd_valor_sql = "'" . mysqli_real_escape_string($enlace, $valor_original) . "'";
+			}
+		}
+
+		$q_vd_update = "UPDATE despachos_primertramo_validaciondatos";
+		$q_vd_update .= "   SET " . $vd_campo . " = " . $vd_valor_sql;
+		$q_vd_update .= " WHERE Id = " . $id_vd;
+
+		if (!mysqli_query($enlace, $q_vd_update)) {
+			return;
+		}
+
+		// 4. Si se actualizó un peso, recalcular el otro peso para mantener consistencia
+		//    (regla de negocio: lote_peso_inicial - lote_peso_final = lote_peso_neto)
+		if (intval($item) == 13) {
+			$q_recalc = "UPDATE despachos_primertramo_validaciondatos
+										 SET lote_peso_final = lote_peso_inicial - lote_peso_neto
+									 WHERE Id = " . $id_vd;
+
+			mysqli_query($enlace, $q_recalc);
+		} elseif (intval($item) == 14) {
+			$q_recalc = "UPDATE despachos_primertramo_validaciondatos
+										 SET lote_peso_inicial = lote_peso_final + lote_peso_neto
+									 WHERE Id = " . $id_vd;
+
+			mysqli_query($enlace, $q_recalc);
+		}
+
+		$id_tipoingreso_sync = 1;
+		$id_registro_sync = $id_vd;
+	} elseif ($tipo_condicion == 2) {
+		// Para Despacho de Mineral, el id_registro ya es el Id de
+		// despachos_segundotramo_distribucion_lotes, que es la fuente directa del Ticket Contable.
+		$id_tipoingreso_sync = 2;
+		$id_registro_sync = intval($id_registro);
+	} else {
+		return;
+	}
+
+	// 5. Verificar si el registro ya fue migrado a consolidado_lotes_cierrecontable
+	if ($id_tipoingreso_sync <= 0 || $id_registro_sync <= 0) {
+		return;
+	}
+
+	$q_chk_migrado = "SELECT COUNT(Id) AS _COUNT
+										FROM consolidado_lotes_cierrecontable
+									 WHERE id_tipoingreso = " . $id_tipoingreso_sync . "
+										 AND id_registro = " . $id_registro_sync;
+
+	$chk_migrado = 0;
+	if ($res_chk_migrado = mysqli_query($enlace, $q_chk_migrado)) {
+		if ($row_chk_migrado = mysqli_fetch_array($res_chk_migrado)) {
+			$chk_migrado = intval($row_chk_migrado["_COUNT"]);
+		}
+	}
+
+	// 6. Si ya fue migrado, re-sincronizar el Ticket Contable con los nuevos valores
+	if ($chk_migrado > 0) {
+		f_MigrarLotes_CierreContable($enlace, $id_tipoingreso_sync, $id_registro_sync, $g_fecha, $usuario_registro);
+	}
+}
+
+// ----------------------------------------------------------------------------------------------------------
 // Generar Comprobantes Electróbuicos
 function f_GenerarComprobanteElectronico($id_recepcion, $is_factura)
 {
@@ -17863,6 +18051,14 @@ switch ($_POST["accion"]) {
 							$html .= '	  </div>';
 						}
 
+						// Botón para editar imágenes (disponible para todos los usuarios que ven el registro)
+							$html .= '		<div class="d-flex justify-content-center" style="margin-top: 5px;">';
+							$html .= '	    <a style="background-color: #198754; padding: 5px; border: solid; border-width: 1px; border-color: #E6E9ED; border-radius: 7px; color: #ffffff;" href="javascript: f_AdminRecepcion(' . $row_ingreso["id_controlIngresoVehiculo"] . ');">';
+							$html .= '	    	<i class="bi bi-images"></i>';
+							$html .= '	      <label style="cursor: pointer; font-size: 12px; font-weight: 400;"><u>Editar Imágenes</u></label>';
+							$html .= '	    </a>';
+							$html .= '	  </div>';
+
 						$html .= '	  </td>';
 
 						$html .= '  <td rowspan="' . $total_acompanantes . '" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
@@ -18353,6 +18549,216 @@ switch ($_POST["accion"]) {
 		}
 
 		echo json_encode(array('estado' => $estado, 'src' => $src));
+
+		break;
+
+	case 'get_ControlIngreso_ImagenesAct':
+		$estado = 0;
+		$imagenes = array();
+
+		// Recupera parámetros
+		$id_controlingreso = mysqli_real_escape_string($enlace, $_POST['id_controlingreso']);
+
+		// Obtiene las imágenes registradas para el controlingreso
+		$q_imagenes = "SELECT Id,
+											cod_auto,
+											descripcion,
+											imagen,
+											imagen_url
+								 FROM controlingresovehiculo_imagenes
+								WHERE id_controlingreso = " . $id_controlingreso . "
+							 ORDER BY cod_auto, Id";
+
+		if ($res_imagenes = mysqli_query($enlace, $q_imagenes)) {
+			if (mysqli_num_rows($res_imagenes) > 0) {
+				$estado = 1;
+
+				while ($row_imagenes = mysqli_fetch_assoc($res_imagenes)) {
+					$imagenes[] = $row_imagenes;
+				}
+			}
+		}
+
+		echo json_encode(array('estado' => $estado, 'imagenes' => $imagenes));
+
+		break;
+
+	case 'eliminar_recepcionunidades_imagen':
+		$estado = 0;
+
+		// Recupera parámetros
+		$id_imagen = mysqli_real_escape_string($enlace, $_POST['id_imagen']);
+
+		if (strlen($id_imagen) == 0 || $id_imagen == '0') {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'No se ha definido el Id de la imagen.'));
+
+			break;
+		}
+
+		// Primero obtiene el nombre del archivo para eliminarlo del servidor
+		$file_name = '';
+		$q_get = "SELECT imagen_url
+								FROM controlingresovehiculo_imagenes
+							 WHERE Id = " . $id_imagen;
+
+		if ($res_get = mysqli_query($enlace, $q_get)) {
+			if (mysqli_num_rows($res_get) > 0) {
+				while ($row_get = mysqli_fetch_array($res_get)) {
+					$file_name = $row_get["imagen_url"];
+				}
+			}
+		}
+
+		// Elimina el registro de la base de datos
+		$q_delete = "DELETE FROM controlingresovehiculo_imagenes WHERE Id = " . $id_imagen;
+
+		if ($res_delete = mysqli_query($enlace, $q_delete)) {
+			$estado = 1;
+
+			// Si el archivo existía, intenta eliminarlo del servidor
+			if (strlen($file_name) > 0) {
+				$file_path = '../files/recepcion/' . $file_name;
+
+				if (file_exists($file_path)) {
+					@unlink($file_path);
+				}
+			}
+		}
+
+		echo json_encode(array('estado' => $estado));
+
+		break;
+
+	case 'actualizar_recepcionunidades_imagenes':
+		$estado = 1;
+
+		// Recupera variables
+		$id_registro = mysqli_real_escape_string($enlace, $_POST['id_registro']);
+		$arr_imagenes = $_POST['arr_imagenes'];
+		$usuario_registro = $_SESSION["usu_usuario"];
+
+		if (strlen($id_registro) == 0 || $id_registro == '0') {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'No se ha definido el registro a actualizar.'));
+
+			break;
+		}
+
+		// Decodifica el array de imágenes
+		$arr_imagenes = json_decode($arr_imagenes, true);
+
+		if (!is_array($arr_imagenes)) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'El formato de las imágenes no es válido.'));
+
+			break;
+		}
+
+		// Directorio de destino de los archivos
+		$target_dir = '../files/recepcion/';
+
+		foreach ($arr_imagenes as $imagen) {
+			$id_imagen = isset($imagen['id_imagen']) ? intval($imagen['id_imagen']) : 0;
+			$cod_auto = isset($imagen['cod_auto']) ? intval($imagen['cod_auto']) : 0;
+			$descripcion = isset($imagen['descripcion']) ? $imagen['descripcion'] : '';
+			$cambiada = isset($imagen['cambiada']) ? intval($imagen['cambiada']) : 0;
+			$imagen_src = isset($imagen['imagen']) ? trim($imagen['imagen']) : '';
+
+			if ($id_imagen > 0) {
+				// Imagen existente: actualiza sólo si fue cambiada (cambiada = 1)
+				if ($cambiada == 1 && strlen($imagen_src) > 0) {
+					// Antes de grabar el nuevo archivo, obtiene el nombre del archivo anterior para eliminarlo
+					$old_file = '';
+					$q_get = "SELECT imagen_url FROM controlingresovehiculo_imagenes WHERE Id = " . $id_imagen;
+
+					if ($res_get = mysqli_query($enlace, $q_get)) {
+						if (mysqli_num_rows($res_get) > 0) {
+							while ($row_get = mysqli_fetch_array($res_get)) {
+								$old_file = $row_get["imagen_url"];
+							}
+						}
+					}
+
+					// Decodifica el base64 y guarda el nuevo archivo
+					$imagenBase64Comprimida = '';
+					$imagenBase64URL = '';
+
+					if (preg_match('/^data:image\/(\w+);base64,/', $imagen_src, $type)) {
+						$base64String = substr($imagen_src, strpos($imagen_src, ',') + 1);
+						$type = strtolower($type[1]);
+
+						$imagenData = base64_decode($base64String);
+
+						if ($imagenData !== false) {
+							$date = date("Ymd_His");
+							$randomHash = bin2hex(random_bytes(16));
+							$fileName = $date . "_" . $randomHash . "." . $type;
+
+							$filePath = $target_dir . $fileName;
+
+							if (file_put_contents($filePath, $imagenData) !== false) {
+								$imagenBase64URL = $fileName;
+							}
+						}
+					}
+
+					// Actualiza la base de datos
+					$q_save = 'UPDATE controlingresovehiculo_imagenes SET ';
+					$q_save .= '  descripcion = ' . ((strlen($descripcion) == 0) ? 'NULL' : "'" . mysqli_real_escape_string($enlace, $descripcion) . "'") . ', ';
+					$q_save .= '  imagen = ' . ((strlen($imagenBase64Comprimida) == 0) ? 'NULL' : "'" . $imagenBase64Comprimida . "'") . ', ';
+					$q_save .= '  imagen_url = ' . ((strlen($imagenBase64URL) == 0) ? 'NULL' : "'" . $imagenBase64URL . "'");
+					$q_save .= ' WHERE Id = ' . $id_imagen;
+
+					if ($res_save = mysqli_query($enlace, $q_save)) {
+						// Si se grabó correctamente y existía un archivo previo, eliminarlo
+						if (strlen($old_file) > 0 && strlen($imagenBase64URL) > 0) {
+							$old_path = $target_dir . $old_file;
+
+							if (file_exists($old_path)) {
+								@unlink($old_path);
+							}
+						}
+					} else {
+						$estado = 0;
+					}
+				}
+			} else {
+				// Imagen nueva (id_imagen = 0)
+				$imagenBase64Comprimida = '';
+				$imagenBase64URL = '';
+
+				if (strlen($imagen_src) > 0 && preg_match('/^data:image\/(\w+);base64,/', $imagen_src, $type)) {
+					$base64String = substr($imagen_src, strpos($imagen_src, ',') + 1);
+					$type = strtolower($type[1]);
+
+					$imagenData = base64_decode($base64String);
+
+					if ($imagenData !== false) {
+						$date = date("Ymd_His");
+						$randomHash = bin2hex(random_bytes(16));
+						$fileName = $date . "_" . $randomHash . "." . $type;
+
+						$filePath = $target_dir . $fileName;
+
+						if (file_put_contents($filePath, $imagenData) !== false) {
+							$imagenBase64URL = $fileName;
+						}
+					}
+				}
+
+				$q_insert = 'INSERT INTO controlingresovehiculo_imagenes (id_controlingreso, cod_auto, descripcion, imagen, imagen_url) VALUES (';
+				$q_insert .= $id_registro . ', ';
+				$q_insert .= $cod_auto . ', ';
+				$q_insert .= ((strlen($descripcion) == 0) ? 'NULL' : "'" . mysqli_real_escape_string($enlace, $descripcion) . "'") . ', ';
+				$q_insert .= ((strlen($imagenBase64Comprimida) == 0) ? 'NULL' : "'" . $imagenBase64Comprimida . "'") . ', ';
+				$q_insert .= ((strlen($imagenBase64URL) == 0) ? 'NULL' : "'" . $imagenBase64URL . "'") . ')';
+
+				if ($res_insert = mysqli_query($enlace, $q_insert)) {
+				} else {
+					$estado = 0;
+				}
+			}
+		}
+
+		echo json_encode(array('estado' => $estado));
 
 		break;
 
@@ -21460,86 +21866,121 @@ switch ($_POST["accion"]) {
 
 		// Query para obtener el tipo: "Recepción de Mineral"
 		if ($filtro_condicioningreso == 99 || $filtro_condicioningreso == 1) {
-			$q_balanza = "SELECT DISTINCT I.id_controlIngresoVehiculo,
-																 MD5(L.id_CatalogoLotes) AS ID_MD5,
-																 CONCAT(I.dFechaIngreso, ' ', I.dhoraingresoPlanta) AS FECHAHORA_REGISTRO,
-																 I.id_tipoingresounidad,
-																 IU.descripcion AS CLIENTE_CONDICION,
-																 I.placa,
-																 I.placa2,
-																 I.id_transportista,
-																 T.documento AS documento,
-																 T.razon_social AS TRANSPORTISTA,
-																 I.id_tipovehiculo,
-																 TV.descripcion AS TIPO_VEHICULO,
-																 I.id_choferes,
-																 CD.dni_licencia,
-																 CD.nombres AS CONDUCTOR,
-																 L.balanza_id_tipocarga,
-																 TC.descripcion AS TIPO_CARGA,
-																 L.balanza_id_zonaorigen,
-																 ZO.descripcion AS ZONA_ORIGEN,
-																 I.cNotas,
-																 L.id_CatalogoLotes, 
-																 L.ccod_Lote,
-																 MD5(L.ccod_Lote) AS MD5_LOTE,
-																 L.dFechaCreacion AS FECHAHORA_CREACIONLOTE,
-																 L.nNro_ticketsBalanza,
-																 L.item_ticketbalanza,
-																 L.nPeso_InicialBalanza,
-																 L.tFechaInicialBalanza,
-																 L.tHoraInicialBalanza,
-																 L.pesoinicial_observacion,
-																 U_I.usu_usuario AS USUARIO_INICIO,
-																 L.nPeso_FinalBalanza,
-																 L.dFechaFinalBalanza,
-																 L.tHoraFinalBalanza,
-																 L.pesofinal_observacion,
-																 L.id_UsuarioModificacion,
-																 U_F.usu_usuario AS USUARIO_FIN,
-																 L.balanza_id_proveedorminero,
-																 CONCAT(PM.documento, ' - ', UPPER(PM.razon_social)) AS PROVEEDOR_MINERO,
-																 L.balanza_id_encargadomuestra,
-																 /*UPPER(EM.nombres) AS ENCARGADO_MUESTRA,*/
-																 EM.codigo AS ENCARGADO_MUESTRA,
-																 UPPER(EM.nombres) AS ENCARGADO_MUESTRA_NOMBRES,
-																 L.balanza_id_producto,
-																 UPPER(P.descripcion) AS PRODUCTO,
-																 L.balanza_id_tipomineral,
-																 UPPER(TM.descripcion) AS TIPO_MINERAL,
-																 UPPER(L.balanza_observacion) AS LOTE_OBSERVACION,
-																 HC.cierre_prom,
-																 HC.Id AS ID_CABECERAHUMEDAD,
-																 1 AS TIPO_CONDICION,
-																 0 AS ID_PLANTA,
-																 IFNULL(L.balanza_id_planta, 0) AS balanza_id_planta,
-																 IFNULL(PL.nombre_comercial, PL.descripcion) AS PLANTA_INGRESO,
-																 VD.balanza_is_descargado,
-																 VD.balanza_is_descargado_fechahoraregistro,
-																 VD.balanza_is_descargado_usuarioregistro,
-																 VD.humedad_registromanual,
-																 VD.humedad_registromanual_fechahoraregistro,
-																 VD.humedad_registromanual_usuarioregistro,
-																 VD.cambios_log AS CAMBIOS_LOG
-														FROM controlingresovehiculo I
-																 INNER JOIN tbconfig_tipoingresounidades IU ON I.id_tipoingresounidad = IU.Id
-																 LEFT JOIN tb_clientes T ON I.id_transportista = T.Id
-																 LEFT JOIN tbconfig_tipovehiculo TV ON I.id_tipovehiculo = TV.Id
-																 LEFT JOIN tbconfig_conductores CD ON I.id_choferes = CD.Id
-																 LEFT JOIN catalogolotes L ON I.id_controlIngresoVehiculo = L.id_controlIngresoVehiculo
-																 LEFT JOIN tbconfig_tipocarga TC ON L.balanza_id_tipocarga = TC.Id
-																 LEFT JOIN tbconfig_zonaorigen ZO ON L.balanza_id_zonaorigen = ZO.Id
-																 LEFT JOIN tb_usuario U_I ON L.id_UsuarioCreacion = U_I.Id
-																 LEFT JOIN tb_usuario U_F ON L.id_UsuarioModificacion = U_F.Id
-																 LEFT JOIN tb_clientes PM ON L.balanza_id_proveedorminero = PM.Id
-																 LEFT JOIN tbconfig_encargadosmuestra EM ON L.balanza_id_encargadomuestra = EM.Id
-																 LEFT JOIN tbconfig_producto P ON L.balanza_id_producto = P.Id
-																 LEFT JOIN tbconfig_tipomineral TM ON L.balanza_id_tipomineral = TM.Id
-																 LEFT JOIN analisislq_humedad_cabecera HC ON L.ccod_Lote = HC.cod_interno
-																	 AND HC.is_reanalisis = 0
-																 LEFT JOIN despachos_primertramo_validaciondatos VD ON L.ccod_Lote = VD.lote_cod_lote
-																 LEFT JOIN tbconfig_plantas PL ON L.balanza_id_planta = PL.Id
-													 WHERE I.id_tipoingresounidad = 1";
+			$q_balanza = "
+            SELECT DISTINCT
+                I.id_controlIngresoVehiculo,
+                MD5(L.id_CatalogoLotes) AS ID_MD5,
+                CONCAT(
+                    I.dFechaIngreso,
+                    ' ',
+                    I.dhoraingresoPlanta
+                ) AS FECHAHORA_REGISTRO,
+                I.id_tipoingresounidad,
+                IU.descripcion AS CLIENTE_CONDICION,
+                I.placa,
+                I.placa2,
+                I.id_transportista,
+                T.documento AS documento,
+                T.razon_social AS TRANSPORTISTA,
+                I.id_tipovehiculo,
+                TV.descripcion AS TIPO_VEHICULO,
+                I.id_choferes,
+                CD.dni_licencia,
+                CD.nombres AS CONDUCTOR,
+                L.balanza_id_tipocarga,
+                TC.descripcion AS TIPO_CARGA,
+                L.balanza_id_zonaorigen,
+                ZO.descripcion AS ZONA_ORIGEN,
+                I.cNotas,
+                L.id_CatalogoLotes,
+                L.ccod_Lote,
+                MD5(L.ccod_Lote) AS MD5_LOTE,
+                L.dFechaCreacion AS FECHAHORA_CREACIONLOTE,
+                L.nNro_ticketsBalanza,
+                L.item_ticketbalanza,
+                L.nPeso_InicialBalanza,
+                L.tFechaInicialBalanza,
+                L.tHoraInicialBalanza,
+                L.pesoinicial_observacion,
+                U_I.usu_usuario AS USUARIO_INICIO,
+                L.nPeso_FinalBalanza,
+                L.dFechaFinalBalanza,
+                L.tHoraFinalBalanza,
+                L.pesofinal_observacion,
+                L.id_UsuarioModificacion,
+                U_F.usu_usuario AS USUARIO_FIN,
+                L.balanza_id_proveedorminero,
+                CONCAT(
+                    PM.documento,
+                    ' - ',
+                    UPPER(PM.razon_social)
+                ) AS PROVEEDOR_MINERO,
+                L.balanza_id_encargadomuestra,
+                /*UPPER(EM.nombres) AS ENCARGADO_MUESTRA,*/
+                EM.codigo AS ENCARGADO_MUESTRA,
+                UPPER(EM.nombres) AS ENCARGADO_MUESTRA_NOMBRES,
+                L.balanza_id_producto,
+                UPPER(P.descripcion) AS PRODUCTO,
+                L.balanza_id_tipomineral,
+                UPPER(TM.descripcion) AS TIPO_MINERAL,
+                UPPER(L.balanza_observacion) AS LOTE_OBSERVACION,
+                HC.cierre_prom,
+                HC.Id AS ID_CABECERAHUMEDAD,
+                1 AS TIPO_CONDICION,
+                0 AS ID_PLANTA,
+                IFNULL(L.balanza_id_planta, 0) AS balanza_id_planta,
+                IFNULL(
+                    PL.nombre_comercial,
+                    PL.descripcion
+                ) AS PLANTA_INGRESO,
+                VD.balanza_is_descargado,
+                VD.balanza_is_descargado_fechahoraregistro,
+                VD.balanza_is_descargado_usuarioregistro,
+                VD.humedad_registromanual,
+                VD.humedad_registromanual_fechahoraregistro,
+                VD.humedad_registromanual_usuarioregistro,
+                VD.cambios_log AS CAMBIOS_LOG,
+                -- datitos
+                MD5(VD.Id) AS id_tiquecito,
+                PL.Id AS id_empresita,
+                PL.descripcion AS empresita
+            FROM
+                controlingresovehiculo I
+            INNER JOIN tbconfig_tipoingresounidades IU ON
+                I.id_tipoingresounidad = IU.Id
+            LEFT JOIN tb_clientes T ON
+                I.id_transportista = T.Id
+            LEFT JOIN tbconfig_tipovehiculo TV ON
+                I.id_tipovehiculo = TV.Id
+            LEFT JOIN tbconfig_conductores CD ON
+                I.id_choferes = CD.Id
+            LEFT JOIN catalogolotes L ON
+                I.id_controlIngresoVehiculo = L.id_controlIngresoVehiculo
+            LEFT JOIN tbconfig_tipocarga TC ON
+                L.balanza_id_tipocarga = TC.Id
+            LEFT JOIN tbconfig_zonaorigen ZO ON
+                L.balanza_id_zonaorigen = ZO.Id
+            LEFT JOIN tb_usuario U_I ON
+                L.id_UsuarioCreacion = U_I.Id
+            LEFT JOIN tb_usuario U_F ON
+                L.id_UsuarioModificacion = U_F.Id
+            LEFT JOIN tb_clientes PM ON
+                L.balanza_id_proveedorminero = PM.Id
+            LEFT JOIN tbconfig_encargadosmuestra EM ON
+                L.balanza_id_encargadomuestra = EM.Id
+            LEFT JOIN tbconfig_producto P ON
+                L.balanza_id_producto = P.Id
+            LEFT JOIN tbconfig_tipomineral TM ON
+                L.balanza_id_tipomineral = TM.Id
+            LEFT JOIN analisislq_humedad_cabecera HC ON
+                L.ccod_Lote = HC.cod_interno AND HC.is_reanalisis = 0
+            LEFT JOIN despachos_primertramo_validaciondatos VD ON
+                L.ccod_Lote = VD.lote_cod_lote
+            LEFT JOIN tbconfig_plantas PL ON
+                L.balanza_id_planta = PL.Id
+            WHERE
+                I.id_tipoingresounidad = 1
+            ";
 
 			if (strlen($arr_lotes) > 0) {
 				$q_balanza .= "   AND L.ccod_Lote IN (" . $arr_lotes . ")";
@@ -21564,88 +22005,142 @@ switch ($_POST["accion"]) {
 
 		// Query para obtener el tipo: "Despacho de Mineral"
 		if ($filtro_condicioningreso == 99 || $filtro_condicioningreso == 2 || $filtro_condicioningreso == 999) {
-			$q_balanza .= "SELECT I.id_controlIngresoVehiculo,
-																	MD5(L.Id) AS ID_MD5,
-																	CONCAT(I.dFechaIngreso, ' ', I.dhoraingresoPlanta) AS FECHAHORA_REGISTRO,
-																	I.id_tipoingresounidad,
-																	IU.descripcion AS CLIENTE_CONDICION,
-																	I.placa,
-																	I.placa2,
-																	I.id_transportista,
-																	ET.documento AS documento,
-																	ET.razon_social AS TRANSPORTISTA,
-																	I.id_tipovehiculo,
-																	TV.descripcion AS TIPO_VEHICULO,
-																	I.id_choferes,
-																	CD.dni_licencia,
-																	CD.nombres AS CONDUCTOR,
-																	L.id_tipocarga AS balanza_id_tipocarga,
-																	TC.descripcion AS TIPO_CARGA,
-																	I.id_zonaorigen AS balanza_id_zonaorigen,
-																	ZO.descripcion AS ZONA_ORIGEN,
-																	I.cNotas,
-																	L.Id AS id_CatalogoLotes,
-																	CONCAT(L.cod_lote, '|', IFNULL(L.num_parte, '')) AS ccod_Lote,
-																	'' AS MD5_LOTE,
-																	'' AS FECHAHORA_CREACIONLOTE,
-																	L.num_ticketbalanza AS nNro_ticketsBalanza,
-																	'' AS item_ticketbalanza,
-																	L.peso_tara AS nPeso_InicialBalanza,
-																	SUBSTRING(L.peso_tara_fechahoraregistro, 1, 10) AS tFechaInicialBalanza,
-																	SUBSTRING(L.peso_tara_fechahoraregistro, 12, 5) AS tHoraInicialBalanza,
-																	'' AS pesoinicial_observacion,
-																	L.peso_tara_usuarioregistro AS USUARIO_INICIO,
-																	L.peso_bruto AS nPeso_FinalBalanza,
-																	SUBSTRING(L.peso_bruto_fechahoraregistro, 1, 10) AS dFechaFinalBalanza,
-																	SUBSTRING(L.peso_bruto_fechahoraregistro, 12, 5) AS tHoraFinalBalanza,
-																	'' AS pesofinal_observacion,
-																	'' AS id_UsuarioModificacion,
-																	L.peso_bruto_usuarioregistro AS USUARIO_FIN,
-																	LT.balanza_id_proveedorminero,
-																	CONCAT(PM.documento, ' - ', UPPER(PM.razon_social)) AS PROVEEDOR_MINERO,
-																	LT.balanza_id_encargadomuestra,
-																	/*UPPER(EM.nombres) AS ENCARGADO_MUESTRA,*/
-																	EM.codigo AS ENCARGADO_MUESTRA,
-																	UPPER(EM.nombres) AS ENCARGADO_MUESTRA_NOMBRES,
-																	LT.balanza_id_producto,
-																	UPPER(PR.descripcion) AS PRODUCTO,
-																	LT.balanza_id_tipomineral,
-																	UPPER(TM.descripcion) AS TIPO_MINERAL,
-																	L.observacion AS LOTE_OBSERVACION,
-																	HC.cierre_prom,
-																	HC.Id AS ID_CABECERAHUMEDAD,
-																	2 AS TIPO_CONDICION,
-																	P.id_planta AS ID_PLANTA,
-																	0 AS balanza_id_planta,
-																	'' AS PLANTA_INGRESO,
-																	'' AS balanza_is_descargado,
-																	'' AS balanza_is_descargado_fechahoraregistro,
-																	'' AS balanza_is_descargado_usuarioregistro,
-																	'' AS humedad_registromanual,
-																  '' AS humedad_registromanual_fechahoraregistro,
-																  '' AS humedad_registromanual_usuarioregistro,
-																  L.cambios_log AS CAMBIOS_LOG
-														 FROM controlingresovehiculo I
-																	INNER JOIN tbconfig_tipoingresounidades IU ON I.id_tipoingresounidad = IU.Id
-																	INNER JOIN despachos_segundotramo_distribucion_unidades U ON DATE(I.dFechaIngreso) >= DATE(U.fecha_ingresoplanta)
-																	INNER JOIN despachos_segundotramo_programacion P ON U.id_programacion = P.Id
-																		AND DATE(I.dFechaIngreso) <= DATE(P.fechaestimada_despacho)
-																	INNER JOIN transporte T ON U.id_unidad = T.id_transporte
-																		AND I.placa = T.cplaca
-																	INNER JOIN tbconfig_tipovehiculo TV ON T.id_tipovehiculo = TV.Id
-																	INNER JOIN despachos_segundotramo_distribucion_lotes L ON U.Id = L.id_distribucionunidad
-																	INNER JOIN tbconfig_tipocarga TC ON L.id_tipocarga = TC.Id
-																	LEFT JOIN tbconfig_zonaorigen ZO ON I.id_zonaorigen = ZO.Id
-																	LEFT JOIN tb_clientes ET ON T.id_Transportista = ET.Id
-																	LEFT JOIN tbconfig_conductores CD ON I.id_choferes = CD.Id
-																	LEFT JOIN catalogolotes LT ON L.cod_lote = LT.ccod_Lote
-																	LEFT JOIN tb_clientes PM ON LT.balanza_id_proveedorminero = PM.Id
-																	LEFT JOIN tbconfig_encargadosmuestra EM ON LT.balanza_id_encargadomuestra = EM.Id
-																	LEFT JOIN tbconfig_producto PR ON LT.balanza_id_producto = PR.Id
-																	LEFT JOIN tbconfig_tipomineral TM ON LT.balanza_id_tipomineral = TM.Id
-																	LEFT JOIN analisislq_humedad_cabecera HC ON LT.ccod_Lote = HC.cod_interno
-																		AND HC.is_reanalisis = 0
-														WHERE IU.Id = 2";
+			$q_balanza .= "
+            SELECT
+                I.id_controlIngresoVehiculo,
+                MD5(L.Id) AS ID_MD5,
+                CONCAT(
+                    I.dFechaIngreso,
+                    ' ',
+                    I.dhoraingresoPlanta
+                ) AS FECHAHORA_REGISTRO,
+                I.id_tipoingresounidad,
+                IU.descripcion AS CLIENTE_CONDICION,
+                I.placa,
+                I.placa2,
+                I.id_transportista,
+                ET.documento AS documento,
+                ET.razon_social AS TRANSPORTISTA,
+                I.id_tipovehiculo,
+                TV.descripcion AS TIPO_VEHICULO,
+                I.id_choferes,
+                CD.dni_licencia,
+                CD.nombres AS CONDUCTOR,
+                L.id_tipocarga AS balanza_id_tipocarga,
+                TC.descripcion AS TIPO_CARGA,
+                I.id_zonaorigen AS balanza_id_zonaorigen,
+                ZO.descripcion AS ZONA_ORIGEN,
+                I.cNotas,
+                L.Id AS id_CatalogoLotes,
+                CONCAT(
+                    L.cod_lote,
+                    '|',
+                    IFNULL(L.num_parte, '')
+                ) AS ccod_Lote,
+                '' AS MD5_LOTE,
+                '' AS FECHAHORA_CREACIONLOTE,
+                L.num_ticketbalanza AS nNro_ticketsBalanza,
+                '' AS item_ticketbalanza,
+                L.peso_tara AS nPeso_InicialBalanza,
+                SUBSTRING(
+                    L.peso_tara_fechahoraregistro,
+                    1,
+                    10
+                ) AS tFechaInicialBalanza,
+                SUBSTRING(
+                    L.peso_tara_fechahoraregistro,
+                    12,
+                    5
+                ) AS tHoraInicialBalanza,
+                '' AS pesoinicial_observacion,
+                L.peso_tara_usuarioregistro AS USUARIO_INICIO,
+                L.peso_bruto AS nPeso_FinalBalanza,
+                SUBSTRING(
+                    L.peso_bruto_fechahoraregistro,
+                    1,
+                    10
+                ) AS dFechaFinalBalanza,
+                SUBSTRING(
+                    L.peso_bruto_fechahoraregistro,
+                    12,
+                    5
+                ) AS tHoraFinalBalanza,
+                '' AS pesofinal_observacion,
+                '' AS id_UsuarioModificacion,
+                L.peso_bruto_usuarioregistro AS USUARIO_FIN,
+                LT.balanza_id_proveedorminero,
+                CONCAT(
+                    PM.documento,
+                    ' - ',
+                    UPPER(PM.razon_social)
+                ) AS PROVEEDOR_MINERO,
+                LT.balanza_id_encargadomuestra,
+                /*UPPER(EM.nombres) AS ENCARGADO_MUESTRA,*/
+                EM.codigo AS ENCARGADO_MUESTRA,
+                UPPER(EM.nombres) AS ENCARGADO_MUESTRA_NOMBRES,
+                LT.balanza_id_producto,
+                UPPER(PR.descripcion) AS PRODUCTO,
+                LT.balanza_id_tipomineral,
+                UPPER(TM.descripcion) AS TIPO_MINERAL,
+                L.observacion AS LOTE_OBSERVACION,
+                HC.cierre_prom,
+                HC.Id AS ID_CABECERAHUMEDAD,
+                2 AS TIPO_CONDICION,
+                P.id_planta AS ID_PLANTA,
+                0 AS balanza_id_planta,
+                '' AS PLANTA_INGRESO,
+                '' AS balanza_is_descargado,
+                '' AS balanza_is_descargado_fechahoraregistro,
+                '' AS balanza_is_descargado_usuarioregistro,
+                '' AS humedad_registromanual,
+                '' AS humedad_registromanual_fechahoraregistro,
+                '' AS humedad_registromanual_usuarioregistro,
+                L.cambios_log AS CAMBIOS_LOG,
+                -- datitos
+                MD5(L.Id) AS id_tiquecito,
+                pln.Id AS id_empresita,
+                pln.descripcion AS empresita
+            FROM
+                controlingresovehiculo I
+            INNER JOIN tbconfig_tipoingresounidades IU ON
+                I.id_tipoingresounidad = IU.Id
+            INNER JOIN despachos_segundotramo_distribucion_unidades U ON
+                DATE(I.dFechaIngreso) >= DATE(U.fecha_ingresoplanta)
+            INNER JOIN despachos_segundotramo_programacion P ON
+                U.id_programacion = P.Id AND DATE(I.dFechaIngreso) <= DATE(P.fechaestimada_despacho)
+            INNER JOIN transporte T ON
+                U.id_unidad = T.id_transporte AND I.placa = T.cplaca
+            INNER JOIN tbconfig_tipovehiculo TV ON
+                T.id_tipovehiculo = TV.Id
+            INNER JOIN despachos_segundotramo_distribucion_lotes L ON
+                U.Id = L.id_distribucionunidad
+            INNER JOIN catalogolotes lot on 
+                lot.ccod_Lote = L.cod_lote
+            INNER JOIN tbconfig_plantas pln on 
+                pln.Id = lot.balanza_id_planta
+            INNER JOIN tbconfig_tipocarga TC ON
+                L.id_tipocarga = TC.Id
+            LEFT JOIN tbconfig_zonaorigen ZO ON
+                I.id_zonaorigen = ZO.Id
+            LEFT JOIN tb_clientes ET ON
+                T.id_Transportista = ET.Id
+            LEFT JOIN tbconfig_conductores CD ON
+                I.id_choferes = CD.Id
+            LEFT JOIN catalogolotes LT ON
+                L.cod_lote = LT.ccod_Lote
+            LEFT JOIN tb_clientes PM ON
+                LT.balanza_id_proveedorminero = PM.Id
+            LEFT JOIN tbconfig_encargadosmuestra EM ON
+                LT.balanza_id_encargadomuestra = EM.Id
+            LEFT JOIN tbconfig_producto PR ON
+                LT.balanza_id_producto = PR.Id
+            LEFT JOIN tbconfig_tipomineral TM ON
+                LT.balanza_id_tipomineral = TM.Id
+            LEFT JOIN analisislq_humedad_cabecera HC ON
+                LT.ccod_Lote = HC.cod_interno AND HC.is_reanalisis = 0
+            WHERE
+                IU.Id = 2
+            ";
 
 			if ($filtro_condicioningreso == 999) {
 				$q_balanza .= "   AND P.id_planta = 16";
@@ -21677,82 +22172,108 @@ switch ($_POST["accion"]) {
 
 		// Query para obtener el tipo: "Otros"
 		if ($filtro_condicioningreso == 99 || $filtro_condicioningreso == 3) {
-			$q_balanza .= "SELECT I.id_controlIngresoVehiculo,
-																 MD5(L.id_CatalogoLotes) AS ID_MD5,
-																 CONCAT(I.dFechaIngreso, ' ', I.dhoraingresoPlanta) AS FECHAHORA_REGISTRO,
-																 I.id_tipoingresounidad,
-																 IU.descripcion AS CLIENTE_CONDICION,
-																 I.placa,
-																 I.placa2,
-																 I.id_transportista,
-																 T.documento,
-																 T.razon_social AS TRANSPORTISTA,
-																 I.id_tipovehiculo,
-																 TV.descripcion AS TIPO_VEHICULO,
-																 I.id_choferes,
-																 CD.dni_licencia,
-																 CD.nombres AS CONDUCTOR,
-																 I.id_tipocarga,
-																 TC.descripcion AS TIPO_CARGA,
-																 I.id_zonaorigen,
-																 ZO.descripcion AS ZONA_ORIGEN,
-																 I.cNotas AS OBSERVACION,
-																 L.id_CatalogoLotes, 
-																 L.ccod_Lote,
-																 '' AS MD5_LOTE,
-																 '' AS dFechaCreacion,
-																 L.nNro_ticketsBalanza,
-																 L.item_ticketbalanza,
-																 L.nPeso_InicialBalanza,
-																 L.tFechaInicialBalanza,
-																 L.tHoraInicialBalanza,
-																 L.pesoinicial_observacion,
-																 U_I.usu_usuario AS USUARIO_INICIO,
-																 L.nPeso_FinalBalanza,
-																 L.dFechaFinalBalanza,
-																 L.tHoraFinalBalanza,
-																 L.pesofinal_observacion,
-																 L.id_UsuarioModificacion,
-																 U_F.usu_usuario AS USUARIO_FIN,
-																 L.balanza_id_proveedorminero,
-																 UPPER(PM.razon_social) AS PROVEEDOR_MINERO,
-																 I.id_encargadomuestra,
-																 /*UPPER(EM.nombres) AS ENCARGADO_MUESTRA,*/
-																 EM.codigo AS ENCARGADO_MUESTRA,
-																 UPPER(EM.nombres) AS ENCARGADO_MUESTRA_NOMBRES,
-																 I.id_producto,
-																 UPPER(P.descripcion) AS PRODUCTO,
-																 I.id_tipomineral,
-																 UPPER(TM.descripcion) AS TIPO_MINERAL,
-																 UPPER(L.balanza_observacion) AS LOTE_OBSERVACION,
-																 NULL AS cierre_prom,
-																 0 AS ID_CABECERAHUMEDAD,
-																 3 AS TIPO_CONDICION,
-																 0 AS ID_PLANTA,
-																 0 AS balanza_id_planta,
-																 '' AS PLANTA_INGRESO,
-																 '' AS balanza_is_descargado,
-																 '' AS balanza_is_descargado_fechahoraregistro,
-																 '' AS balanza_is_descargado_usuarioregistro,
-																 '' AS humedad_registromanual,
-																 '' AS humedad_registromanual_fechahoraregistro,
-																 '' AS humedad_registromanual_usuarioregistro,
-																 '' AS CAMBIOS_LOG
-														FROM controlingresovehiculo I
-																 INNER JOIN tbconfig_tipoingresounidades IU ON I.id_tipoingresounidad = IU.Id
-																 LEFT JOIN tb_clientes T ON I.id_transportista = T.Id
-																 INNER JOIN tbconfig_tipovehiculo TV ON I.id_tipovehiculo = TV.Id
-																 INNER JOIN tbconfig_conductores CD ON I.id_choferes = CD.Id
-																 LEFT JOIN catalogolotes L ON I.id_controlIngresoVehiculo = L.id_controlIngresoVehiculo
-																 LEFT JOIN tbconfig_tipocarga TC ON I.id_tipocarga = TC.Id
-																 LEFT JOIN tbconfig_zonaorigen ZO ON I.id_zonaorigen = ZO.Id
-																 LEFT JOIN tb_usuario U_I ON L.id_UsuarioCreacion = U_I.Id
-																 LEFT JOIN tb_usuario U_F ON L.id_UsuarioModificacion = U_F.Id
-																 LEFT JOIN tb_clientes PM ON I.id_proveedorminero = PM.Id
-																 LEFT JOIN tbconfig_encargadosmuestra EM ON I.id_encargadomuestra = EM.Id
-																 LEFT JOIN tbconfig_producto P ON I.id_producto = P.Id
-																 LEFT JOIN tbconfig_tipomineral TM ON I.id_tipomineral = TM.Id
-													 WHERE I.id_tipoingresounidad = 3";
+			$q_balanza .= "
+        SELECT
+            I.id_controlIngresoVehiculo,
+            MD5(L.id_CatalogoLotes) AS ID_MD5,
+            CONCAT(
+                I.dFechaIngreso,
+                ' ',
+                I.dhoraingresoPlanta
+            ) AS FECHAHORA_REGISTRO,
+            I.id_tipoingresounidad,
+            IU.descripcion AS CLIENTE_CONDICION,
+            I.placa,
+            I.placa2,
+            I.id_transportista,
+            T.documento,
+            T.razon_social AS TRANSPORTISTA,
+            I.id_tipovehiculo,
+            TV.descripcion AS TIPO_VEHICULO,
+            I.id_choferes,
+            CD.dni_licencia,
+            CD.nombres AS CONDUCTOR,
+            I.id_tipocarga,
+            TC.descripcion AS TIPO_CARGA,
+            I.id_zonaorigen,
+            ZO.descripcion AS ZONA_ORIGEN,
+            I.cNotas AS OBSERVACION,
+            L.id_CatalogoLotes,
+            L.ccod_Lote,
+            '' AS MD5_LOTE,
+            '' AS dFechaCreacion,
+            L.nNro_ticketsBalanza,
+            L.item_ticketbalanza,
+            L.nPeso_InicialBalanza,
+            L.tFechaInicialBalanza,
+            L.tHoraInicialBalanza,
+            L.pesoinicial_observacion,
+            U_I.usu_usuario AS USUARIO_INICIO,
+            L.nPeso_FinalBalanza,
+            L.dFechaFinalBalanza,
+            L.tHoraFinalBalanza,
+            L.pesofinal_observacion,
+            L.id_UsuarioModificacion,
+            U_F.usu_usuario AS USUARIO_FIN,
+            L.balanza_id_proveedorminero,
+            UPPER(PM.razon_social) AS PROVEEDOR_MINERO,
+            I.id_encargadomuestra,
+            /*UPPER(EM.nombres) AS ENCARGADO_MUESTRA,*/
+            EM.codigo AS ENCARGADO_MUESTRA,
+            UPPER(EM.nombres) AS ENCARGADO_MUESTRA_NOMBRES,
+            I.id_producto,
+            UPPER(P.descripcion) AS PRODUCTO,
+            I.id_tipomineral,
+            UPPER(TM.descripcion) AS TIPO_MINERAL,
+            UPPER(L.balanza_observacion) AS LOTE_OBSERVACION,
+            NULL AS cierre_prom,
+            0 AS ID_CABECERAHUMEDAD,
+            3 AS TIPO_CONDICION,
+            0 AS ID_PLANTA,
+            0 AS balanza_id_planta,
+            '' AS PLANTA_INGRESO,
+            '' AS balanza_is_descargado,
+            '' AS balanza_is_descargado_fechahoraregistro,
+            '' AS balanza_is_descargado_usuarioregistro,
+            '' AS humedad_registromanual,
+            '' AS humedad_registromanual_fechahoraregistro,
+            '' AS humedad_registromanual_usuarioregistro,
+            '' AS CAMBIOS_LOG,
+            -- datitos
+            '' AS id_tiquecito,
+            '' AS id_empresita,
+            '' AS empresita
+        FROM
+            controlingresovehiculo I
+        INNER JOIN tbconfig_tipoingresounidades IU ON
+            I.id_tipoingresounidad = IU.Id
+        LEFT JOIN tb_clientes T ON
+            I.id_transportista = T.Id
+        INNER JOIN tbconfig_tipovehiculo TV ON
+            I.id_tipovehiculo = TV.Id
+        INNER JOIN tbconfig_conductores CD ON
+            I.id_choferes = CD.Id
+        LEFT JOIN catalogolotes L ON
+            I.id_controlIngresoVehiculo = L.id_controlIngresoVehiculo
+        LEFT JOIN tbconfig_tipocarga TC ON
+            I.id_tipocarga = TC.Id
+        LEFT JOIN tbconfig_zonaorigen ZO ON
+            I.id_zonaorigen = ZO.Id
+        LEFT JOIN tb_usuario U_I ON
+            L.id_UsuarioCreacion = U_I.Id
+        LEFT JOIN tb_usuario U_F ON
+            L.id_UsuarioModificacion = U_F.Id
+        LEFT JOIN tb_clientes PM ON
+            I.id_proveedorminero = PM.Id
+        LEFT JOIN tbconfig_encargadosmuestra EM ON
+            I.id_encargadomuestra = EM.Id
+        LEFT JOIN tbconfig_producto P ON
+            I.id_producto = P.Id
+        LEFT JOIN tbconfig_tipomineral TM ON
+            I.id_tipomineral = TM.Id
+        WHERE
+            I.id_tipoingresounidad = 3
+            ";
 
 			if (strlen($arr_lotes) > 0) {
 				$q_balanza .= "   AND L.ccod_Lote IN (" . $arr_lotes . ")";
@@ -21775,12 +22296,30 @@ switch ($_POST["accion"]) {
 
 		$q_balanza .= " ORDER BY 22";
 
+		// Acumula la lista única de Empresitas (Despacho de Mineral)
+		$arr_empresitas_unique = array();
+
 		if ($res_balanza = mysqli_query($enlace, $q_balanza)) {
 			if (mysqli_num_rows($res_balanza) > 0) {
 				$estado = 1;
 
 				while ($row_balanza = mysqli_fetch_array($res_balanza)) {
-					$html .= '<tr style="font-size: 14px;">';
+					// Prepara atributos de Empresita (campo escalar id_empresita/empresita por registro)
+					$row_empresita_attrs = '';
+					$id_empresita_row = (isset($row_balanza["id_empresita"]) ? intval($row_balanza["id_empresita"]) : 0);
+					$empresita_row = (isset($row_balanza["empresita"]) ? $row_balanza["empresita"] : '');
+
+					if ($id_empresita_row > 0 && strlen($empresita_row) > 0) {
+						$row_empresita_attrs = ' data-empresita-id="' . $id_empresita_row . '"';
+						$row_empresita_attrs .= ' data-empresita-nombre="' . htmlspecialchars($empresita_row, ENT_QUOTES, 'UTF-8') . '"';
+
+						// Acumula para la lista única de Empresitas
+						if (!isset($arr_empresitas_unique[$id_empresita_row])) {
+							$arr_empresitas_unique[$id_empresita_row] = $empresita_row;
+						}
+					}
+
+					$html .= '<tr style="font-size: 14px;"' . $row_empresita_attrs . '>';
 
 					// Inicia con la carga de datos
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
@@ -21796,7 +22335,7 @@ switch ($_POST["accion"]) {
 					$html .= '  	<div class="d-flex justify-content-center">';
 
 					if (strlen($row_balanza["tFechaInicialBalanza"]) > 0) {
-						$html .= '			<img src="' . $img_print . '" style="width: 25px; cursor: pointer;" onclick="f_PrintTicketBakanza(' . $row_balanza["id_tipoingresounidad"] . ", '" . $row_balanza["ID_MD5"] . "'" . ');">';
+						$html .= '			<img src="' . $img_print . '" style="width: 25px; cursor: pointer;" onclick="f_PrintTicketBakanza(' . $row_balanza["id_tipoingresounidad"] . ", '" . $row_balanza["id_tiquecito"] . "'" . ');">';
 					}
 
 					if ($row_balanza["id_tipoingresounidad"] == 1) {
@@ -22201,7 +22740,20 @@ switch ($_POST["accion"]) {
 			}
 		}
 
-		echo json_encode(array('estado' => $estado, 'html' => $html));
+		// Convierte la lista única de Empresitas (de array asociativo por id a lista de objetos)
+		$arr_empresitas_list = array();
+		foreach ($arr_empresitas_unique as $emp_id => $emp_nombre) {
+			$arr_empresitas_list[] = array('id_empresita' => intval($emp_id), 'empresita' => $emp_nombre);
+		}
+
+		// Ordena alfabéticamente por nombre de empresita para presentación estable
+		$arr_nombres_emp = array();
+		foreach ($arr_empresitas_list as $emp_item) {
+			$arr_nombres_emp[] = (isset($emp_item['empresita']) ? $emp_item['empresita'] : '');
+		}
+		array_multisort($arr_nombres_emp, SORT_ASC, SORT_STRING, $arr_empresitas_list);
+
+		echo json_encode(array('estado' => $estado, 'html' => $html, 'arr_empresitas' => $arr_empresitas_list));
 
 		break;
 
@@ -26768,6 +27320,11 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$tipo_condicion = $_POST["tipo_condicion"];
 		$usuario_registro = $_SESSION["usu_usuario"];
 
+		// Guarda el valor original (sin transformaciones SQL) y el id_registro
+		// para usarlos en la re-sincronización del Ticket Contable al final.
+		$valor_original = $valor;
+		$id_registro_original = $id_registro;
+
 		// Seteando campos
 		$is_tablalotes = 0;
 		$is_tabladistribucionlotes = 0;
@@ -26943,6 +27500,9 @@ case 'confirmar_ProgramacionLote_AddLote':
 						}
 					}
 
+					// Re-sincroniza el Ticket Contable (Primer Tramo)
+					f_ResyncTicketContable_ResumenBalanza($enlace, $id_registro_original, $item, $valor_original, $tipo_condicion, $is_tablalotes, $is_tabladistribucionlotes, $g_fecha, $usuario_registro);
+
 					echo json_encode(array('estado' => $estado, 'peso' => $peso, 'peso_neto' => $peso_neto));
 
 					break;
@@ -26973,11 +27533,17 @@ case 'confirmar_ProgramacionLote_AddLote':
 						}
 					}
 
+					// Re-sincroniza el Ticket Contable (Segundo Tramo)
+					f_ResyncTicketContable_ResumenBalanza($enlace, $id_registro_original, $item, $valor_original, $tipo_condicion, $is_tablalotes, $is_tabladistribucionlotes, $g_fecha, $usuario_registro);
+
 					echo json_encode(array('estado' => $estado, 'peso' => $peso, 'peso_neto' => $peso_neto));
 
 					break;
 				}
 			}
+
+			// Re-sincroniza el Ticket Contable para el resto de items (que no son 13/14/16/17)
+			f_ResyncTicketContable_ResumenBalanza($enlace, $id_registro_original, $item, $valor_original, $tipo_condicion, $is_tablalotes, $is_tabladistribucionlotes, $g_fecha, $usuario_registro);
 		}
 
 		echo json_encode(array('estado' => $estado));
