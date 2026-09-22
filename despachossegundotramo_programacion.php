@@ -614,6 +614,31 @@ if (!isset($_SESSION["Id"])) {
 						</div>
 					</div>
 
+					<!-- Aplicar Campana (solo Solandra) -->
+					<div class="row" id="div_campana_solandra" style="display: none;">
+						<div class="col-md-12 col-sm-12 col-xs-12">
+							<div class="d-flex" style="padding: 3px; margin-top: -5px;">
+								<div class="form-check" style="margin-top: 7px;">
+									<input id="chk_aplica_campana" class="form-check-input" type="checkbox" style="transform: scale(1.2); margin-right: 5px;" onchange="f_ToggleCampanaSolandra();">
+									<label class="form-check-label" for="chk_aplica_campana" style="font-size: 14px;">
+										Aplicar Campaña
+									</label>
+								</div>
+
+								<div id="div_campana_select" class="d-flex" style="margin-left: 15px; display: none; flex: 1;">
+									<div class="flex-fill" style="max-width: 60%;">
+										<select id="select_campana_activa" class="form-select" data-placeholder="Elija una campaña activa..." style="font-size: 14px;">
+
+										</select>
+									</div>
+									<label id="lbl_sin_campanas" style="font-size: 12px; font-style: italic; color: #999; margin-top: 8px; margin-left: 10px; display: none;">
+										No hay campañas activas registradas.
+									</label>
+								</div>
+							</div>
+						</div>
+					</div>
+
 					<div class="d-flex justify-content-center" style="padding: 5px; margin-top: 5px;">
 						<button class="btn btn-secondary" type="button" onclick="f_LoadFiltroLotes();" style="width: 100%; color: #ffffff; font-size: 14px; background-color: #cfaa41; margin-bottom: 10px;">
 							<i class="bi bi-search"></i> <b>Ejecutar Búsqueda</b>
@@ -2376,6 +2401,21 @@ if (!isset($_SESSION["Id"])) {
 
 			$("#th_Chk").prop('checked', false);
 
+			// Resetea controles de Campana (solo aplica a Solandra y solo para nuevas programaciones)
+			$("#chk_aplica_campana").prop('checked', false);
+			$("#div_campana_select").hide();
+			$("#select_campana_activa").html('');
+			$("#lbl_sin_campanas").hide();
+
+			// Muestra el bloque de campana solo si la planta es Solandra (id 5) y se CREA una nueva programacion.
+			// Para "Agregar Lote" se mantiene la campana de la programacion existente.
+			if (idplanta_Selected == 5 && _modo == 'N') {
+				$("#div_campana_solandra").show();
+				f_LoadCampanasActivasSolandra();
+			} else {
+				$("#div_campana_solandra").hide();
+			}
+
 			// Cargando datos
 			f_LoadFiltroModalidadEnvio();
 			f_LoadFiltroLotes();
@@ -2383,6 +2423,40 @@ if (!isset($_SESSION["Id"])) {
 			// Abre modal
 			f_OpenModal('modal_adminprogramaciones');
 		};
+
+		function f_LoadCampanasActivasSolandra() {
+			$("#select_campana_activa").html('');
+			$("#lbl_sin_campanas").hide();
+
+			$.post("apis/backend.php", {
+					accion: "get_ListadoCampanasActivasPlanta",
+					id_planta: idplanta_Selected
+				},
+				function(data) {
+					if (data.estado == 1 && data.res && data.res.length > 0) {
+						var _html = '<option value="">Elija una campaña activa...</option>';
+
+						$.each(data.res, function(key, val) {
+							_html += '<option value="' + val.Id + '">' + val.codigo_campana + ' (inicio: ' + val.fecha_inicio + ')</option>';
+						});
+
+						$("#select_campana_activa").html(_html);
+					} else {
+						$("#lbl_sin_campanas").show();
+					}
+				}, "json");
+		}
+
+		function f_ToggleCampanaSolandra() {
+			var isChecked = $("#chk_aplica_campana").prop('checked');
+
+			if (isChecked) {
+				$("#div_campana_select").show();
+			} else {
+				$("#div_campana_select").hide();
+				$("#select_campana_activa").val('');
+			}
+		}
 
 		function f_LoadFiltroModalidadEnvio() {
 			$("#filtro_modalidadenvio").html('');
@@ -3525,6 +3599,23 @@ if (!isset($_SESSION["Id"])) {
 					}
 				}
 
+			// Validacion: si Solandra y aplica campana, debe seleccionar una
+				var is_aplica_campana = 0;
+				var id_campana_sel = 0;
+
+				if (idplanta_Selected == 5) {
+					is_aplica_campana = ($("#chk_aplica_campana").prop('checked')) ? 1 : 0;
+
+					if (is_aplica_campana == 1) {
+						id_campana_sel = parseInt($("#select_campana_activa").val() || 0, 10);
+
+						if (isNaN(id_campana_sel) || id_campana_sel <= 0) {
+							alert("Debe seleccionar una campana activa para Solandra o desmarcar la opcion 'Aplicar Campana'.");
+							return;
+						}
+					}
+				}
+
 			// Grabando Datos
 				f_LoadingGrabarProgramacion(1);
 
@@ -3532,7 +3623,9 @@ if (!isset($_SESSION["Id"])) {
 					$.post("apis/backend.php", {
 							accion: "confirmar_ProgramacionLote",
 							id_planta: idplanta_Selected,
-							arr_lotes: arr_lotes
+							arr_lotes: arr_lotes,
+							is_aplica_campana: is_aplica_campana,
+							id_campana: id_campana_sel
 						},
 						function(data) {
 							if (data.estado == 1) {
@@ -3555,7 +3648,9 @@ if (!isset($_SESSION["Id"])) {
 							id_planta: idplanta_Selected,
 							id_programacion: id_programacion,
 							arr_lotes: arr_lotes,
-							is_loteaum: 0
+							is_loteaum: 0,
+							is_aplica_campana: is_aplica_campana,
+							id_campana: id_campana_sel
 						},
 						function(data) {
 							if (data.estado == 1) {
