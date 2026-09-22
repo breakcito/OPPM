@@ -1695,11 +1695,23 @@
           }, "json");
     	};
 
-    	function f_AdminRecepcion(){
+    	function f_AdminRecepcion(_id_registro){
+				// Determinar modo: Nuevo (N) o Actualizar (U)
+				var _modo = (_id_registro != null && _id_registro != undefined && _id_registro != 'x' && _id_registro > 0) ? 'U' : 'N';
+				var _id = (_modo == 'U') ? _id_registro : 0;
+
         f_OpenModal('modal_addrecepcion');
 
-        $("#hd_idregistro").val(0);
-				$("#hd_modograbar").val('N');
+        // Actualizar título del modal según el modo
+        if (_modo == 'U'){
+        	$("#modal_addrecepcionLabel").html('Actualizar Imágenes de Recepción');
+        }
+        else{
+        	$("#modal_addrecepcionLabel").html('Nueva Recepción de Unidad');
+        }
+
+        $("#hd_idregistro").val(_id);
+				$("#hd_modograbar").val(_modo);
 
 				$("#registro_condicion").val('');
         $("#registro_condicion").trigger('change');
@@ -1738,8 +1750,168 @@
   			$("#btn_Next_1").show();
   			$("#btn_Next_2").hide();
       	$("#btn_ConfirmarAcompanantes").hide();
+      	$("#btn_ConfirmarAcompanantes").html('Finalizar y Confirmar');
 
-        f_LoadingGrabarIngreso(0);
+				// Si es modo Actualizar, llamar a la función específica
+				if (_modo == 'U'){
+					f_AdminRecepcion_ActualizarImagenes(_id);
+				}
+				else{
+					f_LoadingGrabarIngreso(0);
+				}
+    	}
+
+    	function f_AdminRecepcion_ActualizarImagenes(_id_registro){
+				// Abrir el modal
+				f_OpenModal('modal_addrecepcion');
+
+				// Actualizar título del modal
+				$("#modal_addrecepcionLabel").html('Actualizar Imágenes de Recepción');
+
+				// Cargar el id_registro
+				$("#hd_idregistro").val(_id_registro);
+				$("#hd_modograbar").val('U');
+
+				// Limpia las tablas
+				$("#tbl_acompanantes").html('');
+				$("#tbl_imagenes").html('');
+
+				// Mostrar directamente el paso de imágenes
+				$("#div_recepcion1").css('display', 'none');
+				$("#div_recepcion2").css('display', 'none');
+				$("#div_recepcion3").css('display', 'block');
+
+				$("#btn_Regresar_2").hide();
+				$("#btn_Regresar_3").hide();
+				$("#btn_Next_1").hide();
+				$("#btn_Next_2").hide();
+				$("#btn_ConfirmarAcompanantes").show();
+
+				// Cambiar el texto del botón confirmar a "Actualizar Imágenes"
+				$("#btn_ConfirmarAcompanantes").html('<i class="bi bi-arrow-up-circle"></i> Actualizar Imágenes');
+
+				f_LoadingGrabarIngreso(1);
+
+				// Cargar las imágenes existentes del registro
+				$.post( "apis/backend.php", { accion: "get_ControlIngreso_ImagenesAct", id_controlingreso: _id_registro },
+					function( data ) {
+						if (data.estado == 1){
+							// Construir las filas con las imágenes existentes
+							f_BuildTablaImagenesAct(data.imagenes);
+						}
+						else{
+							alert("No se encontraron imágenes registradas para esta unidad.");
+						}
+
+						f_LoadingGrabarIngreso(0);
+					}, "json");
+    	}
+
+    	function f_BuildTablaImagenesAct(_imagenes){
+				var _html = '';
+				var _time = new Date();
+				_time = _time.getHours().toString().padStart(2, '0') + ":" + _time.getMinutes().toString().padStart(2, '0');
+				var tmp_Id_base = 'tmp_act-<?php echo $g_date ?>-' + _time;
+
+				var i = 1;
+				$.each( _imagenes, function( key, val ) {
+					var _id_imagen = val.Id;
+					var _cod_auto = val.cod_auto;
+					var _descripcion = val.descripcion;
+					var _imagen_data = '';
+					var _imagen_url = val.imagen_url;
+
+					// Construye el src de la imagen (priorizando URL, sino base64)
+					if (_imagen_url && _imagen_url.length > 0){
+						_imagen_data = 'files/recepcion/' + _imagen_url;
+					}
+					else if (val.imagen && val.imagen.length > 0){
+						_imagen_data = val.imagen;
+					}
+
+					_html += '<tr data-id-imagen="' + _id_imagen + '" data-row-index="' + i + '">';
+					_html += '	<td class="del_tr2" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; width: 30px;">';
+					_html += '		<label style="border: solid; border-width: 1px; border-color: #D9D9D9; border-radius: 7px; padding-left: 6px; padding-right: 6px; padding-bottom: 1px; background-color: #FF5F5D; color: #ffffff; font-weight: bold; cursor: pointer;" onclick="f_EliminarImagenActual(' + _id_imagen + ', this);">X</label>';
+					_html += '	</td>';
+
+					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; width: 30px;">';
+					_html += '		' + i;
+					_html += '		<input id="tmp_imagenes_id_' + i + '" type="hidden" value="' + tmp_Id_base + '_' + i + '">';
+					_html += '		<input id="tmp_imagenes_idimagen_' + i + '" type="hidden" value="' + _id_imagen + '">';
+					_html += '		<input id="tmp_imagenes_codauto_' + i + '" type="hidden" value="' + _cod_auto + '">';
+					_html += '		<input id="tmp_imagenes_cambiada_' + i + '" type="hidden" value="0">';
+					_html += '		<input id="tmp_imagenes_data_' + i + '" type="hidden" value="' + _imagen_data.replace(/"/g, '&quot;') + '">';
+					_html += '	</td>';
+
+					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; width: 200px; font-weight: bold;">';
+					_html += '		' + _descripcion.toUpperCase();
+					_html += '		<input id="tmp_imagenes_descripcion_' + i + '" type="hidden" value="' + _descripcion + '">';
+					_html += '	</td>';
+
+					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px;">';
+					_html += '		<img class="imagen" src="' + _imagen_data + '" alt="" style="width: 80px; cursor: pointer;" id="img_imagenes_' + i + '" onclick="f_ShowImagenes(this.src, 1, ' + "'" + _descripcion + "'" + ');">';
+					_html += '	</td>';
+
+					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px;">';
+					_html += '		<img src="<?php echo $img_camara ?>" style="width: 30px; cursor: pointer;" onclick="f_AddImagenes(' + i + ');" title="Reemplazar imagen">';
+					_html += '		<a href="' + _imagen_data + '" download="' + _descripcion + '_' + (_imagen_url || 'imagen.jpg') + '" style="margin-left: 5px; cursor: pointer;" title="Descargar imagen original">';
+					_html += '			<img src="images/download.png" style="width: 30px;">';
+					_html += '		</a>';
+					_html += '	</td>';
+
+					_html += '</tr>';
+
+					i ++;
+				});
+
+				// Agregando fila para imágenes adicionales
+				_html += '<tr id="tr_add_new_image">';
+				_html += '	<td colspan="5" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
+				_html += '		<button class="btn btn-primary" type="button" style="color: #ffffff; font-size: 14px;" onclick="f_AddImagenAdicional_Actualizar();">';
+				_html += '			<b>+ Agregar Imagen</b>';
+				_html += '		</button>';
+				_html += '	</td>';
+				_html += '</tr>';
+
+				$('#tbl_imagenes').html(_html);
+    	}
+
+    	function f_AddImagenAdicional_Actualizar(){
+		    // Cargando datos
+	        f_OpenModal('modal_addimagenadicional');
+
+		    	$("#imagenadicional_descripcion").val('');
+    	}
+
+    	function f_EliminarImagenActual(_id_imagen, _elemento){
+				if (!confirm("¿Está seguro de eliminar esta imagen?")){
+					return;
+				}
+
+				$.post( "apis/backend.php", { accion: "eliminar_recepcionunidades_imagen", id_imagen: _id_imagen },
+					function( data ) {
+						if (data.estado == 1){
+							$(_elemento).closest('tr').remove();
+
+							// Reordenar los índices
+							f_ReordenarTablaImagenes();
+						}
+						else{
+							alert("Ocurrió un error al eliminar la imagen.");
+						}
+					}, "json");
+    	}
+
+    	function f_ReordenarTablaImagenes(){
+				var x = 1;
+				$("#tbl_imagenes tr").each(function () {
+					var _hasBtn = $(this).find('button').length > 0;
+					if (!_hasBtn && $(this).attr('id') != 'tr_add_new_image'){
+						$(this).find("td").eq(1).html(x);
+						$(this).find("input[id^='tmp_imagenes_id_']").val('tmp_reord-' + x);
+						x++;
+					}
+				});
     	}
 
     	function f_AddTransportista(){
@@ -2439,20 +2611,38 @@
 
 	        var tmp_Id = 'tmp-<?php echo $g_date ?>-' + _time;
 
+					// Determinar si estamos en modo Actualizar (U) o Nuevo (N)
+					var _modo = $("#hd_modograbar").val();
+					var _id_imagen_existente = 0;
+					var _onclick_eliminar = '';
+
+					if (_modo == 'U'){
+						// En modo Actualizar: las imágenes nuevas tienen id_imagen=0 y sin onclick de eliminar de BD
+						_id_imagen_existente = 0;
+						_onclick_eliminar = '';
+					}
+					else{
+						_onclick_eliminar = '';
+					}
+
   			// Agregar nuevo acompañante
 	        var _html = '';
 
-  				_html += '	<td class="del_tr2" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; width: 30px;">';
+ 					_html += '	<td class="del_tr2" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; width: 30px;">';
 					_html += '		<label style="border: solid; border-width: 1px; border-color: #D9D9D9; border-radius: 7px; padding-left: 6px; padding-right: 6px; padding-bottom: 1px; background-color: #FF5F5D; color: #ffffff; font-weight: bold; cursor: pointer;">X</label>';
 					_html += '	</td>';
 
 					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; width: 30px;">';
 					_html += '		' + i;
 					_html += '		<input id="tmp_imagenes_id_' + i + '" type="hidden" value="' + tmp_Id + '_' + i + '">';
+					_html += '		<input id="tmp_imagenes_idimagen_' + i + '" type="hidden" value="0">';
+					_html += '		<input id="tmp_imagenes_codauto_' + i + '" type="hidden" value="' + i + '">';
+					_html += '		<input id="tmp_imagenes_cambiada_' + i + '" type="hidden" value="' + ((_modo == 'U') ? '1' : '0') + '">';
 					_html += '	</td>';
 
 					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; width: 30px; font-weight: bold;">';
 					_html += '		' + imagenadicional_descripcion.toUpperCase();
+					_html += '		<input id="tmp_imagenes_descripcion_' + i + '" type="hidden" value="' + imagenadicional_descripcion + '">';
 					_html += '	</td>';
 
 					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px;">';
@@ -2467,7 +2657,7 @@
 
         // Agregar fila para Nuevo Acompañante
           _html = '	<td colspan="5" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
-          _html += '		<button class="btn btn-primary" type="button" style="color: #ffffff; font-size: 14px;" onclick="f_AddImagenAdicional();">';
+          _html += '		<button class="btn btn-primary" type="button" style="color: #ffffff; font-size: 14px;" onclick="' + ((_modo == 'U') ? 'f_AddImagenAdicional_Actualizar()' : 'f_AddImagenAdicional()') + ';">';
           _html += '			<b>+ Agregar Imagen</b>';
           _html += '		</button>';
           _html += '	</td>';
@@ -2548,6 +2738,12 @@
 			    reader.onload = function(e) {
 			      var imagen = document.getElementById('img_imagenes_' + _id_row);
 			      imagen.src = e.target.result;
+
+			      // Si estamos en modo Actualizar, marcar la fila como cambiada
+			      var _modo = $("#hd_modograbar").val();
+			      if (_modo == 'U'){
+			      	$("#tmp_imagenes_cambiada_" + _id_row).val(1);
+			      }
 			    };
 			    reader.readAsDataURL(file);
 			  };
@@ -2962,7 +3158,13 @@
 
 			$("#modal_addrecepcion").on('shown.bs.modal', function(){
       	$("#registro_placa1").focus();
-    	});
+    		});
+
+			$("#modal_addrecepcion").on('hidden.bs.modal', function(){
+				// Restablecer título del modal al cerrar
+				$("#modal_addrecepcionLabel").html('Nueva Recepción de Unidad');
+				$("#btn_ConfirmarAcompanantes").html('Finalizar y Confirmar');
+			});
 
 			$("#modal_addcliente").on('shown.bs.modal', function(){
       	$("#cliente_tipocliente").focus();
@@ -3050,7 +3252,15 @@
 
 		<!-- Funciones de Grabación -->
 		<script type="text/javascript">
-			function f_GrabarRecepcion_Confirmar(){
+    	function f_GrabarRecepcion_Confirmar(){
+				var _modo = $("#hd_modograbar").val();
+
+				// Si es modo Actualizar (solo imágenes), llama a la función específica
+				if (_modo == 'U'){
+					f_GrabarActualizacionImagenes();
+					return;
+				}
+
 				// Recupera variables
 					var registro_condicion = $("#registro_condicion").val();
 
@@ -3192,6 +3402,103 @@
               f_cerrarModal('modal_addrecepcion');
 
             }, "json");
+			}
+
+			function f_GrabarActualizacionImagenes(){
+				var id_registro = $("#hd_idregistro").val();
+
+				if (id_registro == null || id_registro == '0' || id_registro == 0){
+					alert("No se ha definido el registro a actualizar.");
+					return;
+				}
+
+				f_LoadingGrabarIngreso(1);
+
+				// Obtiene total de Imágenes en la tabla
+				var table = document.getElementById('tbl_imagenes');
+				var _rows_imagenes = table.rows.length - 1;
+
+				var arr_imagenes = [];
+				var _hay_cambios = false;
+
+				$('#tbl_imagenes tr').each(function () {
+					var _hasBtn = $(this).find('button').length > 0;
+					var _idRow = $(this).attr('id');
+
+					if (!_hasBtn && _idRow != 'tr_add_new_image'){
+						var _id_imagen = parseInt($(this).find("input[id^='tmp_imagenes_idimagen_']").val() || 0);
+						var _cod_auto = parseInt($(this).find("input[id^='tmp_imagenes_codauto_']").val() || 0);
+						var _descripcion = $(this).find("input[id^='tmp_imagenes_descripcion_']").val() || '';
+						var _cambiada = parseInt($(this).find("input[id^='tmp_imagenes_cambiada_']").val() || 0);
+						var _src = $(this).find('.imagen').attr('src') || '';
+
+						// Para imágenes nuevas (id_imagen=0) que aún no se han cargado
+						if (_id_imagen == 0 && _cambiada == 0){
+							return; // Saltar - no procesar imágenes nuevas sin contenido
+						}
+
+						arr_imagenes.push({
+							id_imagen: _id_imagen,
+							cod_auto: _cod_auto,
+							descripcion: _descripcion,
+							imagen: _src,
+							cambiada: _cambiada
+						});
+
+						if (_cambiada == 1) _hay_cambios = true;
+					}
+				});
+
+				// Si no hay cambios, no enviar nada
+				if (!_hay_cambios && arr_imagenes.length == 0){
+					alert("No hay cambios para guardar.");
+					f_LoadingGrabarIngreso(0);
+					return;
+				}
+
+				// Validar que las imágenes nuevas (id_imagen=0) tengan contenido
+				var _faltan_imagenes = false;
+				$('#tbl_imagenes tr').each(function () {
+					var _hasBtn = $(this).find('button').length > 0;
+					var _idRow = $(this).attr('id');
+
+					if (!_hasBtn && _idRow != 'tr_add_new_image'){
+						var _id_imagen = parseInt($(this).find("input[id^='tmp_imagenes_idimagen_']").val() || 0);
+						var _src = $(this).find('.imagen').attr('src') || '';
+
+						if (_id_imagen == 0 && (_src.length == 0 || _src == '')){
+							_faltan_imagenes = true;
+						}
+					}
+				});
+
+				if (_faltan_imagenes){
+					alert("Hay imágenes nuevas que no han sido cargadas.\n\nPor favor, verificar.");
+					f_LoadingGrabarIngreso(0);
+					return;
+				}
+
+				// Grabando Datos
+				$.post( "apis/backend.php", { accion: "actualizar_recepcionunidades_imagenes", id_registro: id_registro, arr_imagenes: JSON.stringify(arr_imagenes) },
+					function( data ) {
+						if (data.estado == 1){
+							alert("Las imágenes se actualizaron correctamente.");
+
+							f_LoadResultados();
+
+							f_LoadingGrabarIngreso(0);
+
+							f_cerrarModal('modal_addrecepcion');
+
+							// Restaurar el botón a su texto original
+							$("#btn_ConfirmarAcompanantes").html('Finalizar y Confirmar');
+						}
+						else{
+							alert("Ocurrió un error al momento de actualizar las imágenes.");
+
+							f_LoadingGrabarIngreso(0);
+						}
+					}, "json");
 			}
 
 			function f_GrabarCliente(){
