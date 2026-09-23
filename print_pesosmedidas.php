@@ -10,6 +10,7 @@ require_once 'dompdf/autoload.inc.php';
 
 use Dompdf\Dompdf;
 use Dompdf\Options;
+
 error_reporting(0);
 ini_set('display_errors', 0);
 ini_set('display_startuo_errors', 0);
@@ -18,7 +19,8 @@ $remitente_ruc = $_GET["r"];
 $remitente_razonsocial = $_GET["u"];
 
 // Funciones
-function formatearFecha($fecha){
+function formatearFecha($fecha)
+{
 	// Separar fecha
 	$dia = str_pad(explode('-', $fecha)[2], 2, '0', STR_PAD_LEFT);
 	$mes = nombre_meses(explode('-', $fecha)[1]);
@@ -27,7 +29,8 @@ function formatearFecha($fecha){
 	return $dia . ' de ' . $mes . ' del ' . $anho;
 }
 
-function nombre_meses($num_mes){
+function nombre_meses($num_mes)
+{
 	if ($num_mes == 1) {
 		return "ENERO";
 	}
@@ -67,7 +70,7 @@ function nombre_meses($num_mes){
 }
 
 // Ruta imágenes
-$ruta_images_x = 'https://' . $_SERVER["HTTP_HOST"] . $_SERVER["REQUEST_URI"];
+$ruta_images_x = 'http://' . $_SERVER["HTTP_HOST"] . $_SERVER["REQUEST_URI"];
 $ruta_images = substr($ruta_images_x, 0, strpos($ruta_images_x, 'print_pesosmedidas.php')) . 'images/';
 $ruta_images_qr = substr($ruta_images_x, 0, strpos($ruta_images_x, 'print_pesosmedidas.php')) . '/';
 
@@ -76,53 +79,131 @@ $g = 1;
 $arr_guias = '';
 $nom_archivo = 'Pesos y Medidas';
 
-$q_datos = "SELECT DISTINCT
-											 DL.guias_fecha,
-											 RE.ruc AS REMITENTE_RUC,
-									     RE.razon_social AS REMITENTE_RAZONSOCIAL,
-											 CONCAT(DL.guiaremitente_serie, '-', DL.guiaremitente_numero) AS GUIA_REMITENTE,
-							         CONCAT(DL.guiatransportista_serie, '-', DL.guiatransportista_numero) AS GUIA_TRANSPORTISTA,
-							         PP.direccion AS PUNTO_PARTIDA,
-							         PP.departamento,
-							         PP.provincia,
-							         PP.distrito,
-											 T1.cplaca AS PLACA1,
-											 T1.largo AS PLACA1_LARGO,
-											 T1.ancho AS PLACA1_ANCHO,
-											 T1.alto AS PLACA1_ALTO,
-											 T2.cplaca AS PLACA2,
-											 T2.largo AS PLACA2_LARGO,
-											 T2.ancho AS PLACA2_ANCHO,
-											 T2.alto AS PLACA2_ALTO,
-											 CV.codigo AS CONFIGURACION_VEHICULAR,
-											 U.configuracionvehicular_pesobrutomaximo,
-											 U.configuracionvehicular_pesobrutomaximo2,
-											 U.configuracionvehicular_pesobrutototaltransportado,
-											 DB.descripcion AS DESCRIPCION_BIEN,
-											 PD.id_planta,
+// Función de utilidad para logging
+function saveLog($datos)
+{
+	try {
+		// Carpeta 'logs' en el mismo nivel que este script
+		$directorio = __DIR__ . DIRECTORY_SEPARATOR . 'logs';
 
-								       CASE WHEN PD.id_planta = 3
-												 THEN V.despacho_id_modalidadenvio
-											 ELSE PD.id_modalidadenvio END AS ID_MODALIDADENVIO
+		// un nombre de archivo por día para no sobrescribir todo siempre
+		$nombreArchivo = 'log_' . date('Y-m-d') . '.json';
+		$rutaCompleta = $directorio . DIRECTORY_SEPARATOR . $nombreArchivo;
 
-									FROM despachos_segundotramo_programacion_detalle PD
-											 INNER JOIN despachos_segundotramo_programacion P ON PD.id_programacion = P.Id
-											 INNER JOIN despachos_segundotramo_distribucion_unidades U ON P.Id = U.id_programacion
-											 INNER JOIN despachos_segundotramo_distribucion_lotes DL ON U.Id = DL.id_distribucionunidad
-											   AND PD.cod_lote = DL.cod_lote
-											 INNER JOIN tbconfig_remitentessegundotramo RE ON DL.guias_iddestino = RE.id_destino
-											   AND DL.guias_idmodalidadenvio = RE.id_modalidadenvio
-											 INNER JOIN despachos_primertramo_validaciondatos V ON PD.cod_lote = V.lote_cod_lote
-											 LEFT JOIN tbconfig_puntospartidasegundotramo PP ON P.id_planta = PP.id_destino
-									           AND V.despacho_id_modalidadenvio = PP.id_modalidadenvio
-											 INNER JOIN transporte T1 ON U.id_unidad = T1.id_transporte
-											 LEFT JOIN transporte T2 ON U.id_unidad2 = T2.id_transporte
-											 INNER JOIN tbconfig_configuracionvehicular CV ON U.id_configuracionvehicular = CV.Id
-											 INNER JOIN tbconfig_segundotramo_guiasdescripcionbien DB ON DL.guias_iddescripcionbien = DB.Id
-								 WHERE MD5(U.Id) = '" . $id_distribucionunidad . "'
-									 AND RE.ruc = '" . $remitente_ruc . "'
-									 AND DL.guiaremitente_serie IS NOT NULL
-								ORDER BY 1";
+		// Crear directorio si no existe con permisos totales
+		if (!is_dir($directorio)) {
+			mkdir($directorio, 0777, true);
+			chmod($directorio, 0777); // para Linux
+		}
+
+		// Limpieza de caracteres especiales (\r, \n, \t) ---
+		$limpiar = function ($item) use (&$limpiar) {
+			if (is_array($item)) {
+				return array_map($limpiar, $item);
+			}
+			if (is_string($item)) {
+				return str_replace(["\r", "\n", "\t"], ' ', $item);
+			}
+			return $item;
+		};
+		$datosLimpios = $limpiar($datos);
+
+		// Agregamos una marca de tiempo al registro para saber cuándo ocurrió exactamente
+		$registro = [
+			'timestamp' => date('Y-m-d H:i:s'),
+			'data' => $datosLimpios
+		];
+
+		// Si el archivo ya existe, leemos y añadimos, si no, creamos nuevo array
+		$listaLogs = [];
+		if (file_exists($rutaCompleta)) {
+			$contenidoActual = file_get_contents($rutaCompleta);
+			$listaLogs = json_decode($contenidoActual, true) ?: [];
+		}
+
+		$listaLogs[] = $registro;
+
+		// Convertir a JSON
+		// JSON_UNESCAPED_SLASHES evita las barras extra en rutas de Windows
+		$jsonContenido = json_encode($listaLogs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+		// Escribir y forzar permisos
+		if (file_put_contents($rutaCompleta, $jsonContenido) !== false) {
+			chmod($rutaCompleta, 0777);
+			return true;
+		}
+
+		return false;
+	} catch (Exception $e) {
+		// si todo falla, enviamos al log del servidor
+		// error_log("Fallo crítico en saveLog: " . $e->getMessage());
+		return false;
+	}
+}
+
+$q_datos = "
+SELECT DISTINCT
+    DL.guias_fecha,
+    RE.ruc AS REMITENTE_RUC,
+    RE.razon_social AS REMITENTE_RAZONSOCIAL,
+    CONCAT(
+        DL.guiaremitente_serie,
+        '-',
+        DL.guiaremitente_numero
+    ) AS GUIA_REMITENTE,
+    CONCAT(
+        DL.guiatransportista_serie,
+        '-',
+        DL.guiatransportista_numero
+    ) AS GUIA_TRANSPORTISTA,
+    PP.direccion AS PUNTO_PARTIDA,
+    PP.departamento,
+    PP.provincia,
+    PP.distrito,
+    T1.cplaca AS PLACA1,
+    T1.largo AS PLACA1_LARGO,
+    T1.ancho AS PLACA1_ANCHO,
+    T1.alto AS PLACA1_ALTO,
+    T2.cplaca AS PLACA2,
+    T2.largo AS PLACA2_LARGO,
+    T2.ancho AS PLACA2_ANCHO,
+    T2.alto AS PLACA2_ALTO,
+    CV.codigo AS CONFIGURACION_VEHICULAR,
+    U.configuracionvehicular_pesobrutomaximo,
+    U.configuracionvehicular_pesobrutomaximo2,
+    U.configuracionvehicular_pesobrutototaltransportado,
+    DB.descripcion AS DESCRIPCION_BIEN,
+    PD.id_planta,
+    CASE WHEN PD.id_planta = 3 THEN V.despacho_id_modalidadenvio ELSE PD.id_modalidadenvio
+END AS ID_MODALIDADENVIO
+FROM
+    despachos_segundotramo_programacion_detalle PD
+INNER JOIN despachos_segundotramo_programacion P ON
+    PD.id_programacion = P.Id
+INNER JOIN despachos_segundotramo_distribucion_unidades U ON
+    P.Id = U.id_programacion
+INNER JOIN despachos_segundotramo_distribucion_lotes DL ON
+    U.Id = DL.id_distribucionunidad AND PD.cod_lote = DL.cod_lote
+INNER JOIN tbconfig_remitentessegundotramo RE ON
+    DL.guias_iddestino = RE.id_destino AND DL.guias_idmodalidadenvio = RE.id_modalidadenvio
+INNER JOIN despachos_primertramo_validaciondatos V ON
+    PD.cod_lote = V.lote_cod_lote
+LEFT JOIN tbconfig_puntospartidasegundotramo PP ON
+    P.id_planta = PP.id_destino AND V.despacho_id_modalidadenvio = PP.id_modalidadenvio
+INNER JOIN transporte T1 ON
+    U.id_unidad = T1.id_transporte
+LEFT JOIN transporte T2 ON
+    U.id_unidad2 = T2.id_transporte
+INNER JOIN tbconfig_configuracionvehicular CV ON
+    U.id_configuracionvehicular = CV.Id
+INNER JOIN tbconfig_segundotramo_guiasdescripcionbien DB ON
+    DL.guias_iddescripcionbien = DB.Id
+WHERE
+	MD5(U.Id) = '" . $id_distribucionunidad . "' AND 
+	RE.ruc = '" . $remitente_ruc . "' AND 
+	DL.guiaremitente_serie IS NOT NULL
+ORDER BY 1
+";
 
 if ($res_datos = mysqli_query($enlace, $q_datos)) {
 	if (mysqli_num_rows($res_datos) > 0) {
@@ -156,47 +237,62 @@ if ($res_datos = mysqli_query($enlace, $q_datos)) {
 				$id_modalidadenvio = $row_datos["ID_MODALIDADENVIO"];
 
 				// Obteniendo el Logo del Informe según Modalidad de Envío
-					$informes_logo = '';
+				$informes_logo = '';
 
-					$q_datos_md = "SELECT informes_logo
+				$q_datos_md = "SELECT informes_logo
 													 FROM tbconfig_modalidadenvio
-													WHERE Id = ".$id_modalidadenvio;
+													WHERE Id = " . $id_modalidadenvio;
 
-					if ($res_datos_md = mysqli_query($enlace, $q_datos_md)){
-					  if (mysqli_num_rows($res_datos_md) > 0) {
-					    while($row_datos_md = mysqli_fetch_array($res_datos_md)){
-					    	$informes_logo = $url_images.$row_datos_md["informes_logo"];
-					    }
-					  }
+				if ($res_datos_md = mysqli_query($enlace, $q_datos_md)) {
+					if (mysqli_num_rows($res_datos_md) > 0) {
+						while ($row_datos_md = mysqli_fetch_array($res_datos_md)) {
+							$informes_logo = $url_images . $row_datos_md["informes_logo"];
+						}
 					}
+				}
 
 				// Calcula la mayor de las Toneladas Distribuídas
-					$guia_remitente = '';
+				$guia_remitente = '';
 
-					$q_toneladas = "SELECT GUIA_REMITENTE,
-																 _MAX
-														FROM (SELECT CONCAT(DL.guiaremitente_serie, '-', DL.guiaremitente_numero) AS GUIA_REMITENTE,
-																				 MAX(DL.peso_neto) AS _MAX
-																		FROM despachos_segundotramo_programacion_detalle PD
-																				 INNER JOIN despachos_segundotramo_programacion P ON PD.id_programacion = P.Id
-																				 INNER JOIN despachos_segundotramo_distribucion_unidades U ON P.Id = U.id_programacion
-																				 INNER JOIN despachos_segundotramo_distribucion_lotes DL ON U.Id = DL.id_distribucionunidad
-																				   AND PD.cod_lote = DL.cod_lote
-																				 INNER JOIN tbconfig_remitentessegundotramo RE ON DL.guias_iddestino = RE.id_destino
-																				   AND DL.guias_idmodalidadenvio = RE.id_modalidadenvio
-																	 WHERE MD5(U.Id) = '".$id_distribucionunidad."'
-																		 AND RE.ruc = '".$remitente_ruc."'
-																		 AND DL.guiaremitente_serie IS NOT NULL
-																	GROUP BY DL.guiaremitente_serie, DL.guiaremitente_numero) AS DATOS
-													ORDER BY _MAX DESC LIMIT 1";
+				$q_toneladas = "
+				SELECT
+					GUIA_REMITENTE,
+					_MAX
+				FROM
+					(
+					SELECT
+						CONCAT(
+							DL.guiaremitente_serie,
+							'-',
+							DL.guiaremitente_numero
+						) AS GUIA_REMITENTE,
+						MAX(DL.peso_neto) AS _MAX
+					FROM
+						despachos_segundotramo_programacion_detalle PD
+					INNER JOIN despachos_segundotramo_programacion P ON
+						PD.id_programacion = P.Id
+					INNER JOIN despachos_segundotramo_distribucion_unidades U ON
+						P.Id = U.id_programacion
+					INNER JOIN despachos_segundotramo_distribucion_lotes DL ON
+						U.Id = DL.id_distribucionunidad AND PD.cod_lote = DL.cod_lote
+					INNER JOIN tbconfig_remitentessegundotramo RE ON
+						DL.guias_iddestino = RE.id_destino AND DL.guias_idmodalidadenvio = RE.id_modalidadenvio
+					
+					WHERE 
+						MD5(U.Id) = '" . $id_distribucionunidad . "' AND 
+						RE.ruc = '" . $remitente_ruc . "' AND 
+						DL.guiaremitente_serie IS NOT NULL
+					GROUP BY DL.guiaremitente_serie, DL.guiaremitente_numero) AS DATOS
+					ORDER BY _MAX DESC LIMIT 1
+				";
 
-					if ($res_toneladas = mysqli_query($enlace, $q_toneladas)){
-					  if (mysqli_num_rows($res_toneladas) > 0) {
-					    while($row_toneladas = mysqli_fetch_array($res_toneladas)){
-					    	$guia_remitente = $row_toneladas["GUIA_REMITENTE"];
-					    }
-					  }
+				if ($res_toneladas = mysqli_query($enlace, $q_toneladas)) {
+					if (mysqli_num_rows($res_toneladas) > 0) {
+						while ($row_toneladas = mysqli_fetch_array($res_toneladas)) {
+							$guia_remitente = $row_toneladas["GUIA_REMITENTE"];
+						}
 					}
+				}
 			}
 
 			// Armando array de guías
@@ -233,7 +329,7 @@ $html = '	<!DOCTYPE html>
 
 								<body style="margin-left: 10px; margin-right: 10px;">
 									<div>
-										<img src="'.$ruta_images_qr.(($id_planta == 3 && ($id_modalidadenvio == 1 || $id_modalidadenvio == 2)) ? $img_logocolibri : $informes_logo).'" style="width: '.(($id_planta == 3 && ($id_modalidadenvio == 1 || $id_modalidadenvio == 2)) ? '80px; height: 70px;' : '70px; ').'padding: 5px;">
+										<img src="' . $ruta_images_qr . (($id_planta == 3 && ($id_modalidadenvio == 1 || $id_modalidadenvio == 2)) ? $img_logocolibri : $informes_logo) . '" style="width: ' . (($id_planta == 3 && ($id_modalidadenvio == 1 || $id_modalidadenvio == 2)) ? '80px; height: 70px;' : '70px; ') . 'padding: 5px;">
 									</div>
 
 									<div class="row" style="margin-top: -20px; margin-left: 25px; margin-right: 25px;">

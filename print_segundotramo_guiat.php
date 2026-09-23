@@ -10,6 +10,9 @@ require_once 'dompdf/autoload.inc.php';
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
+error_reporting(0);
+ini_set('display_errors', 0);
+ini_set('display_startuo_errors', 0);
 $id_unidad = $_GET["x"];
 $serie_guia = $_GET["a"];
 $numero_guia = $_GET["b"];

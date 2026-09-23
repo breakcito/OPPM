@@ -14,6 +14,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 ini_set('display_startuo_errors', 0);
 	$id_programacion = $_GET["x"];
+	$id_empresita = intval(trim($_GET["e"]));
 
 	// Funciones
 		function formatearFecha($fecha) {
@@ -274,8 +275,10 @@ ini_set('display_startuo_errors', 0);
 							        INNER JOIN correlativo_despacho CD ON P.Id = CD.id_programacion
 							        INNER JOIN tbconfig_tipocarga TC ON DL.id_tipocarga = TC.Id
 							        LEFT JOIN catalogolotes lot ON lot.ccod_Lote = DL.cod_lote
-							        LEFT JOIN tbconfig_plantas pl ON pl.Id = lot.balanza_id_planta
+							        LEFT JOIN tbconfig_remitentessegundotramo RE ON DL.guias_iddestino = RE.id_destino AND DL.guias_idmodalidadenvio = RE.id_modalidadenvio
+							        LEFT JOIN tbconfig_plantas pl ON (pl.nombre_comercial = RE.razon_social OR RE.ruc = pl.ruc)
 WHERE MD5(DU.id_programacion) = '".$id_programacion."'
+					AND (".$id_empresita." = 0 OR pl.Id = ".$id_empresita.")
 					 ORDER BY empresita, DU.Id, DL.cod_lote";
 
 		if ($res_datos = mysqli_query($enlace, $q_datos)){

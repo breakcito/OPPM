@@ -14,6 +14,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 ini_set('display_startuo_errors', 0);
 $id_distribucionunidad = $_GET["x"];
+$id_empresita = intval(trim($_GET["e"]));
 // $id_modalidadenvio = $_GET["m"];
 
 // Funciones
@@ -311,9 +312,11 @@ $q_datos = "
 		INNER JOIN tbconfig_tipocarga TC ON
 			DL.id_tipocarga = TC.Id
 		LEFT JOIN catalogolotes lot on lot.ccod_Lote = PD.cod_lote
-		LEFT JOIN tbconfig_plantas pl on pl.Id = lot.balanza_id_planta
+		LEFT JOIN tbconfig_remitentessegundotramo RE ON DL.guias_iddestino = RE.id_destino AND DL.guias_idmodalidadenvio = RE.id_modalidadenvio
+		LEFT JOIN tbconfig_plantas pl on (pl.nombre_comercial = RE.razon_social OR RE.ruc = pl.ruc)
 		WHERE
 			MD5(U.Id) = '" . $id_distribucionunidad . "'
+			AND (" . $id_empresita . " = 0 OR pl.Id = " . $id_empresita . ")
 		ORDER BY PROVEEDOR_MINERO_RAZONSOCIAL, DL.cod_lote";
 
 if ($res_datos = mysqli_query($enlace, $q_datos)) {

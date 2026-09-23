@@ -28380,7 +28380,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 						if ($is_cerrado == 1) {
 							$html .= '  	<div class="d-flex justify-content-center">';
 							$html .= '			<img src="' . $img_informe . '" style="width: 20px;"/>';
-							$html .= '  		<a class="success" style="margin-left: 5px;" href="javascript: f_PrintDistribucionDespachos(' . "'" . $row_datos["ID_MD5"] . "'" . ')"><u>Distribución </u></a>';
+							$html .= '  		<a class="success" style="margin-left: 5px;" href="javascript: f_PrintDistribucionDespachos(' . "'" . $row_datos["ID_MD5"] . "', " . $row_datos["Id"] . ')"><u>Distribución </u></a>';
 							$html .= '  	</div>';
 						}
 
@@ -29372,7 +29372,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 						$html .= '		</div>';
 						$html .= '		<div class="d-flex" style="margin-top: 5px;">';
 						$html .= '			<img src="' . $img_informe . '" style="width: 20px; height: 20px;"/>';
-						$html .= '  			<a class="success" style="margin-left: 5px;" href="javascript: f_PrintCargos(' . "'" . $row_datos["ID_DISTRIBUCIONUNIDAD_MD5"] . "', " . $arr_md . ')"><u>Cargos </u></a>';
+						$html .= '  			<a class="success" style="margin-left: 5px;" href="javascript: f_PrintCargos(' . "'" . $row_datos["ID_DISTRIBUCIONUNIDAD_MD5"] . "', " . $arr_md . ', ' . $row_datos["ID_DISTRIBUCIONUNIDAD"] . ')"><u>Cargos </u></a>';
 						$html .= '		</div>';
 
 						$html .= '		<div class="d-flex" style="margin-top: 5px;">';
@@ -41515,17 +41515,22 @@ case 'confirmar_ProgramacionLote_AddLote':
 			$estado = 1;
 
 			// Obtiene el/los remitentes por Unidad
-			$q_remitentes = "SELECT DISTINCT
-																		RE.ruc,
-																		RE.razon_social
-															 FROM despachos_segundotramo_programacion_detalle PD
-																		INNER JOIN despachos_segundotramo_programacion P ON PD.id_programacion = P.Id
-																		INNER JOIN despachos_segundotramo_distribucion_unidades U ON P.Id = U.id_programacion
-																		INNER JOIN despachos_segundotramo_distribucion_lotes DL ON U.Id = DL.id_distribucionunidad
-																			AND PD.cod_lote = DL.cod_lote
-																		LEFT JOIN tbconfig_remitentessegundotramo RE ON DL.guias_iddestino = RE.id_destino
-																			AND DL.guias_idmodalidadenvio = RE.id_modalidadenvio
-															WHERE U.Id = " . $id_distribucionunidad;
+			$q_remitentes = "
+			SELECT DISTINCT
+				RE.ruc,
+				RE.razon_social
+			FROM
+				despachos_segundotramo_programacion_detalle PD
+			LEFT JOIN despachos_segundotramo_programacion P ON
+				PD.id_programacion = P.Id
+			LEFT JOIN despachos_segundotramo_distribucion_unidades U ON
+				P.Id = U.id_programacion
+			LEFT JOIN despachos_segundotramo_distribucion_lotes DL ON
+				U.Id = DL.id_distribucionunidad AND PD.cod_lote = DL.cod_lote
+			LEFT JOIN tbconfig_remitentessegundotramo RE ON
+				DL.guias_iddestino = RE.id_destino AND DL.guias_idmodalidadenvio = RE.id_modalidadenvio
+			WHERE
+				U.Id = " . $id_distribucionunidad;
 
 			if ($res_remitentes = mysqli_query($enlace, $q_remitentes)) {
 				if (mysqli_num_rows($res_remitentes) > 0) {
@@ -51152,6 +51157,58 @@ case 'confirmar_ProgramacionLote_AddLote':
 		echo json_encode(array('estado' => $estado, 'md5_lote' => MD5($cod_lote)));
 
 		break;
+
+	case 'empresitas_por_distribuion_despacho':
+        $estado = 0;
+        $res = array();
+
+        // Recupera y limpia parámetro, se envia uno u otro
+		$id_programacion = intval(trim($_POST["id_programacion"]));
+        $id_distribucion = intval(trim($_POST["id_distribucion"]));
+
+        $sql = "
+        SELECT DISTINCT
+            pl.Id AS id_empresita,
+            RE.ruc,
+            RE.razon_social
+        FROM
+            despachos_segundotramo_programacion_detalle PD
+        LEFT JOIN despachos_segundotramo_programacion P ON
+            PD.id_programacion = P.Id
+        LEFT JOIN despachos_segundotramo_distribucion_unidades U ON
+            P.Id = U.id_programacion
+        LEFT JOIN despachos_segundotramo_distribucion_lotes DL ON
+            U.Id = DL.id_distribucionunidad AND PD.cod_lote = DL.cod_lote
+        LEFT JOIN tbconfig_remitentessegundotramo RE ON
+            DL.guias_iddestino = RE.id_destino AND DL.guias_idmodalidadenvio = RE.id_modalidadenvio
+        LEFT JOIN tbconfig_plantas pl ON pl.nombre_comercial = RE.razon_social OR RE.ruc = pl.ruc    
+        WHERE 1=1";
+
+		if($id_programacion != null){
+			$sql .= " AND P.Id = $id_programacion";
+		}
+
+		if($id_distribucion != null){
+			$sql .= " AND U.Id = $id_distribucion";
+		}
+
+        if ($query = mysqli_query($enlace, $sql)) {
+            $estado = 1;
+            while ($row = mysqli_fetch_assoc($query)) {
+                $res[] = array(
+                    'id_empresita' => $row['id_empresita'],
+                    'ruc'          => $row['ruc'],
+                    'razon_social' => $row['razon_social']
+                );
+            }
+        }
+
+        echo json_encode(array(
+            'estado' => $estado,
+            'res'    => $res
+        ));
+
+        break;
 
 	default:
 

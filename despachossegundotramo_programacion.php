@@ -586,7 +586,7 @@ if (!isset($_SESSION["Id"])) {
 												while ($row_lista = mysqli_fetch_array($res_lista)) {
 										?>
 
-													<option value="<?php echo $row_lista["Id"] ?>"><?php echo $row_lista["documento"].' - '.$row_lista["razon_social"] ?>"</option>
+													<option value="<?php echo $row_lista["Id"] ?>"><?php echo $row_lista["documento"] . ' - ' . $row_lista["razon_social"] ?>"</option>
 
 										<?php
 												}
@@ -671,9 +671,9 @@ if (!isset($_SESSION["Id"])) {
 										Lote
 									</th>
 
-		        			<th style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle; min-width: 100px;">
-		        				Planta<br>Ingreso
-		        			</th>
+									<th style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle; min-width: 100px;">
+										Planta<br>Ingreso
+									</th>
 
 									<th style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle;">
 										Encargado Muestra
@@ -1041,7 +1041,7 @@ if (!isset($_SESSION["Id"])) {
 
 								<div class="flex-fill" style="width: 67%; max-width: 67%; min-width: 67%;">
 									<select id="configuracion_vehicular" class="form-select" data-placeholder="Elija una opción..." style="font-size: 14px;" onchange="f_ConfiguracionVehicular_Selected();">
-										
+
 									</select>
 								</div>
 							</div>
@@ -1671,7 +1671,7 @@ if (!isset($_SESSION["Id"])) {
 										while ($row_unidades = mysqli_fetch_array($res_unidades)) {
 								?>
 
-											<option value="<?php echo $row_unidades["cplaca"]; ?>"><?php echo $row_unidades["cplaca"].' ('.$row_unidades["descripcion"].')'; ?></option>
+											<option value="<?php echo $row_unidades["cplaca"]; ?>"><?php echo $row_unidades["cplaca"] . ' (' . $row_unidades["descripcion"] . ')'; ?></option>
 
 											<option value="x" style="font-size: 6px;" disabled></option>
 
@@ -1851,7 +1851,7 @@ if (!isset($_SESSION["Id"])) {
 										while ($row_lista = mysqli_fetch_array($res_lista)) {
 								?>
 
-											<option value="<?php echo $row_lista["Id"] ?>"><?php echo $row_lista["dni_licencia"].' - '.$row_lista["nombres"] ?></option>
+											<option value="<?php echo $row_lista["Id"] ?>"><?php echo $row_lista["dni_licencia"] . ' - ' . $row_lista["nombres"] ?></option>
 
 								<?php
 										}
@@ -2129,7 +2129,7 @@ if (!isset($_SESSION["Id"])) {
 			$("#nv_titulo").html('| Programación de Despachos');
 
 			// Cargando listas generales
-				f_GetConfiguracionVehicular();
+			f_GetConfiguracionVehicular();
 
 			// Carga el detalle de información
 			f_LoadPlantas();
@@ -3039,131 +3039,164 @@ if (!isset($_SESSION["Id"])) {
 			}
 		}
 
-		function f_PrintCargos(_iddistribucionunidad_md5, _arr_modalidadenvio = null) {
-			var url = '';
+		function f_PrintCargos(_iddistribucionunidad_md5, _arr_modalidadenvio = null, _id_distribucionunidad = 0) {
+			// Obtener la lista de empresitas (remitentes) de la distribución
+			$.post("apis/backend.php", {
+					accion: "empresitas_por_distribuion_despacho",
+					id_distribucion: _id_distribucionunidad
+				},
+				function(data) {
+					if (data.estado == 1) {
+						$.each(data.res, function(key, emp) {
+							var url = '';
 
-			if (_arr_modalidadenvio != null){
-				var m = 0;
+							if (_arr_modalidadenvio != null) {
+								var m = 0;
 
-				_arr_modalidadenvio = _arr_modalidadenvio.split('|');
+								var arr_mod = _arr_modalidadenvio.split('|');
 
-				while (m < _arr_modalidadenvio.length){
-					url = 'print_cargosguias.php?x=' + _iddistribucionunidad_md5 + "&m=" + _arr_modalidadenvio[m];
+								url = 'print_cargosguias.php?x=' + _iddistribucionunidad_md5 + '&e=' + emp.id_empresita;
 
-					window.open(url, '_blank');
+								if (emp.id_empresita != null) {
+									window.open(url, '_blank');
+								}
+								// while (m < arr_mod.length) {
 
-					m ++;
-				}
-			}
-			else{
-				url = 'print_cargosguias.php?x=' + _iddistribucionunidad_md5;
-
-				window.open(url, '_blank');
-			}		
+								// 	m++;
+								// }
+							} else {
+								url = 'print_cargosguias.php?x=' + _iddistribucionunidad_md5 + '&e=' + emp.id_empresita;
+								if (emp.id_empresita != null) {
+									window.open(url, '_blank');
+								}
+							}
+						});
+					}
+				}, "json");
 		}
 
-		function f_PrintRCI_PDF(_iddistribucionunidad_md5) {
-			// MAX (28/0/2024 17:13): Kharoll volvió a solicitar que se unifique el formato
-			// // Obteniendo la información de Modalidades de Envío
-			// 	$.post( "apis/backend.php", { accion: "get_segundotramoprogramacion_rcimodalidadenvio", id_unidad: _iddistribucionunidad_md5 },
-			//     function( data ) {
-			//       if(data.estado == 1){
-			//       	$.each( data.res, function( key, val ) {
-			//           var url = 'print_rci.php?x=' + _iddistribucionunidad_md5 + '&m=' + val.guias_idmodalidadenvio;
-
-			//           window.open(url, '_blank');
-			//         });
-			//       }
-			//       else{
-			//       	alert("Esta Unidad aún no tiene guías generadas.");
-			//       }
-
-			//   }, "json");
-
-			var url = 'print_rci.php?x=' + _iddistribucionunidad_md5;
-
-			window.open(url, '_blank');
-		}
-
-		function f_PrintDistribucionDespachos(_idprogramacion_md5) {
-			// Obtener la lista de Códigos de Despacho, solo para Colibrí se abrirá un solo formato
-			if (idplanta_Selected == 3) {
-				var url = 'print_programaciondistribucion.php?x=' + _idprogramacion_md5 + '&p=' + idplanta_Selected;
-
-				window.open(url, '_blank');
-			} else {
-				$.post("apis/backend.php", {
-						accion: "get_ListaCodigosDespachoxProgramacion",
-						id_programacion: _idprogramacion_md5
-					},
-					function(data) {
-						if (data.estado == 1) {
-							$.each(data.res, function(key, val) {
-								var url = 'print_programaciondistribucion2.php?x=' + val.CODIGO_DESPACHO;
-
+		function f_PrintRCI_PDF(_iddistribucionunidad_md5, _id_distribucionunidad = 0) {
+			// Obtener la lista de empresitas (remitentes) de la distribución
+			$.post("apis/backend.php", {
+					accion: "empresitas_por_distribuion_despacho",
+					id_distribucion: _id_distribucionunidad
+				},
+				function(data) {
+					if (data.estado == 1) {
+						$.each(data.res, function(key, emp) {
+							var url = 'print_rci.php?x=' + _iddistribucionunidad_md5 + '&e=' + emp.id_empresita;
+							if (emp.id_empresita != null) {
 								window.open(url, '_blank');
+							}
+						});
+					}
+				}, "json");
+		}
+
+		function f_PrintDistribucionDespachos(_idprogramacion_md5, _idprogramacion = 0) {
+			// Obtener la lista de empresitas (remitentes) de toda la programación de despacho
+			$.post("apis/backend.php", {
+					accion: "empresitas_por_distribuion_despacho",
+					id_programacion: _idprogramacion
+				},
+				function(data) {
+					if (data.estado == 1 && data.res.length > 0) {
+						var empresitas = data.res;
+
+						// Para Colibrí se abrirá un solo formato por cada empresita
+						if (idplanta_Selected == 3) {
+							$.each(empresitas, function(key, emp) {
+								var url = 'print_programaciondistribucion.php?x=' + _idprogramacion_md5 + '&p=' + idplanta_Selected + '&e=' + emp.id_empresita;
+								if (emp.id_empresita != null) {
+									window.open(url, '_blank');
+								}
 							});
+						} else {
+							// Solandra: un print por cada combinación (Código Despacho x Empresita)
+							$.post("apis/backend.php", {
+									accion: "get_ListaCodigosDespachoxProgramacion",
+									id_programacion: _idprogramacion_md5
+								},
+								function(data2) {
+									if (data2.estado == 1) {
+										$.each(data2.res, function(k1, val) {
+											$.each(empresitas, function(k2, emp) {
+												var url = 'print_programaciondistribucion2.php?x=' + val.CODIGO_DESPACHO + '&e=' + emp.id_empresita;
+
+												if (emp.id_empresita != null) {
+													window.open(url, '_blank');
+												}
+											});
+										});
+									}
+
+									f_SetCapacidad();
+
+								}, "json");
 						}
-
+					} else {
 						f_SetCapacidad();
-
-					}, "json");
-			}
+					}
+				}, "json");
 		}
 
 		function f_PrintPesosMedidas(_item_unidad, _id_distribucionunidad, _id_distribucionunidad_md5, _remitente_ruc, _configuracionvehicular_pesobrutomaximo, _configuracionvehicular_pesobrutomaximo2, _configuracionvehicular_pesobrutototaltransportado, _tiene_ingresomanual) {
 			// Setea variables hidden
-				$("#hd_idprogramacionunidad").val(_id_distribucionunidad);
-				$("#hd_idprogramacionunidadmd5").val(_id_distribucionunidad_md5);
+			$("#hd_idprogramacionunidad").val(_id_distribucionunidad);
+			$("#hd_idprogramacionunidadmd5").val(_id_distribucionunidad_md5);
 
 			// Limpia objetos
-				$("#configuracion_vehicular").val('');
-				$("#configuracion_vehicular").trigger('change');
+			$("#configuracion_vehicular").val('');
+			$("#configuracion_vehicular").trigger('change');
 
 			// Setea título
-				$("#modal_configuracionvehicularLabel").html(_item_unidad);
+			$("#modal_configuracionvehicularLabel").html(_item_unidad);
 
 			// Obtiene Configuración Vehicular
-				$.post("apis/backend.php", { accion: "get_ConfiguracionVehicular", id_distribucionunidad: _id_distribucionunidad, remitente_ruc: _remitente_ruc },
-					function(data) {
-						if (data.estado == 1) {
-							$.each(data.res, function(key, val) {
-								//$("#configuracion_vehicular").val(val.ID_CONFIGURACIONVEHICULAR);
+			$.post("apis/backend.php", {
+					accion: "get_ConfiguracionVehicular",
+					id_distribucionunidad: _id_distribucionunidad,
+					remitente_ruc: _remitente_ruc
+				},
+				function(data) {
+					if (data.estado == 1) {
+						$.each(data.res, function(key, val) {
+							//$("#configuracion_vehicular").val(val.ID_CONFIGURACIONVEHICULAR);
 
-								f_GetConfiguracionVehicular(val.Id)
+							f_GetConfiguracionVehicular(val.Id)
 
-								// $("#pesobruto_maximo").val(val.configuracionvehicular_pesobrutomaximo);
-								// $("#pesobruto_maximo2").val(val.configuracionvehicular_pesobrutomaximo2);
+							// $("#pesobruto_maximo").val(val.configuracionvehicular_pesobrutomaximo);
+							// $("#pesobruto_maximo2").val(val.configuracionvehicular_pesobrutomaximo2);
 
-								// // Setea el Peso Bruto Total Transportado
-								// 	if (val.configuracionvehicular_pesobrutototaltransportado == null){
-								// 		$("#pesobruto_total").val(data.peso_distribuido);
-								// 	}
-								// 	else{
-								// 		$("#pesobruto_total").val(val.configuracionvehicular_pesobrutototaltransportado);
-								// 	}
-							});
+							// // Setea el Peso Bruto Total Transportado
+							// 	if (val.configuracionvehicular_pesobrutototaltransportado == null){
+							// 		$("#pesobruto_total").val(data.peso_distribuido);
+							// 	}
+							// 	else{
+							// 		$("#pesobruto_total").val(val.configuracionvehicular_pesobrutototaltransportado);
+							// 	}
+						});
 
-							$("#pesobruto_maximo").val(_configuracionvehicular_pesobrutomaximo);
-							$("#pesobruto_maximo2").val(_configuracionvehicular_pesobrutomaximo2);
-							$("#pesobruto_total").val(_configuracionvehicular_pesobrutototaltransportado);
+						$("#pesobruto_maximo").val(_configuracionvehicular_pesobrutomaximo);
+						$("#pesobruto_maximo2").val(_configuracionvehicular_pesobrutomaximo2);
+						$("#pesobruto_total").val(_configuracionvehicular_pesobrutototaltransportado);
 
-							// Valida si tiene Ingreso Manual
-								$("#pesobruto_maximo").prop('disabled', true);
+						// Valida si tiene Ingreso Manual
+						$("#pesobruto_maximo").prop('disabled', true);
 
-								if (_tiene_ingresomanual == 1 && idplanta_Selected == 15){
-									$("#pesobruto_maximo").prop('disabled', false);
-								}
+						if (_tiene_ingresomanual == 1 && idplanta_Selected == 15) {
+							$("#pesobruto_maximo").prop('disabled', false);
 						}
+					}
 
-					}, "json");
+				}, "json");
 
 			// Abre modal
-				f_OpenModal('modal_configuracionvehicular');
+			f_OpenModal('modal_configuracionvehicular');
 		}
 
 		function f_ConfiguracionVehicular_Selected() {
-			if ($("#configuracion_vehicular").val() == undefined){
+			if ($("#configuracion_vehicular").val() == undefined) {
 				return;
 			}
 
@@ -3172,16 +3205,16 @@ if (!isset($_SESSION["Id"])) {
 			var tiene_ingresomanual = $("#configuracion_vehicular").val().split('|')[2];
 
 			// Valida si tiene Ingreso Manual
-				$("#pesobruto_maximo").prop('disabled', true);
+			$("#pesobruto_maximo").prop('disabled', true);
 
-				// if (tiene_ingresomanual == 1 && idplanta_Selected == 15){
+			// if (tiene_ingresomanual == 1 && idplanta_Selected == 15){
 
-				if (tiene_ingresomanual == 1){
-					$("#pesobruto_maximo").prop('disabled', false);
-				}
+			if (tiene_ingresomanual == 1) {
+				$("#pesobruto_maximo").prop('disabled', false);
+			}
 
 			// Setea Peso Bruto
-				$("#pesobruto_maximo").val(pesobruto_maximo);
+			$("#pesobruto_maximo").val(pesobruto_maximo);
 		}
 
 		function f_AddLoteAUM(_modo, _id_programacion, _item_programacion, _cod_lote, _peso_estimado) {
@@ -3243,10 +3276,13 @@ if (!isset($_SESSION["Id"])) {
 			f_OpenModal('modal_configuracionrci');
 		}
 
-		function f_GetConfiguracionVehicular(_id_registro){
+		function f_GetConfiguracionVehicular(_id_registro) {
 			$("#configuracion_vehicular").html('');
 
-			$.post("apis/backend.php", { accion: "get_ListaConfiguracionVehicular", id_registro: _id_registro },
+			$.post("apis/backend.php", {
+					accion: "get_ListaConfiguracionVehicular",
+					id_registro: _id_registro
+				},
 				function(data) {
 					if (data.estado == 1) {
 						$("#configuracion_vehicular").html(data.html);
@@ -3255,19 +3291,19 @@ if (!isset($_SESSION["Id"])) {
 				}, "json");
 		}
 
-		function f_EditCodigoPlanta(_id_registro, _cod_lote, _cod_planta){
+		function f_EditCodigoPlanta(_id_registro, _cod_lote, _cod_planta) {
 			// Setea título
-				$("#modal_EditCodigoPlantaLabel_1").html(_cod_lote);
-				$("#modal_EditCodigoPlantaLabel_2").html(_cod_planta);
+			$("#modal_EditCodigoPlantaLabel_1").html(_cod_lote);
+			$("#modal_EditCodigoPlantaLabel_2").html(_cod_planta);
 
 			// Setea códigos hidden
-				$("#editCodigoPlanta_idregistro").val(_id_registro);
+			$("#editCodigoPlanta_idregistro").val(_id_registro);
 
 			// Seteando objetos
-				$("#editarCodigoPlanta_Codigo").val(_cod_planta);
+			$("#editarCodigoPlanta_Codigo").val(_cod_planta);
 
 			// Abre modal
-				f_OpenModal('modal_EditCodigoPlanta');
+			f_OpenModal('modal_EditCodigoPlanta');
 		}
 	</script>
 
@@ -3550,124 +3586,124 @@ if (!isset($_SESSION["Id"])) {
 	<script type="text/javascript">
 		function f_ConfirmarProgramacion() {
 			// Recuperando datos hidden
-				var modo = $("#modo_grabarprogramacion").val();
-				var id_programacion = $("#id_programacion").val();
+			var modo = $("#modo_grabarprogramacion").val();
+			var id_programacion = $("#id_programacion").val();
 
 			// Validando datos
-				if ($("#lbl_countlotes").html().trim() == 0) {
-					alert("Debe seleccionar al menos un Lote.");
+			if ($("#lbl_countlotes").html().trim() == 0) {
+				alert("Debe seleccionar al menos un Lote.");
 
-					return;
-				}
+				return;
+			}
 
 			// Arma Array de Lotes seleccionados
-				var l = 1;
-				var arr_lotes = '';
+			var l = 1;
+			var arr_lotes = '';
 
-				$("#tbl_FiltroLotes tr").each(function() {
-					if ($("#chk_lote_" + l).prop('checked')) {
-						arr_lotes += $(this).find("td:eq(1)").text().trim() + '|';
-					}
+			$("#tbl_FiltroLotes tr").each(function() {
+				if ($("#chk_lote_" + l).prop('checked')) {
+					arr_lotes += $(this).find("td:eq(1)").text().trim() + '|';
+				}
 
-					l++;
-				});
+				l++;
+			});
 
-				arr_lotes = arr_lotes.substring(0, arr_lotes.length - 1);
+			arr_lotes = arr_lotes.substring(0, arr_lotes.length - 1);
 
 			// Validacion: al menos un lote debe ser de modalidad VIII o 48 SAC (los unicos que generan codigo de detalle)
-				if (idplanta_Selected == 3 || idplanta_Selected == 5) {
-					var hay_lote_valido = false;
-					var hay_lote_otro = false;
+			if (idplanta_Selected == 3 || idplanta_Selected == 5) {
+				var hay_lote_valido = false;
+				var hay_lote_otro = false;
 
-					var m = 1;
-					$("#tbl_FiltroLotes tr").each(function() {
-						if ($("#chk_lote_" + m).prop('checked')) {
-							var mod_texto = $(this).find("td:eq(5)").text().trim();
+				var m = 1;
+				$("#tbl_FiltroLotes tr").each(function() {
+					if ($("#chk_lote_" + m).prop('checked')) {
+						var mod_texto = $(this).find("td:eq(5)").text().trim();
 
-							if (mod_texto.indexOf('VIII') !== -1 || mod_texto.indexOf('48') !== -1) {
-								hay_lote_valido = true;
-							} else {
-								hay_lote_otro = true;
-							}
+						if (mod_texto.indexOf('VIII') !== -1 || mod_texto.indexOf('48') !== -1) {
+							hay_lote_valido = true;
+						} else {
+							hay_lote_otro = true;
 						}
-						m++;
-					});
+					}
+					m++;
+				});
 
-					if (!hay_lote_valido) {
-						alert("Debe seleccionar al menos un lote con modalidad VIII o 48 SAC para generar codigos de despacho.");
+				if (!hay_lote_valido) {
+					alert("Debe seleccionar al menos un lote con modalidad VIII o 48 SAC para generar codigos de despacho.");
+					return;
+				}
+			}
+
+			// Validacion: si Solandra y aplica campana, debe seleccionar una
+			var is_aplica_campana = 0;
+			var id_campana_sel = 0;
+
+			if (idplanta_Selected == 5) {
+				is_aplica_campana = ($("#chk_aplica_campana").prop('checked')) ? 1 : 0;
+
+				if (is_aplica_campana == 1) {
+					id_campana_sel = parseInt($("#select_campana_activa").val() || 0, 10);
+
+					if (isNaN(id_campana_sel) || id_campana_sel <= 0) {
+						alert("Debe seleccionar una campana activa para Solandra o desmarcar la opcion 'Aplicar Campana'.");
 						return;
 					}
 				}
-
-			// Validacion: si Solandra y aplica campana, debe seleccionar una
-				var is_aplica_campana = 0;
-				var id_campana_sel = 0;
-
-				if (idplanta_Selected == 5) {
-					is_aplica_campana = ($("#chk_aplica_campana").prop('checked')) ? 1 : 0;
-
-					if (is_aplica_campana == 1) {
-						id_campana_sel = parseInt($("#select_campana_activa").val() || 0, 10);
-
-						if (isNaN(id_campana_sel) || id_campana_sel <= 0) {
-							alert("Debe seleccionar una campana activa para Solandra o desmarcar la opcion 'Aplicar Campana'.");
-							return;
-						}
-					}
-				}
+			}
 
 			// Grabando Datos
-				f_LoadingGrabarProgramacion(1);
+			f_LoadingGrabarProgramacion(1);
 
-				if (modo == 'N') {
-					$.post("apis/backend.php", {
-							accion: "confirmar_ProgramacionLote",
-							id_planta: idplanta_Selected,
-							arr_lotes: arr_lotes,
-							is_aplica_campana: is_aplica_campana,
-							id_campana: id_campana_sel
-						},
-						function(data) {
-							if (data.estado == 1) {
-								f_LoadItemPlanta(itemplanta_Selected, idplanta_Selected);
+			if (modo == 'N') {
+				$.post("apis/backend.php", {
+						accion: "confirmar_ProgramacionLote",
+						id_planta: idplanta_Selected,
+						arr_lotes: arr_lotes,
+						is_aplica_campana: is_aplica_campana,
+						id_campana: id_campana_sel
+					},
+					function(data) {
+						if (data.estado == 1) {
+							f_LoadItemPlanta(itemplanta_Selected, idplanta_Selected);
 
-								f_cerrarModal('modal_adminprogramaciones');
-							} else {
-								var mensaje = (typeof data.mensaje !== 'undefined' && data.mensaje.length > 0)
-									? data.mensaje
-									: "Ocurrió un error al momento de agregar el Lote. Código de Error N° " + data.estado + ".";
-								alert(mensaje);
-							}
+							f_cerrarModal('modal_adminprogramaciones');
+						} else {
+							var mensaje = (typeof data.mensaje !== 'undefined' && data.mensaje.length > 0) ?
+								data.mensaje :
+								"Ocurrió un error al momento de agregar el Lote. Código de Error N° " + data.estado + ".";
+							alert(mensaje);
+						}
 
-							f_LoadingGrabarProgramacion(0);
+						f_LoadingGrabarProgramacion(0);
 
-						}, "json");
-				} else {
-					$.post("apis/backend.php", {
-							accion: "confirmar_ProgramacionLote_AddLote",
-							id_planta: idplanta_Selected,
-							id_programacion: id_programacion,
-							arr_lotes: arr_lotes,
-							is_loteaum: 0,
-							is_aplica_campana: is_aplica_campana,
-							id_campana: id_campana_sel
-						},
-						function(data) {
-							if (data.estado == 1) {
-								f_LoadItemPlanta(itemplanta_Selected, idplanta_Selected, 1, $("#item_programacion").val(), $("#id_programacion").val());
+					}, "json");
+			} else {
+				$.post("apis/backend.php", {
+						accion: "confirmar_ProgramacionLote_AddLote",
+						id_planta: idplanta_Selected,
+						id_programacion: id_programacion,
+						arr_lotes: arr_lotes,
+						is_loteaum: 0,
+						is_aplica_campana: is_aplica_campana,
+						id_campana: id_campana_sel
+					},
+					function(data) {
+						if (data.estado == 1) {
+							f_LoadItemPlanta(itemplanta_Selected, idplanta_Selected, 1, $("#item_programacion").val(), $("#id_programacion").val());
 
-								f_cerrarModal('modal_adminprogramaciones');
-							} else {
-								var mensaje = (typeof data.mensaje !== 'undefined' && data.mensaje.length > 0)
-									? data.mensaje
-									: "Ocurrió un error al momento de grabar la Programación. Código de Error N° " + data.estado + ".";
-								alert(mensaje);
-							}
+							f_cerrarModal('modal_adminprogramaciones');
+						} else {
+							var mensaje = (typeof data.mensaje !== 'undefined' && data.mensaje.length > 0) ?
+								data.mensaje :
+								"Ocurrió un error al momento de grabar la Programación. Código de Error N° " + data.estado + ".";
+							alert(mensaje);
+						}
 
-							f_LoadingGrabarProgramacion(0);
+						f_LoadingGrabarProgramacion(0);
 
-						}, "json");
-				}
+					}, "json");
+			}
 		}
 
 		function f_EliminarProgramacion(_item, _id_programacion, _fechahora, _usuario) {
@@ -4317,52 +4353,52 @@ if (!isset($_SESSION["Id"])) {
 			var pesobruto_total = $("#pesobruto_total").val();
 
 			// Validando datos
-				if (id_configuracionvehicular == null) {
-					alert("Debe seleccionar la Configuración Vechiular.");
+			if (id_configuracionvehicular == null) {
+				alert("Debe seleccionar la Configuración Vechiular.");
+
+				return;
+			}
+			if (id_configuracionvehicular.length == 0) {
+				alert("Debe seleccionar la Configuración Vechiular.");
+
+				return;
+			}
+
+			if (pesobruto_maximo == null) {
+				alert("No ha asignado el Peso Bruto Máximo a la Configuración Vehicular seleccionada.");
+
+				return;
+			}
+			if (pesobruto_maximo.length == 0) {
+				alert("No ha asignado el Peso Bruto Máximo a la Configuración Vehicular seleccionada.");
+
+				return;
+			}
+
+			if (!(id_configuracionvehicular.split('|')[0] == 2 || id_configuracionvehicular.split('|')[0] == 3)) { // Para C3 y C4 no debe obligar bonificación
+				if (pesobruto_maximo2 == null) {
+					alert("Debe ingresar el Peso Bruto Máximo (Con Bonificación).");
 
 					return;
 				}
-				if (id_configuracionvehicular.length == 0) {
-					alert("Debe seleccionar la Configuración Vechiular.");
+				if (pesobruto_maximo2.length == 0) {
+					alert("Debe ingresar el Peso Bruto Máximo (Con Bonificación).");
 
 					return;
 				}
+			}
 
-				if (pesobruto_maximo == null) {
-					alert("No ha asignado el Peso Bruto Máximo a la Configuración Vehicular seleccionada.");
-
-					return;
-				}
-				if (pesobruto_maximo.length == 0) {
-					alert("No ha asignado el Peso Bruto Máximo a la Configuración Vehicular seleccionada.");
-
-					return;
-				}
-
-				if (!(id_configuracionvehicular.split('|')[0] == 2 || id_configuracionvehicular.split('|')[0] == 3)){ // Para C3 y C4 no debe obligar bonificación
-					if (pesobruto_maximo2 == null) {
-						alert("Debe ingresar el Peso Bruto Máximo (Con Bonificación).");
-
-						return;
-					}
-					if (pesobruto_maximo2.length == 0) {
-						alert("Debe ingresar el Peso Bruto Máximo (Con Bonificación).");
-
-						return;
-					}
-				}
-
-				if (pesobruto_total == null) {
-					alert("Debe ingresar el Peso Bruto Total Transportado.");
-					return;
-				}
-				if (pesobruto_total.length == 0) {
-					alert("Debe ingresar el Peso Bruto Total Transportado.");
-					return;
-				}
+			if (pesobruto_total == null) {
+				alert("Debe ingresar el Peso Bruto Total Transportado.");
+				return;
+			}
+			if (pesobruto_total.length == 0) {
+				alert("Debe ingresar el Peso Bruto Total Transportado.");
+				return;
+			}
 
 			// Grabar Cierre
-				f_LoadingGrabar_ConfiguracionVehicular(1);
+			f_LoadingGrabar_ConfiguracionVehicular(1);
 
 			$.post("apis/backend.php", {
 					accion: "grabar_ConfiguracionVehicular_PesosyMedidas",
@@ -4377,14 +4413,15 @@ if (!isset($_SESSION["Id"])) {
 						$.each(data.res, function(key, val) {
 							// Imprime el Informe por Remitente
 							var url = 'print_pesosmedidas.php?x=' + id_distribucionunidadmd5 + '&r=' + val.ruc + '&z=' + val.razon_social;
+							if (val.ruc != null && val.razon_social != null) {
+								window.open(url, '_blank');
 
-							window.open(url, '_blank');
+							}
 						});
 
 						// Cerrar Modal
-							f_cerrarModal('modal_configuracionvehicular');
-					}
-					else{
+						f_cerrarModal('modal_configuracionvehicular');
+					} else {
 						alert("Ocurrió un error al momento de grabar la Configuración Vehicular.");
 					}
 
@@ -4452,7 +4489,7 @@ if (!isset($_SESSION["Id"])) {
 				},
 				function(data) {
 					if (data.estado == 1) {
-						f_PrintRCI_PDF(id_distribucionunidadmd5);
+						f_PrintRCI_PDF(id_distribucionunidadmd5, id_distribucionunidad);
 
 						// Cerrar Modal
 						f_cerrarModal('modal_configuracionrci');
@@ -4466,17 +4503,21 @@ if (!isset($_SESSION["Id"])) {
 
 		}
 
-		function f_GrabarCodigosCMH(_id_programaciondetalle, _item){
+		function f_GrabarCodigosCMH(_id_programaciondetalle, _item) {
 			var codigo = "";
 
-			if (_item == 1){
+			if (_item == 1) {
 				codigo = $("#cmh_codigodocumentos_" + _id_programaciondetalle).val().trim().toUpperCase();
-			}
-			else{
+			} else {
 				codigo = $("#cmh_codigoguias_" + _id_programaciondetalle).val().trim().toUpperCase();
 			}
 
-			$.post("apis/backend.php", { accion: "grabar_ProgramacionDespachos_CodigosCMH", id_programaciondetalle: _id_programaciondetalle, item: _item, codigo: codigo },
+			$.post("apis/backend.php", {
+					accion: "grabar_ProgramacionDespachos_CodigosCMH",
+					id_programaciondetalle: _id_programaciondetalle,
+					item: _item,
+					codigo: codigo
+				},
 				function(data) {
 					if (data.estado == 0) {
 						alert("Ocurrió un error al momento de grabar el Código.");
@@ -4485,33 +4526,36 @@ if (!isset($_SESSION["Id"])) {
 				}, "json");
 		}
 
-		function f_ConfirmarEditCodigoPlanta(){
+		function f_ConfirmarEditCodigoPlanta() {
 			// Obteniendo datos
-				var id_registro = $("#editCodigoPlanta_idregistro").val();
-				var cod_lote = $("#modal_EditCodigoPlantaLabel_1").html().trim();
-				var codigo_planta = f_CleanInjection($("#editarCodigoPlanta_Codigo").val().trim());
+			var id_registro = $("#editCodigoPlanta_idregistro").val();
+			var cod_lote = $("#modal_EditCodigoPlantaLabel_1").html().trim();
+			var codigo_planta = f_CleanInjection($("#editarCodigoPlanta_Codigo").val().trim());
 
 			// Validando datos
-				if (codigo_planta == null) {
-					alert("Debe ingresar el Código de Planta.");
+			if (codigo_planta == null) {
+				alert("Debe ingresar el Código de Planta.");
 
-					return;
-				}
-				if (codigo_planta.length == 0) {
-					alert("Debe ingresar el Código de Planta.");
+				return;
+			}
+			if (codigo_planta.length == 0) {
+				alert("Debe ingresar el Código de Planta.");
 
-					return;
-				}
+				return;
+			}
 
-			$.post("apis/backend.php", { accion: "grabar_ProgramacionDespachos_EditarCodigoPlanta", id_registro: id_registro, codigo_planta: codigo_planta },
+			$.post("apis/backend.php", {
+					accion: "grabar_ProgramacionDespachos_EditarCodigoPlanta",
+					id_registro: id_registro,
+					codigo_planta: codigo_planta
+				},
 				function(data) {
 					if (data.estado == 1) {
 						var html = codigo_planta;
 						html += '<i class="bi bi-pencil-square" style="cursor: pointer; margin-left: 5px;" onclick="f_EditCodigoPlanta(' + id_registro + ", '" + cod_lote + "', '" + codigo_planta + "'" + ')"></i>';
 
 						$("#trdiv_CodigoPlanta_" + id_registro).html(html);
-					}
-					else{
+					} else {
 						alert("Ocurrió un error al momento de grabar el Código.");
 					}
 
@@ -4878,37 +4922,37 @@ if (!isset($_SESSION["Id"])) {
 						$("#guia_motivotraslado").val(data.motivo_traslado);
 
 						// Obtener la fecha actual en formato yyyy-MM-dd
-							if (_is_edit == 1) {
-								const fechaActual = new Date().toISOString().slice(0, 10);
+						if (_is_edit == 1) {
+							const fechaActual = new Date().toISOString().slice(0, 10);
 
-								$("#fecha_emision").val(data.fechahora_emision ? data.fechahora_emision.split(" ")[0] : fechaActual);
-								$("#hora_emision").val(data.fechahora_emision ? data.fechahora_emision.split(" ")[1] : '<?php echo substr($g_time, 0, 5) ?>');
-								$("#guia_fechas").val(data.fecha_guia || fechaActual);
-							}
+							$("#fecha_emision").val(data.fechahora_emision ? data.fechahora_emision.split(" ")[0] : fechaActual);
+							$("#hora_emision").val(data.fechahora_emision ? data.fechahora_emision.split(" ")[1] : '<?php echo substr($g_time, 0, 5) ?>');
+							$("#guia_fechas").val(data.fecha_guia || fechaActual);
+						}
 
-							if (_is_edit != 1) {
-								$("#guia_conductor").val(data.chofer);
-							} else {
-								$("#guia_conductor").val(_id_chofer);
-							}
+						if (_is_edit != 1) {
+							$("#guia_conductor").val(data.chofer);
+						} else {
+							$("#guia_conductor").val(_id_chofer);
+						}
 
 						// Determina si tiene Placa 2
-							if ($("#infolotes_placa2_1").html() != undefined) {
-								if ($("#infolotes_placa2_1").html().trim().length > 0) {
-									$(".info_placa2").show();
-								}
-
-								$("#guia_placa2").val($("#infolotes_placa2_1").html().trim());
-								$("#guia_constanciamtc2").val(data.codigo_mtc_2);
-								$("#guia_marcaunidad2").val(data.marca_2);
-								$("#guia_marcaunidad2").trigger('change');
+						if ($("#infolotes_placa2_1").html() != undefined) {
+							if ($("#infolotes_placa2_1").html().trim().length > 0) {
+								$(".info_placa2").show();
 							}
 
+							$("#guia_placa2").val($("#infolotes_placa2_1").html().trim());
+							$("#guia_constanciamtc2").val(data.codigo_mtc_2);
+							$("#guia_marcaunidad2").val(data.marca_2);
+							$("#guia_marcaunidad2").trigger('change');
+						}
+
 						// Actualiza los Select2
-							$("#guia_conductor").trigger('change');
-							$("#guia_transportista").trigger('change');
-							$("#guia_placa").trigger('change');
-							$("#guia_placa2").trigger('change');
+						$("#guia_conductor").trigger('change');
+						$("#guia_transportista").trigger('change');
+						$("#guia_placa").trigger('change');
+						$("#guia_placa2").trigger('change');
 					}
 
 				}, "json");
@@ -5576,361 +5620,361 @@ if (!isset($_SESSION["Id"])) {
 			var guia_ajustecapacidad = $("#guia_ajustecapacidad").val();
 
 			// obteniendo valor de las fechas
-				var fecha_emision = $("#fecha_emision").val();
-				var hora_emision = $("#hora_emision").val();
-				var guia_fechas = $("#guia_fechas").val();
+			var fecha_emision = $("#fecha_emision").val();
+			var hora_emision = $("#hora_emision").val();
+			var guia_fechas = $("#guia_fechas").val();
 
 			// Validando datos
-				if (fecha_emision == null) {
-					alert("Debe registrar la Fecha de Emisión.");
+			if (fecha_emision == null) {
+				alert("Debe registrar la Fecha de Emisión.");
 
-					return;
-				}
-				if (fecha_emision.length == 0) {
-					alert("Debe registrar la Fecha de Emisión.");
+				return;
+			}
+			if (fecha_emision.length == 0) {
+				alert("Debe registrar la Fecha de Emisión.");
 
-					return;
-				}
+				return;
+			}
 
-				if (hora_emision == null) {
-					alert("Debe registrar la Hora de Emisión.");
+			if (hora_emision == null) {
+				alert("Debe registrar la Hora de Emisión.");
 
-					return;
-				}
-				if (hora_emision.length == 0) {
-					alert("Debe registrar la Hora de Emisión.");
+				return;
+			}
+			if (hora_emision.length == 0) {
+				alert("Debe registrar la Hora de Emisión.");
 
-					return;
-				}
+				return;
+			}
 
-				if (guia_fechas == null) {
-					alert("Debe registrar la Fecha de las Guías.");
+			if (guia_fechas == null) {
+				alert("Debe registrar la Fecha de las Guías.");
 
-					return;
-				}
-				if (guia_fechas.length == 0) {
-					alert("Debe registrar la Fecha de las Guías.");
+				return;
+			}
+			if (guia_fechas.length == 0) {
+				alert("Debe registrar la Fecha de las Guías.");
 
-					return;
-				}
+				return;
+			}
 
-				if (guia_remitenteserie == null) {
-					alert("Debe registrar la Serie de la Guía del Remitente.");
+			if (guia_remitenteserie == null) {
+				alert("Debe registrar la Serie de la Guía del Remitente.");
 
-					return;
-				}
-				if (guia_remitenteserie.length == 0) {
-					alert("Debe registrar la Serie de la Guía del Remitente.");
+				return;
+			}
+			if (guia_remitenteserie.length == 0) {
+				alert("Debe registrar la Serie de la Guía del Remitente.");
 
-					return;
-				}
+				return;
+			}
 
-				if (guia_remitentenumero == null) {
-					alert("Debe registrar el Número de Guía del Remitente.");
+			if (guia_remitentenumero == null) {
+				alert("Debe registrar el Número de Guía del Remitente.");
 
-					return;
-				}
-				if (guia_remitentenumero.length == 0) {
-					alert("Debe registrar el Número de Guía del Remitente.");
+				return;
+			}
+			if (guia_remitentenumero.length == 0) {
+				alert("Debe registrar el Número de Guía del Remitente.");
 
-					return;
-				}
+				return;
+			}
 
-				if (guia_puntopartida == null) {
-					alert("El Punto de Partida no ha sido configurado correctamente, por favor verificar.");
+			if (guia_puntopartida == null) {
+				alert("El Punto de Partida no ha sido configurado correctamente, por favor verificar.");
 
-					return;
-				}
-				if (guia_puntopartida.length == 0) {
-					alert("El Punto de Partida no ha sido configurado correctamente, por favor verificar.");
+				return;
+			}
+			if (guia_puntopartida.length == 0) {
+				alert("El Punto de Partida no ha sido configurado correctamente, por favor verificar.");
 
-					return;
-				}
+				return;
+			}
 
-				if (guia_puntodestino == null) {
-					alert("El Punto de Destino no ha sido configurado correctamente, por favor verificar.");
+			if (guia_puntodestino == null) {
+				alert("El Punto de Destino no ha sido configurado correctamente, por favor verificar.");
 
-					return;
-				}
-				if (guia_puntodestino.length == 0) {
-					alert("El Punto de Destino no ha sido configurado correctamente, por favor verificar.");
+				return;
+			}
+			if (guia_puntodestino.length == 0) {
+				alert("El Punto de Destino no ha sido configurado correctamente, por favor verificar.");
 
-					return;
-				}
+				return;
+			}
 
-				if (guia_destinatario == null) {
-					alert("El Destinatario no ha sido configurado correctamente, por favor verificar.");
+			if (guia_destinatario == null) {
+				alert("El Destinatario no ha sido configurado correctamente, por favor verificar.");
 
-					return;
-				}
-				if (guia_destinatario.length == 0) {
-					alert("El Destinatario no ha sido configurado correctamente, por favor verificar.");
+				return;
+			}
+			if (guia_destinatario.length == 0) {
+				alert("El Destinatario no ha sido configurado correctamente, por favor verificar.");
 
-					return;
-				}
+				return;
+			}
 
-				if (guia_transportista == null) {
-					alert("La Empresa de Transporte no ha sido configurada correctamente, por favor verificar.");
+			if (guia_transportista == null) {
+				alert("La Empresa de Transporte no ha sido configurada correctamente, por favor verificar.");
 
-					return;
-				}
-				if (guia_transportista.length == 0) {
-					alert("La Empresa de Transporte no ha sido configurada correctamente, por favor verificar.");
+				return;
+			}
+			if (guia_transportista.length == 0) {
+				alert("La Empresa de Transporte no ha sido configurada correctamente, por favor verificar.");
 
-					return;
-				}
+				return;
+			}
 
-				if (guia_constanciamtc == null) {
-					alert("Debe registrar el N° de Constancia MTC de la Placa 1.");
+			if (guia_constanciamtc == null) {
+				alert("Debe registrar el N° de Constancia MTC de la Placa 1.");
 
-					return;
-				}
-				if (guia_constanciamtc.length == 0) {
-					alert("Debe registrar el N° de Constancia MTC de la Placa 1.");
+				return;
+			}
+			if (guia_constanciamtc.length == 0) {
+				alert("Debe registrar el N° de Constancia MTC de la Placa 1.");
 
-					return;
-				}
+				return;
+			}
 
-				if (guia_marcaunidad == null) {
-					alert("Debe registrar la Marca de la Placa 1.");
+			if (guia_marcaunidad == null) {
+				alert("Debe registrar la Marca de la Placa 1.");
 
-					return;
-				}
-				if (guia_marcaunidad.length == 0) {
-					alert("Debe registrar la Marca de la Placa 1.");
+				return;
+			}
+			if (guia_marcaunidad.length == 0) {
+				alert("Debe registrar la Marca de la Placa 1.");
 
-					return;
-				}
+				return;
+			}
 
 			// Determinando si la segunda placa es visible
-				if ($(".info_placa2:first").is(":visible")) {
-					if (guia_constanciamtc2 == null) {
-						alert("Debe registrar el N° de Constancia MTC de la Placa 2.");
-
-						return;
-					}
-					if (guia_constanciamtc2.length == 0) {
-						alert("Debe registrar el N° de Constancia MTC de la Placa 2.");
-
-						return;
-					}
-
-					if (guia_marcaunidad2 == null) {
-						alert("Debe registrar la Marca de la Placa 2.");
-
-						return;
-					}
-					if (guia_marcaunidad2.length == 0) {
-						alert("Debe registrar la Marca de la Placa 2.");
-
-						return;
-					}
-				} else {
-					guia_placa2 = '';
-					guia_constanciamtc2 = '';
-					guia_marcaunidad2 = '';
-				}
-
-				if (guia_conductor == null) {
-					alert("Debe seleccionar el Conductor.");
+			if ($(".info_placa2:first").is(":visible")) {
+				if (guia_constanciamtc2 == null) {
+					alert("Debe registrar el N° de Constancia MTC de la Placa 2.");
 
 					return;
 				}
-				if (guia_conductor.length == 0) {
-					alert("Debe seleccionar el Conductor.");
+				if (guia_constanciamtc2.length == 0) {
+					alert("Debe registrar el N° de Constancia MTC de la Placa 2.");
 
 					return;
 				}
 
-				if (guia_motivotraslado == null) {
-					alert("El Motivo de Traslado no ha sido configurado correctamente, por favor verificar.");
+				if (guia_marcaunidad2 == null) {
+					alert("Debe registrar la Marca de la Placa 2.");
 
 					return;
 				}
-				if (guia_motivotraslado.length == 0) {
-					alert("El Motivo de Traslado no ha sido configurado correctamente, por favor verificar.");
+				if (guia_marcaunidad2.length == 0) {
+					alert("Debe registrar la Marca de la Placa 2.");
 
 					return;
 				}
+			} else {
+				guia_placa2 = '';
+				guia_constanciamtc2 = '';
+				guia_marcaunidad2 = '';
+			}
+
+			if (guia_conductor == null) {
+				alert("Debe seleccionar el Conductor.");
+
+				return;
+			}
+			if (guia_conductor.length == 0) {
+				alert("Debe seleccionar el Conductor.");
+
+				return;
+			}
+
+			if (guia_motivotraslado == null) {
+				alert("El Motivo de Traslado no ha sido configurado correctamente, por favor verificar.");
+
+				return;
+			}
+			if (guia_motivotraslado.length == 0) {
+				alert("El Motivo de Traslado no ha sido configurado correctamente, por favor verificar.");
+
+				return;
+			}
 
 			// Validando la Capacidad de la Placa 1 / PLaca 2
-				if ($(".info_placa2:first").is(":visible")) {
-					if (guia_capacidadunidad == null) {
-						alert("Debe registrar la Capacidad de la Unidad 2.");
+			if ($(".info_placa2:first").is(":visible")) {
+				if (guia_capacidadunidad == null) {
+					alert("Debe registrar la Capacidad de la Unidad 2.");
 
-						return;
-					}
-					if (guia_capacidadunidad.length == 0) {
-						alert("Debe registrar la Capacidad de la Unidad 2.");
-
-						return;
-					}
-					if (guia_capacidadunidad <= 0) {
-						alert("La Capacidad ingresada es incorrecta.");
-
-						return;
-					}
-				} else {
-					if (guia_capacidadunidad == null) {
-						alert("Debe registrar la Capacidad de la Unidad 1.");
-
-						return;
-					}
-					if (guia_capacidadunidad.length == 0) {
-						alert("Debe registrar la Capacidad de la Unidad 1.");
-
-						return;
-					}
-					if (guia_capacidadunidad <= 0) {
-						alert("La Capacidad ingresada es incorrecta.");
-
-						return;
-					}
+					return;
 				}
+				if (guia_capacidadunidad.length == 0) {
+					alert("Debe registrar la Capacidad de la Unidad 2.");
+
+					return;
+				}
+				if (guia_capacidadunidad <= 0) {
+					alert("La Capacidad ingresada es incorrecta.");
+
+					return;
+				}
+			} else {
+				if (guia_capacidadunidad == null) {
+					alert("Debe registrar la Capacidad de la Unidad 1.");
+
+					return;
+				}
+				if (guia_capacidadunidad.length == 0) {
+					alert("Debe registrar la Capacidad de la Unidad 1.");
+
+					return;
+				}
+				if (guia_capacidadunidad <= 0) {
+					alert("La Capacidad ingresada es incorrecta.");
+
+					return;
+				}
+			}
 
 			// Validando el Ajuste de Capacidad
-				if ($("#chk_AjusteCapacidad").prop('checked')) {
-					if (guia_ajustecapacidad == null) {
-						alert("No ha ingresado el Ajuste de Capacidad.");
+			if ($("#chk_AjusteCapacidad").prop('checked')) {
+				if (guia_ajustecapacidad == null) {
+					alert("No ha ingresado el Ajuste de Capacidad.");
 
-						return;
-					}
-					if (guia_ajustecapacidad.length == 0) {
-						alert("No ha ingresado el Ajuste de Capacidad.");
-
-						return;
-					}
-					if (guia_ajustecapacidad <= 0) {
-						alert("El Ajuste de Capacidad ingresado es incorrecto.");
-
-						return;
-					}
-				} else {
-					guia_ajustecapacidad = '';
+					return;
 				}
+				if (guia_ajustecapacidad.length == 0) {
+					alert("No ha ingresado el Ajuste de Capacidad.");
+
+					return;
+				}
+				if (guia_ajustecapacidad <= 0) {
+					alert("El Ajuste de Capacidad ingresado es incorrecto.");
+
+					return;
+				}
+			} else {
+				guia_ajustecapacidad = '';
+			}
 
 			// Valida el registro de Pesos Ajustados
-				var d = 1;
-				var total_rows = $("#tbl_guialistalotes tr").length;
+			var d = 1;
+			var total_rows = $("#tbl_guialistalotes tr").length;
 
-				while (d < total_rows) {
-					if ($("#guialote_pesoajustado_" + d).val().trim() == 0) {
-						alert("Debe ingresar el Peso Ajustado para:\n   - Lote: " + $("#guialote_lote_" + d).html().trim() + "\n   - Ticket: " + $("#guialote_ticket_" + d).html().trim().replace('<b>', '').replace('</b>', ''));
-
-						return;
-					}
-
-					d++;
-				}
-
-			// Valida si no se generará Guía de Transportista
-				if (sin_GRT == 1) {
-					if (!confirm("¿Está seguro de Emitir la Guía del Remitente sin Guía del Transportista?")) {
-						return;
-					}
-
-					guia_transportistaserie = '';
-					guia_transportistanumero = '';
-				} else {
-					if (guia_transportistaserie == null) {
-						alert("Debe registrar la Serie de la Guía del Transportista.");
-
-						return;
-					}
-					if (guia_transportistaserie.length == 0) {
-						alert("Debe registrar la Serie de la Guía del Transportista.");
-
-						return;
-					}
-
-					if (guia_transportistanumero == null) {
-						alert("Debe registrar el Número de Guía del Transportista.");
-
-						return;
-					}
-					if (guia_transportistanumero.length == 0) {
-						alert("Debe registrar el Número de Guía del Transportista.");
-
-						return;
-					}
-				}
-
-			// Valida que el Peso Distribuido no exceda la Capacidad del Vehículo
-				var total_distribuido = parseFloat($("#guialote_totalpesoajustado").html().trim());
-				var capacidad_unidad = parseFloat((($("#chk_AjusteCapacidad").prop('checked')) ? $("#guia_ajustecapacidad_total").val() : $("#guia_capacidadunidad").val()));
-
-				if (total_distribuido > capacidad_unidad) {
-					alert("El Peso Total es mayor a la capacidad de la unidad.\nPor favor, verificar.");
+			while (d < total_rows) {
+				if ($("#guialote_pesoajustado_" + d).val().trim() == 0) {
+					alert("Debe ingresar el Peso Ajustado para:\n   - Lote: " + $("#guialote_lote_" + d).html().trim() + "\n   - Ticket: " + $("#guialote_ticket_" + d).html().trim().replace('<b>', '').replace('</b>', ''));
 
 					return;
 				}
 
-			// Obtiene el detalle de Lotes
-				var d = 1;
-				var arr_infolotes = '';
+				d++;
+			}
 
-				while (d < total_rows) {
-					arr_infolotes += $("#id_guialote_" + d).val() + ';' + $("#guialote_descripcionbien_" + d).val() + ';' + $("#guialote_descripcionbien_" + d + ' option:selected').text() + ';' + parseFloat($("#guialote_pesoajustado_" + d).val()) + '|';
-
-					d++;
+			// Valida si no se generará Guía de Transportista
+			if (sin_GRT == 1) {
+				if (!confirm("¿Está seguro de Emitir la Guía del Remitente sin Guía del Transportista?")) {
+					return;
 				}
 
-				arr_infolotes = arr_infolotes.substring(0, arr_infolotes.length - 1);
+				guia_transportistaserie = '';
+				guia_transportistanumero = '';
+			} else {
+				if (guia_transportistaserie == null) {
+					alert("Debe registrar la Serie de la Guía del Transportista.");
+
+					return;
+				}
+				if (guia_transportistaserie.length == 0) {
+					alert("Debe registrar la Serie de la Guía del Transportista.");
+
+					return;
+				}
+
+				if (guia_transportistanumero == null) {
+					alert("Debe registrar el Número de Guía del Transportista.");
+
+					return;
+				}
+				if (guia_transportistanumero.length == 0) {
+					alert("Debe registrar el Número de Guía del Transportista.");
+
+					return;
+				}
+			}
+
+			// Valida que el Peso Distribuido no exceda la Capacidad del Vehículo
+			var total_distribuido = parseFloat($("#guialote_totalpesoajustado").html().trim());
+			var capacidad_unidad = parseFloat((($("#chk_AjusteCapacidad").prop('checked')) ? $("#guia_ajustecapacidad_total").val() : $("#guia_capacidadunidad").val()));
+
+			if (total_distribuido > capacidad_unidad) {
+				alert("El Peso Total es mayor a la capacidad de la unidad.\nPor favor, verificar.");
+
+				return;
+			}
+
+			// Obtiene el detalle de Lotes
+			var d = 1;
+			var arr_infolotes = '';
+
+			while (d < total_rows) {
+				arr_infolotes += $("#id_guialote_" + d).val() + ';' + $("#guialote_descripcionbien_" + d).val() + ';' + $("#guialote_descripcionbien_" + d + ' option:selected').text() + ';' + parseFloat($("#guialote_pesoajustado_" + d).val()) + '|';
+
+				d++;
+			}
+
+			arr_infolotes = arr_infolotes.substring(0, arr_infolotes.length - 1);
 
 			// Grabando datos
-				f_LoadingConfirmarGuia(1);
+			f_LoadingConfirmarGuia(1);
 
-				$.post("apis/backend.php", {
-						accion: "grabar_SegundoTramo_GestionGuias",
-						modograbar_guia: modograbar_guia,
-						guia_fechas: guia_fechas,
-						fechahora_emision: `${fecha_emision } ${hora_emision}`,
-						guia_remitenteserie: guia_remitenteserie,
-						guia_remitentenumero: guia_remitentenumero,
-						guia_transportistaserie: guia_transportistaserie,
-						guia_transportistanumero: guia_transportistanumero,
-						guias_remitenteruc: guiaremitente_ruc,
-						guias_remitenterazonsocial: guiaremitente_razonsocial,
-						guia_puntopartida: guia_puntopartida,
-						guia_puntodestino: guia_puntodestino,
-						guia_destinatario: guia_destinatario,
-						guia_placa: guia_placa,
-						guia_constanciamtc: guia_constanciamtc,
-						guia_marcaunidad: guia_marcaunidad,
-						guia_placa2: guia_placa2,
-						guia_constanciamtc2: guia_constanciamtc2,
-						guia_marcaunidad2: guia_marcaunidad2,
-						guia_conductor: guia_conductor,
-						guia_motivotraslado: guia_motivotraslado,
-						guia_capacidadunidad: guia_capacidadunidad,
-						guia_ajustecapacidad: guia_ajustecapacidad,
-						arr_infolotes: arr_infolotes,
-						id_destino: iddestino_selected,
-						id_modalidadenvio: idmodalidadenvio_selected,
-						guia_transportista: guia_transportista
-					},
-					function(data) {
-						if (data.estado == 1) {
-							// Imprimir Guías
-							url = 'print_segundotramo_guiar.php?x=' + data.id_distribucionunidad + '&a=' + data.gr_serie + '&b=' + data.gr_numero + '&c=' + idmodalidadenvio_selected;
+			$.post("apis/backend.php", {
+					accion: "grabar_SegundoTramo_GestionGuias",
+					modograbar_guia: modograbar_guia,
+					guia_fechas: guia_fechas,
+					fechahora_emision: `${fecha_emision } ${hora_emision}`,
+					guia_remitenteserie: guia_remitenteserie,
+					guia_remitentenumero: guia_remitentenumero,
+					guia_transportistaserie: guia_transportistaserie,
+					guia_transportistanumero: guia_transportistanumero,
+					guias_remitenteruc: guiaremitente_ruc,
+					guias_remitenterazonsocial: guiaremitente_razonsocial,
+					guia_puntopartida: guia_puntopartida,
+					guia_puntodestino: guia_puntodestino,
+					guia_destinatario: guia_destinatario,
+					guia_placa: guia_placa,
+					guia_constanciamtc: guia_constanciamtc,
+					guia_marcaunidad: guia_marcaunidad,
+					guia_placa2: guia_placa2,
+					guia_constanciamtc2: guia_constanciamtc2,
+					guia_marcaunidad2: guia_marcaunidad2,
+					guia_conductor: guia_conductor,
+					guia_motivotraslado: guia_motivotraslado,
+					guia_capacidadunidad: guia_capacidadunidad,
+					guia_ajustecapacidad: guia_ajustecapacidad,
+					arr_infolotes: arr_infolotes,
+					id_destino: iddestino_selected,
+					id_modalidadenvio: idmodalidadenvio_selected,
+					guia_transportista: guia_transportista
+				},
+				function(data) {
+					if (data.estado == 1) {
+						// Imprimir Guías
+						url = 'print_segundotramo_guiar.php?x=' + data.id_distribucionunidad + '&a=' + data.gr_serie + '&b=' + data.gr_numero + '&c=' + idmodalidadenvio_selected;
+						window.open(url, '_blank');
+
+						if (sin_GRT == 0) {
+							url = 'print_segundotramo_guiat.php?x=' + data.id_distribucionunidad + '&a=' + data.gt_serie + '&b=' + data.gt_numero + '&c=' + idmodalidadenvio_selected;
 							window.open(url, '_blank');
-
-							if (sin_GRT == 0) {
-								url = 'print_segundotramo_guiat.php?x=' + data.id_distribucionunidad + '&a=' + data.gt_serie + '&b=' + data.gt_numero + '&c=' + idmodalidadenvio_selected;
-								window.open(url, '_blank');
-							}
-
-							f_LoadItemAgrupacion(itemagrupacion_Selected, iddistribucionunidad_selected, iddestino_selected, idmodalidadenvio_selected, codigodespacho_selected, fechaestimadadespacho_selected, placa_selected, idproveedorminero_selected);
-						} else {
-							alert("Ocurrió un error al momento de confirmar las guías.");
 						}
 
-						// Cierra modal
-						f_cerrarModal('modal_adminguias');
+						f_LoadItemAgrupacion(itemagrupacion_Selected, iddistribucionunidad_selected, iddestino_selected, idmodalidadenvio_selected, codigodespacho_selected, fechaestimadadespacho_selected, placa_selected, idproveedorminero_selected);
+					} else {
+						alert("Ocurrió un error al momento de confirmar las guías.");
+					}
 
-						f_LoadingConfirmarGuia(0);
+					// Cierra modal
+					f_cerrarModal('modal_adminguias');
 
-					}, "json");
+					f_LoadingConfirmarGuia(0);
+
+				}, "json");
 		}
 
 		function f_EliminarGuia(_id_unidad, _numguia_serie, _numguia_numero) {
