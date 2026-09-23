@@ -301,7 +301,7 @@ WHERE DU.id_programacion = '".$id_programacion."'
 					// Acumula correlativos únicos por empresita
 					$cod_desp = trim($row_datos["codigo_despacho"]);
 					$cod_desp_comer = trim($row_datos["codigo_despacho_comercializacion"]);
-					$correlativo_item = ((strlen($cod_desp_comer) > 0) ? $cod_desp.' / '.$cod_desp_comer : $cod_desp);
+					$correlativo_item = ((strlen($cod_desp_comer) > 0) ? $cod_desp_comer : $cod_desp);
 					if (!in_array($correlativo_item, $correlativos_por_empresita[$empresita_key])) {
 						$correlativos_por_empresita[$empresita_key][] = $correlativo_item;
 					}
