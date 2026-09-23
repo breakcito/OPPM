@@ -2410,12 +2410,16 @@ function f_ResyncTicketContable_ResumenBalanza($enlace, $id_registro, $item, $va
 				$vd_campo = 'lote_id_tipomineral';
 				break;
 			case 13:
+				// En resumen_balanza el usuario ingresa el peso en KG (tal como lo muestra el label).
+				// El print_ticketbalanza.php muestra V.lote_peso_inicial directamente (en KG).
+				// NO se multiplica por 1000 (a diferencia de primertramo_distribucion donde el input
+				// ya viene dividido por 1000).
 				$vd_campo = 'lote_peso_inicial';
-				$vd_valor_sql = "(" . floatval($valor_original) . " * 1000)";
+				$vd_valor_sql = floatval($valor_original);
 				break;
 			case 14:
 				$vd_campo = 'lote_peso_final';
-				$vd_valor_sql = "(" . floatval($valor_original) . " * 1000)";
+				$vd_valor_sql = floatval($valor_original);
 				break;
 			case 15:
 				$vd_campo = 'despacho_observacion';
@@ -2446,20 +2450,28 @@ function f_ResyncTicketContable_ResumenBalanza($enlace, $id_registro, $item, $va
 			return;
 		}
 
-		// 4. Si se actualizó un peso, recalcular el otro peso para mantener consistencia
-		//    (regla de negocio: lote_peso_inicial - lote_peso_final = lote_peso_neto)
-		if (intval($item) == 13) {
-			$q_recalc = "UPDATE despachos_primertramo_validaciondatos
-										 SET lote_peso_final = lote_peso_inicial - lote_peso_neto
-									 WHERE Id = " . $id_vd;
+		// 4. Si se actualizó un peso (item 13 = bruto, item 14 = tara), re-sincronizar TODOS
+		//    los campos de peso de despachos_primertramo_validaciondatos desde catalogolotes.
+		//    Esto es necesario porque:
+		//      a) En resumen_balanza el input llega en KG sin divisor de 1000 (a diferencia de
+		//         update_PrimerTramo_DistribucionDatos).
+		//      b) q_save + q_save2 ya actualizaron catalogolotes correctamente (nPeso_InicialBalanza,
+		//         nPeso_FinalBalanza, nPesoBrutoBalanza, nPesoTaraBalanza, nPesoNetoBalanza).
+		//      c) V puede tener valores stale de ediciones previas (por ejemplo, lote_peso_final
+		//         corrupto por la regla anterior que recalculaba en base a lote_peso_neto viejo).
+		//         Sincronizar desde catalogolotes es la unica forma de garantizar que el ticket
+		//         muestre los valores correctos sin arrastrar incoherencias entre bruto, tara y neto.
+		if (intval($item) == 13 || intval($item) == 14) {
+			$q_sync = "UPDATE despachos_primertramo_validaciondatos V
+									INNER JOIN catalogolotes L ON V.lote_id_lote = L.id_CatalogoLotes
+									   SET V.lote_peso_inicial = L.nPeso_InicialBalanza,
+										   V.lote_peso_final   = L.nPeso_FinalBalanza,
+										   V.lote_peso_bruto   = L.nPesoBrutoBalanza,
+										   V.lote_peso_tara    = L.nPesoTaraBalanza,
+										   V.lote_peso_neto    = L.nPesoNetoBalanza
+									 WHERE V.Id = " . $id_vd;
 
-			mysqli_query($enlace, $q_recalc);
-		} elseif (intval($item) == 14) {
-			$q_recalc = "UPDATE despachos_primertramo_validaciondatos
-										 SET lote_peso_inicial = lote_peso_final + lote_peso_neto
-									 WHERE Id = " . $id_vd;
-
-			mysqli_query($enlace, $q_recalc);
+			mysqli_query($enlace, $q_sync);
 		}
 
 		$id_tipoingreso_sync = 1;
@@ -22427,26 +22439,26 @@ switch ($_POST["accion"]) {
 
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-weight: bold; background-color: #f8da62;">';
 					$html .= '		<label id="lbl_text_2_' . $row_balanza["id_controlIngresoVehiculo"] . '">' . $row_balanza["placa"] . '</label>';
-					$html .= '    <i id="event_click_2_' . $row_balanza["id_controlIngresoVehiculo"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_controlIngresoVehiculo"] . ', 2, ' . "'" . $row_balanza["placa"] . "'" . ')"></i>';
+					$html .= '    <i id="event_click_2_' . $row_balanza["id_controlIngresoVehiculo"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_controlIngresoVehiculo"] . ', 2, ' . "'" . $row_balanza["placa"] . "', " . $row_balanza["TIPO_CONDICION"] . ')"></i>';
 					$html .= '  </td>';
 
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
 					$html .= '		<label id="lbl_text_3_' . $row_balanza["id_controlIngresoVehiculo"] . '">' . $row_balanza["placa2"] . '</label>';
-					$html .= '    <i id="event_click_3_' . $row_balanza["id_controlIngresoVehiculo"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_controlIngresoVehiculo"] . ', 3, ' . "'" . $row_balanza["placa2"] . "'" . ')"></i>';
+					$html .= '    <i id="event_click_3_' . $row_balanza["id_controlIngresoVehiculo"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_controlIngresoVehiculo"] . ', 3, ' . "'" . $row_balanza["placa2"] . "', " . $row_balanza["TIPO_CONDICION"] . ')"></i>';
 					$html .= '  </td>';
 
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
 
 					if ($row_balanza["id_tipoingresounidad"] == 1) {
 						$html .= '		<label id="lbl_text_18_' . $row_balanza["id_CatalogoLotes"] . '">' . $row_balanza["PLANTA_INGRESO"] . '</label>';
-						$html .= '    <i id="event_click_18_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 18, ' . "'" . $row_balanza["PLANTA_INGRESO"] . "'" . ')"></i>';
+						$html .= '    <i id="event_click_18_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 18, ' . "'" . $row_balanza["PLANTA_INGRESO"] . "', " . $row_balanza["TIPO_CONDICION"] . ')"></i>';
 					}
 
 					$html .= '  </td>';
 
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
 					$html .= '		<label id="lbl_text_4_' . $row_balanza["id_controlIngresoVehiculo"] . '">' . $row_balanza["documento"] . '</label>';
-					$html .= '    <i id="event_click_4_' . $row_balanza["id_controlIngresoVehiculo"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_controlIngresoVehiculo"] . ', 4, ' . "'" . $row_balanza["id_transportista"] . "'" . ')"></i>';
+					$html .= '    <i id="event_click_4_' . $row_balanza["id_controlIngresoVehiculo"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_controlIngresoVehiculo"] . ', 4, ' . "'" . $row_balanza["id_transportista"] . "', " . $row_balanza["TIPO_CONDICION"] . ')"></i>';
 					$html .= '  </td>';
 
 					$html .= '  <td id="td_text_4_' . $row_balanza["id_controlIngresoVehiculo"] . '" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
@@ -22455,12 +22467,12 @@ switch ($_POST["accion"]) {
 
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
 					$html .= '		<label id="lbl_text_5_' . $row_balanza["id_controlIngresoVehiculo"] . '">' . $row_balanza["TIPO_VEHICULO"] . '</label>';
-					$html .= '    <i id="event_click_5_' . $row_balanza["id_controlIngresoVehiculo"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_controlIngresoVehiculo"] . ', 5, ' . "'" . $row_balanza["id_tipovehiculo"] . "'" . ')"></i>';
+					$html .= '    <i id="event_click_5_' . $row_balanza["id_controlIngresoVehiculo"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_controlIngresoVehiculo"] . ', 5, ' . "'" . $row_balanza["id_tipovehiculo"] . "', " . $row_balanza["TIPO_CONDICION"] . ')"></i>';
 					$html .= '  </td>';
 
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
 					$html .= '		<label id="lbl_text_6_' . $row_balanza["id_controlIngresoVehiculo"] . '">' . $row_balanza["dni_licencia"] . '</label>';
-					$html .= '    <i id="event_click_6_' . $row_balanza["id_controlIngresoVehiculo"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_controlIngresoVehiculo"] . ', 6, ' . "'" . $row_balanza["id_choferes"] . "'" . ')"></i>';
+					$html .= '    <i id="event_click_6_' . $row_balanza["id_controlIngresoVehiculo"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_controlIngresoVehiculo"] . ', 6, ' . "'" . $row_balanza["id_choferes"] . "', " . $row_balanza["TIPO_CONDICION"] . ')"></i>';
 					$html .= '  </td>';
 
 					$html .= '  <td id="td_text_6_' . $row_balanza["id_controlIngresoVehiculo"] . '" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
@@ -22471,7 +22483,7 @@ switch ($_POST["accion"]) {
 					$html .= '		<label id="lbl_text_7_' . $row_balanza["id_CatalogoLotes"] . '">' . ((strlen($row_balanza["TIPO_CARGA"]) == 0) ? '---' : $row_balanza["TIPO_CARGA"]) . '</label>';
 
 					if ($row_balanza["id_tipoingresounidad"] == 1) {
-						$html .= '    <i id="event_click_7_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 7, ' . "'" . $row_balanza["balanza_id_tipocarga"] . "'" . ')"></i>';
+						$html .= '    <i id="event_click_7_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 7, ' . "'" . $row_balanza["balanza_id_tipocarga"] . "', " . $row_balanza["TIPO_CONDICION"] . ')"></i>';
 						$html .= '    <input id="id_clientecondicion_' . $row_balanza["id_CatalogoLotes"] . '" type="hidden" value="' . $row_balanza["id_tipoingresounidad"] . '">';
 					}
 
@@ -22481,7 +22493,7 @@ switch ($_POST["accion"]) {
 					$html .= '		<label id="lbl_text_8_' . $row_balanza["id_CatalogoLotes"] . '">' . ((strlen($row_balanza["ZONA_ORIGEN"]) == 0) ? '---' : $row_balanza["ZONA_ORIGEN"]) . '</label>';
 
 					if ($row_balanza["id_tipoingresounidad"] == 1) {
-						$html .= '    <i id="event_click_8_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 8, ' . "'" . $row_balanza["balanza_id_zonaorigen"] . "'" . ')"></i>';
+						$html .= '    <i id="event_click_8_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 8, ' . "'" . $row_balanza["balanza_id_zonaorigen"] . "', " . $row_balanza["TIPO_CONDICION"] . ')"></i>';
 					}
 
 					$html .= '  </td>';
@@ -22490,7 +22502,7 @@ switch ($_POST["accion"]) {
 					$html .= '		<label id="lbl_text_9_' . $row_balanza["id_CatalogoLotes"] . '">' . ((strlen($row_balanza["PROVEEDOR_MINERO"]) == 0) ? '---' : $row_balanza["PROVEEDOR_MINERO"]) . '</label>';
 
 					if ($row_balanza["id_tipoingresounidad"] == 1) {
-						$html .= '    <i id="event_click_9_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 9, ' . "'" . $row_balanza["balanza_id_proveedorminero"] . "'" . ')"></i>';
+						$html .= '    <i id="event_click_9_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 9, ' . "'" . $row_balanza["balanza_id_proveedorminero"] . "', " . $row_balanza["TIPO_CONDICION"] . ')"></i>';
 					}
 
 					$html .= '  </td>';
@@ -22499,7 +22511,7 @@ switch ($_POST["accion"]) {
 					$html .= '		<label id="lbl_text_10_' . $row_balanza["id_CatalogoLotes"] . '">' . ((strlen($row_balanza["ENCARGADO_MUESTRA"]) == 0) ? '---' : $row_balanza["ENCARGADO_MUESTRA"] . (($row_balanza["balanza_id_proveedorminero"] == 73) ? ' - ' . $row_balanza["ENCARGADO_MUESTRA_NOMBRES"] : '')) . '</label>';
 
 					if ($row_balanza["id_tipoingresounidad"] == 1) {
-						$html .= '    <i id="event_click_10_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 10, ' . "'" . $row_balanza["balanza_id_encargadomuestra"] . "'" . ')"></i>';
+						$html .= '    <i id="event_click_10_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 10, ' . "'" . $row_balanza["balanza_id_encargadomuestra"] . "', " . $row_balanza["TIPO_CONDICION"] . ')"></i>';
 					}
 
 					$html .= '  </td>';
@@ -22508,7 +22520,7 @@ switch ($_POST["accion"]) {
 					$html .= '		<label id="lbl_text_11_' . $row_balanza["id_CatalogoLotes"] . '">' . ((strlen($row_balanza["PRODUCTO"]) == 0) ? '---' : $row_balanza["PRODUCTO"]) . '</label>';
 
 					if ($row_balanza["id_tipoingresounidad"] == 1) {
-						$html .= '    <i id="event_click_11_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 11, ' . "'" . $row_balanza["balanza_id_producto"] . "'" . ')"></i>';
+						$html .= '    <i id="event_click_11_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 11, ' . "'" . $row_balanza["balanza_id_producto"] . "', " . $row_balanza["TIPO_CONDICION"] . ')"></i>';
 					}
 
 					$html .= '  </td>';
@@ -22517,7 +22529,7 @@ switch ($_POST["accion"]) {
 					$html .= '		<label id="lbl_text_12_' . $row_balanza["id_CatalogoLotes"] . '">' . ((strlen($row_balanza["TIPO_MINERAL"]) == 0) ? '---' : $row_balanza["TIPO_MINERAL"]) . '</label>';
 
 					if ($row_balanza["id_tipoingresounidad"] == 1) {
-						$html .= '    <i id="event_click_12_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 12, ' . "'" . $row_balanza["balanza_id_tipomineral"] . "'" . ')"></i>';
+						$html .= '    <i id="event_click_12_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 12, ' . "'" . $row_balanza["balanza_id_tipomineral"] . "', " . $row_balanza["TIPO_CONDICION"] . ')"></i>';
 					}
 
 					$html .= '  </td>';
@@ -22674,11 +22686,11 @@ switch ($_POST["accion"]) {
 							}
 
 							if ($row_balanza["id_tipoingresounidad"] == 1) {
-								$html .= '    <i id="event_click_13_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 13, ' . "'" . $row_balanza["nPeso_InicialBalanza"] . "'" . ')"></i>';
+								$html .= '    <i id="event_click_13_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 13, ' . "'" . $row_balanza["nPeso_InicialBalanza"] . "', " . $row_balanza["TIPO_CONDICION"] . ')"></i>';
 							}
 
 							if ($row_balanza["id_tipoingresounidad"] == 2) {
-								$html .= '    <i id="event_click_16_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 16, ' . number_format($row_balanza["nPeso_FinalBalanza"] * 1000, 0, '.', '') . ')"></i>';
+								$html .= '    <i id="event_click_16_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 16, ' . number_format($row_balanza["nPeso_FinalBalanza"] * 1000, 0, '.', '') . ", " . $row_balanza["TIPO_CONDICION"] . ')"></i>';
 							}
 						}
 
@@ -22694,11 +22706,11 @@ switch ($_POST["accion"]) {
 							}
 
 							if ($row_balanza["id_tipoingresounidad"] == 1) {
-								$html .= '    <i id="event_click_14_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 14, ' . "'" . $row_balanza["nPeso_FinalBalanza"] . "'" . ')"></i>';
+								$html .= '    <i id="event_click_14_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 14, ' . "'" . $row_balanza["nPeso_FinalBalanza"] . "', " . $row_balanza["TIPO_CONDICION"] . ')"></i>';
 							}
 
 							if ($row_balanza["id_tipoingresounidad"] == 2) {
-								$html .= '    <i id="event_click_17_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 17, ' . number_format($row_balanza["nPeso_InicialBalanza"] * 1000, 0, '.', '') . ')"></i>';
+								$html .= '    <i id="event_click_17_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 17, ' . number_format($row_balanza["nPeso_InicialBalanza"] * 1000, 0, '.', '') . ", " . $row_balanza["TIPO_CONDICION"] . ')"></i>';
 							}
 						}
 
@@ -27793,6 +27805,42 @@ case 'confirmar_ProgramacionLote_AddLote':
 					$fecha_part = substr($valor, 0, 10);
 					$hora_part  = substr($valor, 11);
 					mysqli_query($enlace, "UPDATE catalogolotes SET tFechaInicialBalanza = '" . $fecha_part . "', tHoraInicialBalanza = '" . $hora_part . "' WHERE id_CatalogoLotes = " . $id_registro);
+
+					// Re-sincronizar el Ticket Contable (consolidado_lotes_cierrecontable) si el
+					// registro de Primer Tramo ya fue migrado. La funcion f_MigrarLotes_CierreContable
+					// es idempotente: si ya existe en consolidado_lotes_cierrecontable lo actualiza;
+					// si no, lo inserta. Asi, cualquier correccion hecha desde "Resumen de Balanza"
+					// se refleja en el ticket contable (print_ticketbalanza.php).
+					$q_id_vd = "SELECT Id
+														FROM despachos_primertramo_validaciondatos
+													 WHERE lote_cod_lote = '" . mysqli_real_escape_string($enlace, $cod_lote) . "'
+													 ORDER BY Id DESC
+													 LIMIT 1";
+
+					$id_vd_fecha = 0;
+					if ($res_id_vd = mysqli_query($enlace, $q_id_vd)) {
+						if ($row_id_vd = mysqli_fetch_assoc($res_id_vd)) {
+							$id_vd_fecha = intval($row_id_vd["Id"]);
+						}
+					}
+
+					if ($id_vd_fecha > 0) {
+						$q_chk_migrado_fecha = "SELECT COUNT(Id) AS _COUNT
+																	 FROM consolidado_lotes_cierrecontable
+																	WHERE id_tipoingreso = 1
+																		AND id_registro = " . $id_vd_fecha;
+
+						$chk_migrado_fecha = 0;
+						if ($res_chk_migrado_fecha = mysqli_query($enlace, $q_chk_migrado_fecha)) {
+							if ($row_chk_migrado_fecha = mysqli_fetch_array($res_chk_migrado_fecha)) {
+								$chk_migrado_fecha = intval($row_chk_migrado_fecha["_COUNT"]);
+							}
+						}
+
+						if ($chk_migrado_fecha > 0) {
+							f_MigrarLotes_CierreContable($enlace, 1, $id_vd_fecha, $g_fecha, $usuario);
+						}
+					}
 				}
 			}
 		}
@@ -27884,6 +27932,42 @@ case 'confirmar_ProgramacionLote_AddLote':
 					$fecha_part = substr($valor, 0, 10);
 					$hora_part  = substr($valor, 11);
 					mysqli_query($enlace, "UPDATE catalogolotes SET dFechaFinalBalanza = '" . $fecha_part . "', tHoraFinalBalanza = '" . $hora_part . "' WHERE id_CatalogoLotes = " . $id_registro);
+
+					// Re-sincronizar el Ticket Contable (consolidado_lotes_cierrecontable) si el
+					// registro de Primer Tramo ya fue migrado. La funcion f_MigrarLotes_CierreContable
+					// es idempotente: si ya existe en consolidado_lotes_cierrecontable lo actualiza;
+					// si no, lo inserta. Asi, cualquier correccion hecha desde "Resumen de Balanza"
+					// se refleja en el ticket contable (print_ticketbalanza.php).
+					$q_id_vd = "SELECT Id
+														FROM despachos_primertramo_validaciondatos
+													 WHERE lote_cod_lote = '" . mysqli_real_escape_string($enlace, $cod_lote) . "'
+													 ORDER BY Id DESC
+													 LIMIT 1";
+
+					$id_vd_fecha = 0;
+					if ($res_id_vd = mysqli_query($enlace, $q_id_vd)) {
+						if ($row_id_vd = mysqli_fetch_assoc($res_id_vd)) {
+							$id_vd_fecha = intval($row_id_vd["Id"]);
+						}
+					}
+
+					if ($id_vd_fecha > 0) {
+						$q_chk_migrado_fecha = "SELECT COUNT(Id) AS _COUNT
+																	 FROM consolidado_lotes_cierrecontable
+																	WHERE id_tipoingreso = 1
+																		AND id_registro = " . $id_vd_fecha;
+
+						$chk_migrado_fecha = 0;
+						if ($res_chk_migrado_fecha = mysqli_query($enlace, $q_chk_migrado_fecha)) {
+							if ($row_chk_migrado_fecha = mysqli_fetch_array($res_chk_migrado_fecha)) {
+								$chk_migrado_fecha = intval($row_chk_migrado_fecha["_COUNT"]);
+							}
+						}
+
+						if ($chk_migrado_fecha > 0) {
+							f_MigrarLotes_CierreContable($enlace, 1, $id_vd_fecha, $g_fecha, $usuario);
+						}
+					}
 				}
 			}
 		}
