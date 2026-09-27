@@ -1,19 +1,23 @@
-Achivo que recibe todas las solicitudes de todos los modulos mendiante peticiones http POST siempre con el campo de "accion" en el body que indica que accion/caso de uso se debe ejecutar junto a los otros campos propios del caso, ese campo entra en un switch case y segun coincida entra al case:
-C:\wamp64\www\oppmerp\apis\backend.php
+## Breve contexto
+Este sistema esta hecho para una planta de compra y venta de mineral para la empresa OPPM, entre otros servicios como el acopio, arrumaje y chancado de mineral.
 
-TODO CAMBIO QUE HAGAS EN LA BD, como añadir campos a una tabla o tablas nuevas, crear un script de cambios.sql con el script en sql claro y practico a ejecutar en la base de datos de produccion para poder actualizara despues tambien.
+## Funcionamiento interno
+El sistema funciona como de forma monolitica. Cada modulo/vista es un archivo /.php y en algunos casos tiene un archivo mas solo de javascript. Cada modulo usa jquery para controlar el front e interacturar con el backend. Se estila con bootstrap. En todos los modulos se importa un archivo llamado auxiliares.php el cual contiene el header y menu de navegacion en una variable, lo que permite que sea reutilizable esto en todos los modulos, esto provoca que el conteo de divs nunca encaje en cada modulo. En adición, todos los módulos del front (salvo uno que otro que lo quitó) se aplica un zoom del 80% lo que provoca que todo en la pagina se vea un poco más pequeño, esa decisión provoca algunos errores como los select desviados y que en la practica el tamaño de cualquier elemento se vea mas pequeño. El backend esta constituido por un solo archivo backend.php el cual tiene un unico endpoint por metodo POST el cual por regla siempre debe recibir el parametro "accion", este parametro entra en un switch-case y segun coincida ejecuta el proceso que se encuentra de ese case. La bd es mysql. Aunque el codigo es un caos, se debe procurar tener ordenado lo nuevo que se vaya a crear y antes de tocar algo se debe revisar como funciona y entender el proceso para que se tenga nocion de como proceder. 
 
-NO HAGAS CAMBIOS EN GIT QUE AFECTEN AL ESTADO DEL REPOSITORIO O RAMA, como stash, commits, push, revert, etc.
+Archivo backend: \apis\backend.php
+
+## Reglas para IA
+- TODO CAMBIO QUE HAGAS EN LA BD, como añadir campos a una tabla o tablas nuevas, crear un script de cambios.sql con el script en sql claro y practico a ejecutar en la base de datos de produccion para poder actualizara despues tambien.
+
+- NO HAGAS CAMBIOS EN GIT QUE AFECTEN AL ESTADO DEL REPOSITORIO O RAMA, como stash, commits, push, revert, etc.
 
 ==================================================
 
-Modulo de Programacion de Despachos: C:\wamp64\www\oppmerp\despachossegundotramo_programacion.php
+Modulo de Programacion de Despachos: 
+C:\wamp64\www\oppmerp\recepcion_unidades.php
 
-- Actualmente, se generan correctamente los codigos de despacho a nivel de cabecera y por cada lote. Sin embargo, para la planta de Colbibri, no esta generando el codigo de planta automaticamente. Tiempo atras si lo hacia, en la imagen que te comparto, se ve que en los registros anteriores el campo de codigo de planta generaba un correlativo cuya sintaxis es:
-008-<numero correlativo>
-Sin ningun filtro o reseteo, solo algo consecutivo por cada lote. Sin embargo, en la imagen tambien se ve que a partir de los nuevo registros de este mes, ya no se generan. Seguramente es por los cambios que se han ido dando al registrar despachos y la generacion de sus codigos. Corrige ello. 
+Necesito que me ayudes a que este modulo sea responsivo y aplique correctamente los principios de UX,UI,IHC, heuristicas de nielsen. Ademas, haz que sea opcional subir imagenes al registrar una recepcion de la unidad [Image 1]. Primero enfocate en solo hacer que subir las imagenes al registrar una recepcion, sea opcional.
 
-Cases utilizados relevantes para revisar y corregir este caso:
-- confirmar_ProgramacionLote
-- get_DespachosProgramacion_ListaProgramaciones
-- get_DespachosProgramacion_ListaDistribuciones
+Cases relevantes:
+para el listado: get_ListaIngresoUnidades
+para el registro: grabar_recepcionunidades

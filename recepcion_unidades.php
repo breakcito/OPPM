@@ -633,6 +633,13 @@
 								</div>
 							</div>
 
+							<div class="row" style="padding: 5px; margin-bottom: 5px;">
+								<div class="col-md-12 col-sm-12 col-xs-12" style="background-color: #fff8e1; border: solid; border-width: 1px; border-color: #f0c14b; border-radius: 5px; padding: 8px 12px;">
+									<i class="bi bi-info-circle" style="color: #c0881e; margin-right: 5px;"></i>
+									<span style="font-size: 13px; color: #5a4500;">Las imágenes son <b>opcionales</b>. Puede agregar solo las que tenga disponibles.</span>
+								</div>
+							</div>
+
 							<div class="row" style="padding: 5px;">
 								<table class="table table-bordered table-hover">
 				        	<thead>
@@ -1795,16 +1802,74 @@
 				// Cargar las imágenes existentes del registro
 				$.post( "apis/backend.php", { accion: "get_ControlIngreso_ImagenesAct", id_controlingreso: _id_registro },
 					function( data ) {
-						if (data.estado == 1){
+						if (data.estado == 1 && data.imagenes && data.imagenes.length > 0){
 							// Construir las filas con las imágenes existentes
 							f_BuildTablaImagenesAct(data.imagenes);
 						}
 						else{
-							alert("No se encontraron imágenes registradas para esta unidad.");
+							// No hay imágenes previas: inicializar tabla con filas por defecto (imágenes opcionales)
+							f_BuildTablaImagenesDefectoAct();
 						}
 
 						f_LoadingGrabarIngreso(0);
 					}, "json");
+    	}
+
+    	function f_BuildTablaImagenesDefectoAct(){
+				var _html = '';
+				var _time = new Date();
+				_time = _time.getHours().toString().padStart(2, '0') + ":" + _time.getMinutes().toString().padStart(2, '0');
+				var tmp_Id_base = 'tmp_act-<?php echo $g_date ?>-' + _time;
+
+				var descripciones = ['BREVETE', 'PLACA 1', 'TOLVA', 'TARJETA CIRCULACIÓN'];
+
+				var i = 1;
+				$.each( descripciones, function( key, descripcion ) {
+					_html += '<tr data-id-imagen="0" data-row-index="' + i + '">';
+					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; width: 30px;">';
+					_html += '		<label style="border: solid; border-width: 1px; border-color: #D9D9D9; border-radius: 7px; padding-left: 6px; padding-right: 6px; padding-bottom: 1px; background-color: #FF5F5D; color: #ffffff; font-weight: bold; cursor: pointer;" onclick="f_QuitarImagenFila(' + i + ');" title="Quitar imagen">X</label>';
+					_html += '	</td>';
+
+					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; width: 30px;">';
+					_html += '		' + i;
+					_html += '		<input id="tmp_imagenes_id_' + i + '" type="hidden" value="' + tmp_Id_base + '_' + i + '">';
+					_html += '		<input id="tmp_imagenes_idimagen_' + i + '" type="hidden" value="0">';
+					_html += '		<input id="tmp_imagenes_codauto_' + i + '" type="hidden" value="' + i + '">';
+					_html += '		<input id="tmp_imagenes_cambiada_' + i + '" type="hidden" value="0">';
+					_html += '		<input id="tmp_imagenes_data_' + i + '" type="hidden" value="">';
+					_html += '	</td>';
+
+					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; width: 200px; font-weight: bold;">';
+					_html += '		' + descripcion.toUpperCase();
+					_html += '		<input id="tmp_imagenes_descripcion_' + i + '" type="hidden" value="' + descripcion + '">';
+					_html += '	</td>';
+
+					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px;">';
+					_html += '		<img class="imagen" src="" alt="" style="width: 80px; display: none; cursor: pointer;" id="img_imagenes_' + i + '" onclick="f_ShowImagenes(this.src, 1, ' + "'" + descripcion + "'" + ');">';
+					_html += '	</td>';
+
+					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; white-space: nowrap;">';
+					_html += '		<img src="<?php echo $img_camara ?>" style="width: 30px; cursor: pointer;" onclick="f_AddImagenes(' + i + ');" title="Subir imagen">';
+					_html += '		<a id="lnk_download_' + i + '" href="javascript:void(0);" style="margin-left: 5px; cursor: not-allowed; opacity: 0.4;" title="No hay imagen para descargar" onclick="return false;">';
+					_html += '			<img src="images/download.png" style="width: 30px;">';
+					_html += '		</a>';
+					_html += '	</td>';
+
+					_html += '</tr>';
+
+					i ++;
+				});
+
+				// Agregando fila para imágenes adicionales
+				_html += '<tr id="tr_add_new_image">';
+				_html += '	<td colspan="5" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
+				_html += '		<button class="btn btn-primary" type="button" style="color: #ffffff; font-size: 14px;" onclick="f_AddImagenAdicional_Actualizar();">';
+				_html += '			<b>+ Agregar Imagen</b>';
+				_html += '	</button>';
+				_html += '	</td>';
+				_html += '</tr>';
+
+				$('#tbl_imagenes').html(_html);
     	}
 
     	function f_BuildTablaImagenesAct(_imagenes){
@@ -1813,15 +1878,120 @@
 				_time = _time.getHours().toString().padStart(2, '0') + ":" + _time.getMinutes().toString().padStart(2, '0');
 				var tmp_Id_base = 'tmp_act-<?php echo $g_date ?>-' + _time;
 
-				var i = 1;
+				// Descripciones por defecto que SIEMPRE deben mostrarse
+				var descripciones_defecto = ['BREVETE', 'PLACA 1', 'TOLVA', 'TARJETA CIRCULACIÓN'];
+
+				// Construir mapa por descripción (case-insensitive) para búsqueda rápida
+				var _imagenes_map = {};
 				$.each( _imagenes, function( key, val ) {
+					if (val.descripcion){
+						_imagenes_map[val.descripcion.toUpperCase().trim()] = val;
+					}
+				});
+
+				var i = 1;
+
+				// 1) Siempre mostrar las 4 filas por defecto (rellenando con la imagen guardada si existe)
+				$.each( descripciones_defecto, function( key, descripcion_def ) {
+					var _val = _imagenes_map[descripcion_def];
+					var _id_imagen, _cod_auto, _descripcion, _imagen_data, _imagen_url;
+
+					if (_val){
+						_id_imagen = _val.Id;
+						_cod_auto = _val.cod_auto;
+						_descripcion = _val.descripcion;
+						_imagen_url = _val.imagen_url;
+						_imagen_data = '';
+
+						if (_imagen_url && _imagen_url.length > 0){
+							_imagen_data = 'files/recepcion/' + _imagen_url;
+						}
+						else if (_val.imagen && _val.imagen.length > 0){
+							_imagen_data = _val.imagen;
+						}
+					}
+					else{
+						// Fila vacía para esta descripción por defecto
+						_id_imagen = 0;
+						_cod_auto = i;
+						_descripcion = descripcion_def;
+						_imagen_data = '';
+						_imagen_url = '';
+					}
+
+					_html += '<tr data-id-imagen="' + _id_imagen + '" data-row-index="' + i + '">';
+					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; width: 30px;">';
+					_html += '		<label style="border: solid; border-width: 1px; border-color: #D9D9D9; border-radius: 7px; padding-left: 6px; padding-right: 6px; padding-bottom: 1px; background-color: #FF5F5D; color: #ffffff; font-weight: bold; cursor: pointer;" onclick="f_QuitarImagenFila(' + i + ');" title="Quitar imagen">X</label>';
+					_html += '	</td>';
+
+					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; width: 30px;">';
+					_html += '		' + i;
+					_html += '		<input id="tmp_imagenes_id_' + i + '" type="hidden" value="' + tmp_Id_base + '_' + i + '">';
+					_html += '		<input id="tmp_imagenes_idimagen_' + i + '" type="hidden" value="' + _id_imagen + '">';
+					_html += '		<input id="tmp_imagenes_codauto_' + i + '" type="hidden" value="' + _cod_auto + '">';
+					_html += '		<input id="tmp_imagenes_cambiada_' + i + '" type="hidden" value="0">';
+					_html += '		<input id="tmp_imagenes_data_' + i + '" type="hidden" value="' + _imagen_data.replace(/"/g, '&quot;') + '">';
+					_html += '	</td>';
+
+					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; width: 200px; font-weight: bold;">';
+					_html += '		' + _descripcion.toUpperCase();
+					_html += '		<input id="tmp_imagenes_descripcion_' + i + '" type="hidden" value="' + _descripcion + '">';
+					_html += '	</td>';
+
+					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px;">';
+					if (_imagen_data.length > 0){
+						_html += '		<img class="imagen" src="' + _imagen_data + '" alt="" style="width: 80px; cursor: pointer;" id="img_imagenes_' + i + '" onclick="f_ShowImagenes(this.src, 1, ' + "'" + _descripcion + "'" + ');">';
+					}
+					else{
+						_html += '		<img class="imagen" src="" alt="" style="width: 80px; display: none; cursor: pointer;" id="img_imagenes_' + i + '" onclick="f_ShowImagenes(this.src, 1, ' + "'" + _descripcion + "'" + ');">';
+					}
+					_html += '	</td>';
+
+					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; white-space: nowrap;">';
+					_html += '		<img src="<?php echo $img_camara ?>" style="width: 30px; cursor: pointer;" onclick="f_AddImagenes(' + i + ');" title="' + ((_id_imagen > 0) ? 'Reemplazar imagen' : 'Subir imagen') + '">';
+					if (_imagen_data.length > 0){
+						_html += '		<a id="lnk_download_' + i + '" href="' + _imagen_data + '" download="' + _descripcion + '_' + (_imagen_url || 'imagen.jpg') + '" style="margin-left: 5px; cursor: pointer;" title="Descargar imagen original">';
+						_html += '			<img src="images/download.png" style="width: 30px;">';
+						_html += '		</a>';
+					}
+					else{
+						_html += '		<a id="lnk_download_' + i + '" href="javascript:void(0);" style="margin-left: 5px; cursor: not-allowed; opacity: 0.4;" title="No hay imagen para descargar" onclick="return false;">';
+						_html += '			<img src="images/download.png" style="width: 30px;">';
+						_html += '		</a>';
+					}
+					_html += '	</td>';
+
+					_html += '</tr>';
+
+					i ++;
+				});
+
+				// 2) Imágenes adicionales (las que no coinciden con las descripciones por defecto)
+				$.each( _imagenes, function( key, val ) {
+					if (!val.descripcion){
+						return;
+					}
+
+					var _desc_upper = val.descripcion.toUpperCase().trim();
+					var _es_defecto = false;
+
+					$.each( descripciones_defecto, function( k, d ) {
+						if (d == _desc_upper){
+							_es_defecto = true;
+							return false; // break
+						}
+					});
+
+					if (_es_defecto){
+						return; // ya mostrada arriba
+					}
+
 					var _id_imagen = val.Id;
 					var _cod_auto = val.cod_auto;
 					var _descripcion = val.descripcion;
 					var _imagen_data = '';
 					var _imagen_url = val.imagen_url;
 
-					// Construye el src de la imagen (priorizando URL, sino base64)
 					if (_imagen_url && _imagen_url.length > 0){
 						_imagen_data = 'files/recepcion/' + _imagen_url;
 					}
@@ -1830,8 +2000,8 @@
 					}
 
 					_html += '<tr data-id-imagen="' + _id_imagen + '" data-row-index="' + i + '">';
-					_html += '	<td class="del_tr2" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; width: 30px;">';
-					_html += '		<label style="border: solid; border-width: 1px; border-color: #D9D9D9; border-radius: 7px; padding-left: 6px; padding-right: 6px; padding-bottom: 1px; background-color: #FF5F5D; color: #ffffff; font-weight: bold; cursor: pointer;" onclick="f_EliminarImagenActual(' + _id_imagen + ', this);">X</label>';
+					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; width: 30px;">';
+					_html += '		<label style="border: solid; border-width: 1px; border-color: #D9D9D9; border-radius: 7px; padding-left: 6px; padding-right: 6px; padding-bottom: 1px; background-color: #FF5F5D; color: #ffffff; font-weight: bold; cursor: pointer;" onclick="f_QuitarImagenFila(' + i + ');" title="Quitar imagen">X</label>';
 					_html += '	</td>';
 
 					_html += '	<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; width: 30px;">';
@@ -1869,7 +2039,7 @@
 				_html += '	<td colspan="5" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
 				_html += '		<button class="btn btn-primary" type="button" style="color: #ffffff; font-size: 14px;" onclick="f_AddImagenAdicional_Actualizar();">';
 				_html += '			<b>+ Agregar Imagen</b>';
-				_html += '		</button>';
+				_html += '	</button>';
 				_html += '	</td>';
 				_html += '</tr>';
 
@@ -2738,6 +2908,18 @@
 			    reader.onload = function(e) {
 			      var imagen = document.getElementById('img_imagenes_' + _id_row);
 			      imagen.src = e.target.result;
+			      imagen.style.display = 'block';
+
+			      // Activar el botón DESCARGAR (al subir imagen)
+			      var _lnk = document.getElementById('lnk_download_' + _id_row);
+			      if (_lnk){
+			      	_lnk.setAttribute('href', imagen.src);
+			      	_lnk.setAttribute('download', 'imagen_' + _id_row + '.jpg');
+			      	_lnk.style.cursor = 'pointer';
+			      	_lnk.style.opacity = '1';
+			      	_lnk.setAttribute('title', 'Descargar imagen');
+			      	_lnk.setAttribute('onclick', '');
+			      }
 
 			      // Si estamos en modo Actualizar, marcar la fila como cambiada
 			      var _modo = $("#hd_modograbar").val();
@@ -2750,6 +2932,48 @@
 			  input.click();
 
 			  $("#img_imagenes_" + _id_row).show();
+	    }
+
+	    function f_QuitarImagenFila(_id_row){
+	    	// SOLO limpia la imagen (la fila permanece)
+	    	var _img = document.getElementById('img_imagenes_' + _id_row);
+	    	if (_img){
+	    		_img.src = '';
+	    		_img.style.display = 'none';
+	    	}
+
+	    	// Si la fila tenía una imagen guardada en BD (id_imagen>0), marcar cambiada=1
+	    	// para que al confirmar la actualización se elimine de la BD.
+	    	// Si era una imagen nueva (id_imagen=0), marcar cambiada=0 para que se ignore.
+	    	var _id_imagen_el = document.getElementById('tmp_imagenes_idimagen_' + _id_row);
+	    	var _cambiada_el = document.getElementById('tmp_imagenes_cambiada_' + _id_row);
+	    	var _data_el = document.getElementById('tmp_imagenes_data_' + _id_row);
+
+	    	if (_id_imagen_el && _cambiada_el){
+	    		var _id_imagen = parseInt(_id_imagen_el.value || 0);
+	    		if (_id_imagen > 0){
+	    			// Imagen guardada en BD: marcar cambiada=1 para que el backend la elimine al confirmar
+	    			_cambiada_el.value = '1';
+	    		}
+	    		else{
+	    			// Imagen nueva: descartar
+	    			_cambiada_el.value = '0';
+	    		}
+	    	}
+
+	    	if (_data_el){
+	    		_data_el.value = '';
+	    	}
+
+	    	// Desactivar el botón DESCARGAR (sin imagen)
+	    	var _lnk = document.getElementById('lnk_download_' + _id_row);
+	    	if (_lnk){
+	    		_lnk.setAttribute('href', 'javascript:void(0);');
+	    		_lnk.style.cursor = 'not-allowed';
+	    		_lnk.style.opacity = '0.4';
+	    		_lnk.setAttribute('title', 'No hay imagen para descargar');
+	    		_lnk.setAttribute('onclick', 'return false;');
+	    	}
 	    }
 
 	    function f_ShowDocumentoAcompanante(_id_img, _nombres, _is_local){
@@ -3320,34 +3544,31 @@
           var table = document.getElementById('tbl_imagenes');
 					var _rows_imagenes = table.rows.length - 1;
 
-        // Recorre la tabla de Acompañanates y obtiene los datos
+        // Recorre la tabla de Imágenes y obtiene los datos (las imágenes son opcionales)
           var a = 1;
           var arr_imagenes = [];
           var arr_imagenes_datos = [];
 
           $('#tbl_imagenes tr').each(function () {
           	if (a <= _rows_imagenes){
-          		// Verifica que se hayan registrado todas las imágenes
-								if ($(this).find('.imagen').attr('src').length == 0){
-									alert("Hay imágenes que no han sido cargadas.\n\nPor favor, verificar.");
+          		var _imagen_src = $(this).find('.imagen').attr('src') || '';
 
-									f_LoadingGrabarIngreso(0);
+							// Solo agregar la imagen si tiene contenido (las imágenes son opcionales)
+							if (_imagen_src.length > 0){
+		            var _imagen = {
+		            	cod_auto: a,
+						      imagen: _imagen_src
+						    };
 
-									return;
-								}
+						    var _imagen_datos = {
+		            	cod_auto: a,
+		            	descripcion: $(this).find("td").eq(2).html().trim()
+						    };
 
-	            var _imagen = {
-	            	cod_auto: a,
-					      imagen: $(this).find('.imagen').attr('src')
-					    };
+						    arr_imagenes.push(_imagen);
+						    arr_imagenes_datos.push(_imagen_datos);
+						  }
 
-					    var _imagen_datos = {
-	            	cod_auto: a,
-	            	descripcion: $(this).find("td").eq(2).html().trim()
-					    };
-
-					    arr_imagenes.push(_imagen);
-					    arr_imagenes_datos.push(_imagen_datos);
 				    }
 
 				    a ++;
@@ -3449,32 +3670,11 @@
 					}
 				});
 
-				// Si no hay cambios, no enviar nada
+				// Si no hay cambios, no enviar nada y cerrar el modal silenciosamente
 				if (!_hay_cambios && arr_imagenes.length == 0){
-					alert("No hay cambios para guardar.");
 					f_LoadingGrabarIngreso(0);
-					return;
-				}
-
-				// Validar que las imágenes nuevas (id_imagen=0) tengan contenido
-				var _faltan_imagenes = false;
-				$('#tbl_imagenes tr').each(function () {
-					var _hasBtn = $(this).find('button').length > 0;
-					var _idRow = $(this).attr('id');
-
-					if (!_hasBtn && _idRow != 'tr_add_new_image'){
-						var _id_imagen = parseInt($(this).find("input[id^='tmp_imagenes_idimagen_']").val() || 0);
-						var _src = $(this).find('.imagen').attr('src') || '';
-
-						if (_id_imagen == 0 && (_src.length == 0 || _src == '')){
-							_faltan_imagenes = true;
-						}
-					}
-				});
-
-				if (_faltan_imagenes){
-					alert("Hay imágenes nuevas que no han sido cargadas.\n\nPor favor, verificar.");
-					f_LoadingGrabarIngreso(0);
+					f_cerrarModal('modal_addrecepcion');
+					$("#btn_ConfirmarAcompanantes").html('Finalizar y Confirmar');
 					return;
 				}
 

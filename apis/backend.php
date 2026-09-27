@@ -18828,6 +18828,34 @@ switch ($_POST["accion"]) {
 						$estado = 0;
 					}
 				}
+				else if ($cambiada == 1 && strlen($imagen_src) == 0) {
+					// El usuario quitó la imagen existente: eliminar de BD y del filesystem
+					$old_file = '';
+					$q_get = "SELECT imagen_url FROM controlingresovehiculo_imagenes WHERE Id = " . $id_imagen;
+
+					if ($res_get = mysqli_query($enlace, $q_get)) {
+						if (mysqli_num_rows($res_get) > 0) {
+							while ($row_get = mysqli_fetch_array($res_get)) {
+								$old_file = $row_get["imagen_url"];
+							}
+						}
+					}
+
+					$q_delete = "DELETE FROM controlingresovehiculo_imagenes WHERE Id = " . $id_imagen;
+
+					if ($res_delete = mysqli_query($enlace, $q_delete)) {
+						// Eliminar también el archivo físico si existe
+						if (strlen($old_file) > 0) {
+							$old_path = $target_dir . $old_file;
+
+							if (file_exists($old_path)) {
+								@unlink($old_path);
+							}
+						}
+					} else {
+						$estado = 0;
+					}
+				}
 			} else {
 				// Imagen nueva (id_imagen = 0)
 				$imagenBase64Comprimida = '';
