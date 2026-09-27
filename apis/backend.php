@@ -1148,7 +1148,11 @@ function f_Redondear_Mas($valor, $num_decimales)
 }
 
 // Función para Generar Códigos de Planta para Colibrí (Programación de Despachos - 2do tramo)
-function f_SetCodigosPlanta($enlace, $id_planta, $id_programacion, $fecha_registro, $usuario_registro)
+// $is_addlote = false  -> Creación inicial de la programación: borra correlativos previos del
+//                         programa en correlativo_plantas y asigna código a TODOS los lotes.
+// $is_addlote = true   -> Agregar lote(s) a una programación existente: preserva los códigos ya
+//                         asignados y solo genera código para los lotes nuevos (codigo_planta NULL).
+function f_SetCodigosPlanta($enlace, $id_planta, $id_programacion, $fecha_registro, $usuario_registro, $is_addlote = false)
 {
 	if ($id_planta == 3) {
 		// 1. Obtiene el Prefijo del Código de Planta
@@ -1166,44 +1170,71 @@ function f_SetCodigosPlanta($enlace, $id_planta, $id_programacion, $fecha_regist
 			}
 		}
 
-		// 2. Obtiene el ultimo correlativo de la Programación anterior
+		// 2. Obtiene el último correlativo desde donde continuar la numeración.
+		//    - Creación inicial: MAX GLOBAL de codigo_planta de TODAS las programaciones
+		//                        anteriores (no solo la última), para evitar que se
+		//                        reinicie el correlativo cuando la última programación
+		//                        quedó sin codigo_planta (NULL) por la version bugueada.
+		//    - AddLote:          MAX del código de planta del MISMO programa (los nuevos
+		//                        lotes deben continuar la numeración ya asignada).
 		$ultimo_codigo = '';
 
-		$q_ultimo = "SELECT MAX(D.codigo_planta) AS ULTIMO_CODIGO
-												 FROM despachos_segundotramo_programacion_detalle D
-												WHERE D.id_programacion = (SELECT D_x.id_programacion
-																										 FROM despachos_segundotramo_programacion_detalle D_x
-																										WHERE D_x.id_planta = " . $id_planta . "
-																											AND D_x.id_programacion < " . $id_programacion . "
-																									 ORDER BY D_x.id_programacion DESC
-																									 LIMIT 1)";
+		if ($is_addlote) {
+			$q_ultimo = "SELECT MAX(codigo_planta) AS ULTIMO_CODIGO
+													 FROM despachos_segundotramo_programacion_detalle
+													WHERE id_programacion = " . $id_programacion . "
+														AND codigo_planta IS NOT NULL
+														AND codigo_planta <> ''";
+		} else {
+			$q_ultimo = "SELECT MAX(D.codigo_planta) AS ULTIMO_CODIGO
+													 FROM despachos_segundotramo_programacion_detalle D
+													WHERE D.id_planta = " . $id_planta . "
+														AND D.codigo_planta IS NOT NULL
+														AND D.codigo_planta <> ''
+														AND D.id_programacion < " . $id_programacion;
+		}
 
 		if ($res_ultimo = mysqli_query($enlace, $q_ultimo)) {
 			if (mysqli_num_rows($res_ultimo) > 0) {
 				while ($row_ultimo = mysqli_fetch_array($res_ultimo)) {
 					$ultimo_codigo = $row_ultimo["ULTIMO_CODIGO"];
-					$ultimo_codigo = substr($ultimo_codigo, strpos($ultimo_codigo, '-') + 1);
+					if (is_null($ultimo_codigo) || $ultimo_codigo === '' || strpos($ultimo_codigo, '-') === false) {
+						$ultimo_codigo = '';
+					} else {
+						$ultimo_codigo = substr($ultimo_codigo, strpos($ultimo_codigo, '-') + 1);
+					}
 				}
 			}
 		}
 
-		// 3. Elimina los Correlativos que puedan existir en la tabla de correlativos de planta, menos los creados en balanza
-		$q_delete = "DELETE FROM correlativo_plantas
-												WHERE id_programaciondetalle IN (SELECT Id
-																													 FROM despachos_segundotramo_programacion_detalle
-																													WHERE id_programacion = " . $id_programacion . ")";
+		// 3. Elimina los Correlativos que puedan existir en la tabla de correlativos de planta.
+		//    SOLO en creación inicial (en AddLote debemos preservar los registros existentes
+		//    para no perder los códigos ya asignados a los lotes de la misma programación).
+		if (!$is_addlote) {
+			$q_delete = "DELETE FROM correlativo_plantas
+													WHERE id_programaciondetalle IN (SELECT Id
+																														 FROM despachos_segundotramo_programacion_detalle
+																														WHERE id_programacion = " . $id_programacion . ")";
 
-		if ($res_delete = mysqli_query($enlace, $q_delete)) {
+			if ($res_delete = mysqli_query($enlace, $q_delete)) {
+			}
 		}
 
-		// 3. Asigna los Códigos de Planta por cada Lote
+		// 4. Asigna los Códigos de Planta por cada Lote.
+		//    - Creación inicial: procesa TODOS los lotes del programa.
+		//    - AddLote:          procesa solo los lotes que aún no tienen código de planta.
 		$new_codigo = intval($ultimo_codigo);
+
+		$where_detalle = "WHERE id_programacion = " . $id_programacion;
+		if ($is_addlote) {
+			$where_detalle .= " AND (codigo_planta IS NULL OR codigo_planta = '')";
+		}
 
 		$q_detalle = "SELECT Id,
 															 cod_lote
 													FROM despachos_segundotramo_programacion_detalle
-												 WHERE id_programacion = " . $id_programacion . "
-												ORDER BY cod_lote";
+												 " . $where_detalle . "
+											ORDER BY cod_lote";
 
 		if ($res_detalle = mysqli_query($enlace, $q_detalle)) {
 			if (mysqli_num_rows($res_detalle) > 0) {
@@ -26903,6 +26934,13 @@ if ($res_detalle = mysqli_query($enlace, $q_detalle)) {
 			}
 		}
 
+		// 10. Genera los Codigos de Planta por cada lote (solo Colibri - id_planta=3).
+		//     Antes de los cambios al registro de despachos, esta logica se ejecutaba
+		//     despues del INSERT del detalle y se perdio en la reescritura. La
+		//     restauramos para que Colibri siga generando el codigo "008-<correlativo>"
+		//     de forma consecutiva por lote, sin filtros ni reseteos.
+		f_SetCodigosPlanta($enlace, $id_planta, $id_programacion, $g_fecha, $usuario_registro, false);
+
 		echo json_encode(array(
 			'estado' => $estado,
 			'id_programacion' => $id_programacion,
@@ -27167,6 +27205,12 @@ case 'confirmar_ProgramacionLote_AddLote':
 				$estado = 3;
 			}
 		}
+
+		// 5. Genera Codigos de Planta para los lotes NUEVOS (solo Colibri - id_planta=3).
+		//    Se invoca con $is_addlote=true para que la funcion conserve los codigos
+		//    ya asignados a los lotes existentes de la misma programacion y solo
+		//    asigne codigo a los lotes recien agregados (los que tienen codigo_planta NULL).
+		f_SetCodigosPlanta($enlace, $id_planta, $id_programacion, $g_fecha, $usuario_registro, true);
 
 		echo json_encode(array(
 			'estado' => $estado,
