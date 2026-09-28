@@ -13,11 +13,14 @@ Archivo backend: \apis\backend.php
 
 ==================================================
 
-Modulo de Programacion de Despachos: 
-C:\wamp64\www\oppmerp\recepcion_unidades.php
+Modulo de Proveedores Mineros: C:\wamp64\www\oppmerp\admin_proveedoresmineros.php
+Necesito que, cuando se intente registrar un proveedor y se escriba DNI o RUC y sea consultado a la api para rellenar automaticamente sus datos, pero la api de APIS peru falle o ya se haya acabado la cuota, entonces que devuelva un estado 0 y que el modulo detecte esto y diga 'NO ENCONTRADO' para que el usuario mismo escriba la razon social de este proveedor. Por ejemplo actualmente sale este error:
 
-Necesito que me ayudes a que este modulo sea responsivo y aplique correctamente los principios de UX,UI,IHC, heuristicas de nielsen. Ademas, haz que sea opcional subir imagenes al registrar una recepcion de la unidad [Image 1]. Primero enfocate en solo hacer que subir las imagenes al registrar una recepcion, sea opcional.
+{
+    "estado": 1,
+    "res": "{\"message\":\"Ha excedido el l\\u00edmite del plan, espere el siguiente mes o p\\u00f3ngase en contacto con soporte t\\u00e9cnico soporte@apisperu.com \\\/ whatsapp +51935600914\"}"
+}
 
-Cases relevantes:
-para el listado: get_ListaIngresoUnidades
-para el registro: grabar_recepcionunidades
+Case utilizado para esto:
+- get_infocliente
+

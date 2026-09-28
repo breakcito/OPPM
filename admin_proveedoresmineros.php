@@ -343,7 +343,8 @@
 
             <div class="row" style="padding: 5px;">
               <div class="col-md-4 col-sm-4 col-xs-4" style="padding: 5px;">
-                Razón Social: <img id="wt_razonsocial2" src="<?php echo $img_waiting ?>" style="width: 35px; display: none;">
+                <div>Razón Social: <img id="wt_razonsocial2" src="<?php echo $img_waiting ?>" style="width: 35px; display: none;"></div>
+                <div><span id="cliente_razonsocial_nf" class="badge bg-danger" style="display: none; font-size: 11px; margin-top: 4px; font-weight: normal;">NO ENCONTRADO</span></div>
               </div>
 
               <div class="col-md-8 col-sm-8 col-xs-8">
@@ -413,7 +414,8 @@
 
             <div class="row" style="padding: 5px;">
               <div class="col-md-4 col-sm-4 col-xs-4" style="padding: 5px;">
-                Nombres: <img id="wt_representantelegal" src="<?php echo $img_waiting ?>" style="width: 35px; display: none;">
+                <div>Nombres: <img id="wt_representantelegal" src="<?php echo $img_waiting ?>" style="width: 35px; display: none;"></div>
+                <div><span id="cliente_representantenombres_nf" class="badge bg-danger" style="display: none; font-size: 10px; margin-top: 4px; font-weight: normal;">NO ENCONTRADO</span></div>
               </div>
 
               <div class="col-md-8 col-sm-8 col-xs-8">
@@ -972,6 +974,7 @@
       $("#cliente_tipodocumento").val(_cod_tipodocumento);
       $("#cliente_documento").val(f_CleanInjection(_documento));
       $("#cliente_razonsocial").val(f_CleanInjection(_razon_social));
+      $("#cliente_razonsocial_nf").hide();
       $("#cliente_codcliente").val(f_CleanInjection(_cod_cliente));
       $("#cliente_telefono1").val(_telefono1);
       $("#cliente_telefono2").val(_telefono2);
@@ -979,6 +982,7 @@
       $("#cliente_direccion").val(f_CleanInjection(_direccion));
       $("#cliente_representantedni").val(f_CleanInjection(_representante_dni));
       $("#cliente_representantenombres").val(f_CleanInjection(_representante_nombres));
+      $("#cliente_representantenombres_nf").hide();
     }
     else{
       $("#hd_idcliente").val(0);
@@ -986,6 +990,7 @@
       $("#cliente_tipodocumento").val('');
       $("#cliente_documento").val('');
       $("#cliente_razonsocial").val('');
+      $("#cliente_razonsocial_nf").hide();
       $("#cliente_codcliente").val('');
       $("#cliente_telefono1").val('');
       $("#cliente_telefono2").val('');
@@ -993,6 +998,7 @@
       $("#cliente_direccion").val('');
       $("#cliente_representantedni").val('');
       $("#cliente_representantenombres").val('');
+      $("#cliente_representantenombres_nf").hide();
     }
   }
 
@@ -1185,6 +1191,7 @@
         $("#cliente_razonsocial").val('');
         $("#cliente_direccion").val('');
         $("#wt_razonsocial2").hide();
+        $("#cliente_razonsocial_nf").hide();
 
             // Obteniendo información
         if (documento.length == 8 || documento.length == 11){
@@ -1193,6 +1200,7 @@
           $.post( "apis/backend.php", { accion: "get_infocliente", is_ruc: is_ruc, documento: documento },
             function( data ) {
               if (data.estado == 1){
+                $("#cliente_razonsocial_nf").hide();
                 arr_response = data.res.replace(/"/g, '').replace(/{/g, '').replace(/}/g, '').split(',');
 
                 if (is_ruc == 1){
@@ -1217,8 +1225,9 @@
                 }
               }
               else{
-                $("#cliente_razonsocial").val('NO ENCONTRADO');
+                $("#cliente_razonsocial_nf").show();
                 $("#cliente_direccion").val('');
+                $("#cliente_razonsocial").focus();
               }
 
               $("#wt_razonsocial2").hide();
@@ -1233,6 +1242,7 @@
             // Limpiando objetos
         $("#cliente_representantenombres").val('');
         $("#wt_representantelegal").hide();
+        $("#cliente_representantenombres_nf").hide();
 
             // Obteniendo información
         if (documento.length == 8){
@@ -1241,12 +1251,14 @@
           $.post( "apis/backend.php", { accion: "get_infocliente", is_ruc: is_ruc, documento: documento },
             function( data ) {
               if (data.estado == 1){
+                $("#cliente_representantenombres_nf").hide();
                 arr_response = data.res.replace(/"/g, '').replace(/{/g, '').replace(/}/g, '').split(',');
 
                 $("#cliente_representantenombres").val(arr_response[0].split(':')[1].trim());
               }
               else{
-                $("#cliente_representantenombres").val('NO ENCONTRADO');
+                $("#cliente_representantenombres_nf").show();
+                $("#cliente_representantenombres").focus();
               }
 
               $("#wt_representantelegal").hide();
@@ -1264,6 +1276,15 @@
         $("#wt_resumen").hide();
       }
     }
+
+      // Oculta el badge "NO ENCONTRADO" cuando el usuario empieza a escribir
+    $("#cliente_razonsocial").on('input', function(){
+      $("#cliente_razonsocial_nf").hide();
+    });
+
+    $("#cliente_representantenombres").on('input', function(){
+      $("#cliente_representantenombres_nf").hide();
+    });
   </script>
 
   <!-- Funciones de Grabación -->

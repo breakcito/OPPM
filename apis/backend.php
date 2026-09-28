@@ -3973,8 +3973,39 @@ switch ($_POST["accion"]) {
 
 		curl_close($curl);
 
-		if (strtolower($response) == 'not found') {
+		// Verifica si la llamada a la API falló (error de cURL, timeout, respuesta vacía,
+		// página de error HTML) o si la cuota del servicio se agotó
+		$es_error_api = false;
+
+		if (!is_string($response) || trim($response) === '') {
+			// cURL devolvió false o respuesta vacía
+			$es_error_api = true;
+		} else {
+			$respuesta_lower = strtolower($response);
+
+			if (
+				$respuesta_lower == 'not found' ||
+				strpos($respuesta_lower, '<html') !== false ||
+				strpos($respuesta_lower, '<!doctype') !== false ||
+				strpos($respuesta_lower, 'excedido') !== false ||
+				strpos($respuesta_lower, 'ha excedido') !== false ||
+				strpos($respuesta_lower, 'ha superado') !== false ||
+				strpos($respuesta_lower, 'too many requests') !== false ||
+				strpos($respuesta_lower, 'demasiadas solicitudes') !== false ||
+				strpos($respuesta_lower, 'límite de consultas') !== false ||
+				strpos($respuesta_lower, 'limite de consultas') !== false ||
+				strpos($respuesta_lower, 'quota exceeded') !== false
+			) {
+				// API devolvió "not found", cuota agotada o página de error
+				$es_error_api = true;
+			}
+		}
+
+		if ($es_error_api) {
 			$estado = 0;
+			if (!is_string($response)) {
+				$response = '';
+			}
 		} else {
 			$estado = 1;
 		}
