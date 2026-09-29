@@ -340,6 +340,92 @@ function f_GenerarNumeroTicketCierreContable($enlace, $id_consolidado)
 }
 
 // ----------------------------------------------------------------------------------------------------------
+// Usuario con el que se registra el cierre contable.
+//
+// Prioriza el usuario logueado (session), que es el mismo dato que usan los cases de apis/backend.php
+// ($usuario_registro = $_SESSION["usu_usuario"]). Se resuelve aqui para que ningun llamado de este archivo
+// termine guardando un usuario vacio o generico.
+// ----------------------------------------------------------------------------------------------------------
+function f_UsuarioCierreContable($usuario_registro)
+{
+	$usuario_registro = trim((string) $usuario_registro);
+
+	if (strlen($usuario_registro) == 0 && isset($_SESSION['usu_usuario'])) {
+		$usuario_registro = trim((string) $_SESSION['usu_usuario']);
+	}
+
+	return $usuario_registro;
+}
+
+// ----------------------------------------------------------------------------------------------------------
+// Registra en consolidado_lotes_cierrecontable el lote indicado cuando todavia no tiene registro.
+//
+// Se ejecuta antes de imprimir el ticket: si el lote nunca paso por el cierre contable no tendria numero de
+// ticket y el comprobante saldria en blanco. Reutiliza las mismas funciones que aplica el backend:
+//   - 1er tramo: f_MigrarLotes_CierreContable (mismo paso final de cerrar_lote_desde_primer_tramo de
+//     apis/backend.php, que ademas crea el registro en despachos_primertramo_validaciondatos; aqui ese
+//     registro ya existe porque el ticket se imprime sobre el).
+//   - 2do tramo: cerrar_lote_desde_segundo_tramo, que marca el lote como cerrado y lo migra.
+// En ambos casos la migracion genera el numero de ticket; si el registro ya existia pero su
+// num_ticketbalanza estaba vacio, se genera con f_GenerarNumeroTicketCierreContable.
+//
+// El proceso es idempotente: si el lote ya estaba registrado no se vuelve a migrar, por lo que tampoco se
+// altera el usuario ni la fecha con que se cerro originalmente.
+//
+// Devuelve el Id del registro en consolidado_lotes_cierrecontable, o 0 si el lote no se pudo registrar.
+// ----------------------------------------------------------------------------------------------------------
+function f_RegistrarLoteEnCierreContableSiFalta($enlace, $id_lote, $id_tipoingreso, $g_fecha, $usuario_registro)
+{
+	$id_lote = intval($id_lote);
+	$id_tipoingreso = intval($id_tipoingreso);
+	$usuario_registro = f_UsuarioCierreContable($usuario_registro);
+
+	if ($id_lote == 0) {
+		return 0;
+	}
+
+	$q_buscar = "SELECT Id, num_ticketbalanza
+					FROM consolidado_lotes_cierrecontable
+					WHERE id_registro = " . $id_lote . "
+						AND id_tipoingreso = " . $id_tipoingreso . "
+					ORDER BY Id
+					LIMIT 1";
+
+	$id_consolidado = 0;
+	$ticket = '';
+
+	if ($res_buscar = mysqli_query($enlace, $q_buscar)) {
+		if ($row_buscar = mysqli_fetch_array($res_buscar)) {
+			$id_consolidado = intval($row_buscar["Id"]);
+			$ticket = trim((string) $row_buscar["num_ticketbalanza"]);
+		}
+	}
+
+	// El lote no tiene registro en el cierre contable: se registra y se genera su ticket
+	if ($id_consolidado == 0) {
+		if ($id_tipoingreso == 2) {
+			cerrar_lote_desde_segundo_tramo($enlace, $id_lote, $g_fecha, $usuario_registro);
+		} else {
+			f_MigrarLotes_CierreContable($enlace, 1, $id_lote, $g_fecha, $usuario_registro);
+		}
+
+		if ($res_buscar = mysqli_query($enlace, $q_buscar)) {
+			if ($row_buscar = mysqli_fetch_array($res_buscar)) {
+				$id_consolidado = intval($row_buscar["Id"]);
+				$ticket = trim((string) $row_buscar["num_ticketbalanza"]);
+			}
+		}
+	}
+
+	// El registro existe pero nunca se le genero el numero de ticket
+	if ($id_consolidado > 0 && strlen($ticket) == 0) {
+		f_GenerarNumeroTicketCierreContable($enlace, $id_consolidado);
+	}
+
+	return $id_consolidado;
+}
+
+// ----------------------------------------------------------------------------------------------------------
 // Renumera los tickets de balanza (DDMMYY-NNN) de una fecha para que sigan el orden real de pesaje.
 //
 // Motivo: el numero de ticket se genera al cerrar el lote y toma el primer correlativo libre del dia
@@ -354,38 +440,57 @@ function f_GenerarNumeroTicketCierreContable($enlace, $id_consolidado)
 // de la consulta principal del modulo, el ticket del lote observado sale ya con su numero correcto y el
 // resto de tickets del dia tambien queda ordenado.
 //
+// Si el lote observado aun no tiene registro en consolidado_lotes_cierrecontable, primero se registra con
+// f_RegistrarLoteEnCierreContableSiFalta para que exista su ticket, y recien despues se renumera el dia.
+//
 // Precauciones:
 //   - El dia a renumerar es la fecha de pesaje (fecha_ingresobalanza), que es el mismo dia que usa
 //     f_GenerarNumeroTicketCierreContable para asignar el correlativo. No se filtra por la fecha de
 //     consolidacion porque un mismo dia de pesaje puede quedar repartido en varios dias de consolidacion
 //     (lotes que se cierran al dia siguiente): numerando solo una parte se repetirian correlativos ya emitidos.
 //   - Por lo mismo, un ticket cuyo prefijo no corresponde al dia se deja intacto y no consume correlativo.
+//   - Los tickets cuyo lote origen ya no existe se renumeran al final del dia (no se sabe cuando se pesaron),
+//     para que no repitan el correlativo de otro lote.
 //   - El correlativo se arma con 3 digitos (mismo formato de f_GenerarNumeroTicketCierreContable), por lo que
 //     todo el dia queda con el mismo formato.
 //   - Solo se actualizan los registros cuyo numero cambia y cada numero se escribe una sola vez, por lo que la
 //     funcion es idempotente: volver a imprimir un ticket no altera nada.
 //
 // Parametros:
-//   $enlace        - conexion mysqli
-//   $id_md5        - MD5 del Id del lote que se esta imprimiendo
-//   $id_tipoingreso- 1 = primer tramo (despachos_primertramo_validaciondatos)
-//                     2 = segundo tramo (despachos_segundotramo_distribucion_lotes)
+//   $enlace         - conexion mysqli
+//   $id_md5         - MD5 del Id del lote que se esta imprimiendo
+//   $id_tipoingreso - 1 = primer tramo (despachos_primertramo_validaciondatos)
+//                      2 = segundo tramo (despachos_segundotramo_distribucion_lotes)
+//   $g_fecha        - fecha y hora del cierre. Si se envia vacia se usa la actual.
+//   $usuario_registro- usuario que queda registrado en el cierre. Si se envia vacio se usa el usuario
+//                      logueado (session), igual que hace apis/backend.php.
 //
 // Devuelve el numero de ticket ya corregido del lote observado, o '' si el lote aun no tiene ticket.
 // ----------------------------------------------------------------------------------------------------------
-function f_RenumerarTicketsBalanzaPorOrdenPesaje($enlace, $id_md5, $id_tipoingreso)
+function f_RenumerarTicketsBalanzaPorOrdenPesaje($enlace, $id_md5, $id_tipoingreso, $g_fecha = '', $usuario_registro = '')
 {
 	$id_tipoingreso = intval($id_tipoingreso);
 	$id_md5 = mysqli_real_escape_string($enlace, (string) $id_md5);
 
-	// 1. Localiza el lote que se va a imprimir y la fecha en que empezo su pesaje.
+	// Usuario que se guarda en el cierre: el usuario logueado (session). Si la pagina se abriera sin sesion
+	// se recurre al usuario que registro el pesaje del lote, nunca a un usuario generico.
+	$usuario_registro = f_UsuarioCierreContable($usuario_registro);
+
+	// 1. Localiza el lote que se va a imprimir, la fecha en que empezo su pesaje y, como respaldo del
+	//    usuario, quien registro el pesaje del lote.
 	if ($id_tipoingreso == 1) {
-		$q_lote = "SELECT val.Id, val.lote_pesoinicial_fechahoraregistro AS FECHA_INICIO_PESAJE
+		$q_lote = "SELECT val.Id, val.lote_pesoinicial_fechahoraregistro AS FECHA_INICIO_PESAJE,
+						(SELECT tk.usuario_registro
+							FROM correlativo_ticketsbalanza tk
+							WHERE tk.id_lote = val.lote_id_lote AND tk.is_primertramo = 1
+							ORDER BY tk.Id DESC
+							LIMIT 1) AS USUARIO_PESISTA
 						FROM despachos_primertramo_validaciondatos val
 						WHERE MD5(val.Id) = '" . $id_md5 . "'
 						LIMIT 1";
 	} else {
-		$q_lote = "SELECT lot.Id, lot.peso_tara_fechahoraregistro AS FECHA_INICIO_PESAJE
+		$q_lote = "SELECT lot.Id, lot.peso_tara_fechahoraregistro AS FECHA_INICIO_PESAJE,
+						lot.peso_tara_usuarioregistro AS USUARIO_PESISTA
 						FROM despachos_segundotramo_distribucion_lotes lot
 						WHERE MD5(lot.Id) = '" . $id_md5 . "'
 						LIMIT 1";
@@ -393,16 +498,26 @@ function f_RenumerarTicketsBalanzaPorOrdenPesaje($enlace, $id_md5, $id_tipoingre
 
 	$id_lote_observado = 0;
 	$fecha_pesaje = '';
+	$usuario_pesista = '';
 
 	if ($res_lote = mysqli_query($enlace, $q_lote)) {
 		if ($row_lote = mysqli_fetch_array($res_lote)) {
 			$id_lote_observado = intval($row_lote["Id"]);
 			$fecha_pesaje = trim((string) $row_lote["FECHA_INICIO_PESAJE"]);
+			$usuario_pesista = trim((string) $row_lote["USUARIO_PESISTA"]);
 		}
 	}
 
 	if ($id_lote_observado == 0 || strlen($fecha_pesaje) == 0) {
 		return '';
+	}
+
+	if (strlen(trim((string) $usuario_registro)) == 0) {
+		$usuario_registro = $usuario_pesista;
+	}
+
+	if (strlen(trim((string) $g_fecha)) == 0) {
+		$g_fecha = date('Y-m-d H:i:s');
 	}
 
 	// 2. Dia a renumerar: la fecha del pesaje del lote. Si la fecha no es valida (por ejemplo '0000-00-00' en
@@ -420,7 +535,13 @@ function f_RenumerarTicketsBalanzaPorOrdenPesaje($enlace, $id_md5, $id_tipoingre
 	// Prefijo del dia (DDMMYY) con el mismo criterio de f_GenerarNumeroTicketCierreContable
 	$prefijo_dia = $partes[3] . $partes[2] . substr($partes[1], 2);
 
-	// 3. Tickets de ese dia, ordenados por la hora en que empezo el pesaje de cada lote.
+	// 3. Si el lote aun no paso por el cierre contable se registra aqui, para que exista su ticket y pueda
+	//    entrar en la renumeracion del dia.
+	f_RegistrarLoteEnCierreContableSiFalta($enlace, $id_lote_observado, $id_tipoingreso, $g_fecha, $usuario_registro);
+
+	// 4. Tickets de ese dia, ordenados por la hora en que empezo el pesaje de cada lote. La tercera rama
+	//    recoge los tickets cuyo lote origen ya no existe (programaciones eliminadas): si se dejaran fuera,
+	//    esos registros conservarian un correlativo viejo y volverian a repetir el de otro lote del dia.
 	$q_tickets_dia = "
 					SELECT 'primer_tramo' AS tramo,
 							1 AS id_tipoingreso,
@@ -446,9 +567,29 @@ function f_RenumerarTicketsBalanzaPorOrdenPesaje($enlace, $id_md5, $id_tipoingre
 						cr.id_registro = lot.Id AND cr.id_tipoingreso = 2
 					WHERE cr.fecha_ingresobalanza = '" . $fecha_dia . "'
 
-					ORDER BY fecha_inicio_pesaje ASC";
+					UNION ALL
 
-	// 4. Renumera. El bloqueo evita que dos impresiones simultaneas del mismo dia renumeren con
+					SELECT 'sin_registro_origen' AS tramo,
+							cr.id_tipoingreso,
+							cr.id_registro AS id_lote,
+							cr.Id AS id_ticket,
+							cr.num_ticketbalanza AS ticket,
+							NULL AS fecha_inicio_pesaje
+					FROM consolidado_lotes_cierrecontable cr
+					WHERE cr.fecha_ingresobalanza = '" . $fecha_dia . "'
+						AND NOT EXISTS (
+								SELECT 1 FROM despachos_primertramo_validaciondatos val
+								WHERE cr.id_tipoingreso = 1 AND val.Id = cr.id_registro
+							)
+						AND NOT EXISTS (
+								SELECT 1 FROM despachos_segundotramo_distribucion_lotes lot
+								WHERE cr.id_tipoingreso = 2 AND lot.Id = cr.id_registro
+							)
+
+					ORDER BY (fecha_inicio_pesaje IS NULL OR fecha_inicio_pesaje < '2000-01-01'),
+								fecha_inicio_pesaje ASC";
+
+	// 5. Renumera. El bloqueo evita que dos impresiones simultaneas del mismo dia renumeren con
 	//    posiciones distintas y dejen tickets duplicados o saltados.
 	$nombre_lock = 'renumerar_ticketbalanza_' . $prefijo_dia;
 	$tiene_lock = false;
