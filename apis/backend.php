@@ -34414,38 +34414,50 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$d = 1;
 		$html = '';
 
-		$q_datos = "SELECT V.Id,
-													 V.lote_cod_lote,
-													 V.lote_num_ticket,
-													 V.lote_ticket_orden,
-													 DATE(V.lote_pesoinicial_fechahoraregistro) AS FECHA_INGRESOBALANZA,
-													 V.balanza_placa,
-													 V.balanza_placa2,
-													 V.lote_peso_neto,
-													 V.guias_fecha,
-													 V.guiaremitente_serie,
-													 V.guiaremitente_numero,
-													 V.guias_idchofer,
-													 IFNULL(V.guiatransportista_serie, '--') AS guiatransportista_serie,
-													 IFNULL(V.guiatransportista_numero, '--') AS guiatransportista_numero,
-													 MD5(V.guiaremitente_serie) AS guiaremitente_serie_MD5,
-													 MD5(V.guiaremitente_numero) AS guiaremitente_numero_MD5,
-													 MD5(V.guiatransportista_serie) AS guiatransportista_serie_MD5,
-													 MD5(V.guiatransportista_numero) AS guiatransportista_numero_MD5,
-													 TR.documento AS TRANSPORTISTA_RUC,
-													 TR.razon_social AS TRANSPORTISTA_RAZONSOCIAL,
-													 V.lote_id_proveedorminero AS ID_REMITENTE,
-													 T.id_Transportista AS ID_TRANSPORTISTA,
-													 V.lote_id_proveedorminero_concesion
-											FROM despachos_primertramo_validaciondatos V
-													 INNER JOIN transporte T ON V.balanza_placa = T.cplaca
-													 LEFT JOIN tb_clientes TR ON T.id_Transportista = TR.Id
-													 INNER JOIN catalogolotes L ON V.lote_cod_lote = L.ccod_Lote
-										 WHERE V.despacho_id_modalidadenvio = " . $id_modalidadenvio . "
-											 AND V.despacho_id_destinoplanta " . (($id_destino == 0) ? ' IS NULL' : '= ' . $id_destino) . "
-											 AND V.lote_id_proveedorminero = " . $id_proveedorminero . "
-											 AND V.balanza_placa = '" . $placa . "'
-											 AND DATE(V.lote_pesoinicial_fechahoraregistro) = '" . $fecha_pesoinicial . "'";
+		$q_datos = "
+        SELECT
+            V.Id,
+            MD5(V.Id) AS id_md5,
+            cr.num_ticketbalanza as ticket,
+            V.lote_cod_lote,
+            V.lote_num_ticket,
+            V.lote_ticket_orden,
+            DATE(
+                V.lote_pesoinicial_fechahoraregistro
+            ) AS FECHA_INGRESOBALANZA,
+            V.balanza_placa,
+            V.balanza_placa2,
+            V.lote_peso_neto,
+            V.guias_fecha,
+            V.guiaremitente_serie,
+            V.guiaremitente_numero,
+            V.guias_idchofer,
+            IFNULL(V.guiatransportista_serie, '--') AS guiatransportista_serie,
+            IFNULL(V.guiatransportista_numero, '--') AS guiatransportista_numero,
+            MD5(V.guiaremitente_serie) AS guiaremitente_serie_MD5,
+            MD5(V.guiaremitente_numero) AS guiaremitente_numero_MD5,
+            MD5(V.guiatransportista_serie) AS guiatransportista_serie_MD5,
+            MD5(V.guiatransportista_numero) AS guiatransportista_numero_MD5,
+            TR.documento AS TRANSPORTISTA_RUC,
+            TR.razon_social AS TRANSPORTISTA_RAZONSOCIAL,
+            V.lote_id_proveedorminero AS ID_REMITENTE,
+            T.id_Transportista AS ID_TRANSPORTISTA,
+            V.lote_id_proveedorminero_concesion
+        FROM
+            despachos_primertramo_validaciondatos V
+        INNER JOIN transporte T ON
+            V.balanza_placa = T.cplaca
+        LEFT JOIN tb_clientes TR ON
+            T.id_Transportista = TR.Id
+        INNER JOIN catalogolotes L ON
+            V.lote_cod_lote = L.ccod_Lote
+        LEFT JOIN consolidado_lotes_cierrecontable cr on cr.id_registro = V.Id and cr.id_tipoingreso = 1
+        WHERE V.despacho_id_modalidadenvio = " . $id_modalidadenvio . "
+            AND V.despacho_id_destinoplanta " . (($id_destino == 0) ? ' IS NULL' : '= ' . $id_destino) . "
+            AND V.lote_id_proveedorminero = " . $id_proveedorminero . "
+            AND V.balanza_placa = '" . $placa . "'
+            AND DATE(V.lote_pesoinicial_fechahoraregistro) = '" . $fecha_pesoinicial . "'
+        ";
 
 		if (strlen($arr_lotes) > 0) {
 			$q_datos .= "   AND V.lote_cod_lote IN (" . $arr_lotes . ")";
@@ -34537,15 +34549,22 @@ case 'confirmar_ProgramacionLote_AddLote':
 					$html .= '    ' . $fecha_pesoinicial;
 					$html .= '  </td>';
 
-					$html .= '  <td id="td_numticket_' . $d . '" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; background-color: #ffffff;">';
-					// $html .= '    '.$row_datos["lote_num_ticket"];
-					// $html .= '    TICKET';
+                    $html .= '  <td id="td_numticket_' . $d . '" style="border: solid 1px #D9D9D9; vertical-align: middle; text-align: center; background-color: #ffffff; padding: 4px;">';
 
-					if (strlen($row_datos["lote_ticket_orden"]) > 0) {
-						$html .= 'PARTE <b>' . $row_datos["lote_ticket_orden"] . '</b>';
-					}
+                    // Botón para abrir el ticket en nueva pestaña
+                    $urlTicket = 'print_ticketbalanza.php?x=' . urlencode($row_datos["id_md5"]);
 
-					$html .= '  </td>';
+                    $html .= '    <button type="button" onclick="window.open(\'' . $urlTicket . '\', \'_blank\');" style="cursor: pointer; padding: 4px; border-radius: 4px; border: 1px solid #ccc; background-color: #f8f9fa; display: inline-flex; align-items: center; gap: 3px;">';
+                    // Si usas Font Awesome puedes cambiar el <span> por <i class="fa fa-print"></i>
+                    $html .= '      <span style="font-size: 12px;"><i class="bi bi-printer fs-6"></i></span>';
+                    $html .= '      <strong>' . htmlspecialchars($row_datos["ticket"]) . '</strong>';
+                    $html .= '    </button>';
+
+                    if (strlen($row_datos["lote_ticket_orden"]) > 0) {
+                        $html .= '<div style="margin-top: 4px; font-size: 11px;">PARTE <b>' . htmlspecialchars($row_datos["lote_ticket_orden"]) . '</b></div>';
+                    }
+
+                    $html .= '  </td>';
 
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; background-color: #ffffff;">';
 					$html .= '    ' . $row_datos["balanza_placa"];
@@ -34629,6 +34648,8 @@ case 'confirmar_ProgramacionLote_AddLote':
 		echo json_encode(array('estado' => $estado, 'html' => $html, 'id_distribucionunidad' => $id_distribucionunidad_x));
 
 		break;
+
+	
 
 	case 'get_PrimerTramo_ValidacionDistribucion_VerifyLotesCerrados':
 		$is_disabled = 0;
