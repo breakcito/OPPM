@@ -8,6 +8,7 @@ session_start();
 
 include('cnx/cnx.php');
 include('global/variables.php');
+include('global/funciones_cierrecontable.php');
 
 require_once 'dompdf/autoload.inc.php';
 
@@ -25,6 +26,8 @@ $ruta_images = substr($ruta_images, 0, strpos($ruta_images, 'print_ticketbalanza
 error_reporting(0);
 ini_set('display_errors', 0);
 ini_set('display_startuo_errors', 0);
+// ini_set('display_errors', 1);
+// error_reporting(E_ALL);
 
 function nombre_numeros($_numero)
 {
@@ -279,6 +282,20 @@ $pesofinal_observacion = '';
 $guia_remitente = '';
 $guia_transportista = '';
 $usuario_registro = '';
+$num_parte = '';
+$codigo_planta = '';
+$remitente_ruc = '';
+$remitente_razonsocial = '';
+$id_tipocarga = '';
+$num_bigbag = '';
+$peso_neto = 0;
+$peso_bruto = 0;
+$peso_tara = 0;
+$pesotara_fechahora = '';
+$pesobruto_fechahora = '';
+
+// El cierre automatico del lote se evalua una sola vez por impresion
+$cierre_ya_evaluado = false;
 
 $m = 1;
 
@@ -287,7 +304,6 @@ SELECT
     DL.Id,
     MD5(DL.Id) AS ID_MD5,
     PD.cod_lote,
-
 
     (
     CASE 
@@ -305,10 +321,10 @@ SELECT
     ) AS num_parte,
 
     CL.num_ticketbalanza,
-    IFNULL(DATE(DL.peso_bruto_fechahoraregistro),DL.guias_fecha) AS FECHA_INGRESOBALANZA,
+    IFNULL(DATE(DL.peso_bruto_fechahoraregistro), DL.guias_fecha) AS FECHA_INGRESOBALANZA,
 
     DL.guias_placa1 AS PLACA1,
-    DL.guias_placa2 AS PLACA2,
+    COALESCE(I.placa2, DL.guias_placa2) AS PLACA2,
     PD.codigo_planta,
     DL.guiaremitente_serie,
     DL.guiaremitente_numero,
@@ -317,8 +333,8 @@ SELECT
     TR.documento AS TRANSPORTISTA_RUC,
     TR.razon_social AS TRANSPORTISTA_RAZONSOCIAL,
     TV.descripcion AS TIPO_VEHICULO,
-    CH.licencia_conducir AS CONDUCTOR_DNI,
-    CH.nombres AS CONDUCTOR_NOMBRES,
+    COALESCE(chof.dni_licencia,CH.licencia_conducir) AS CONDUCTOR_DNI,
+    COALESCE(chof.nombres,CH.nombres) AS CONDUCTOR_NOMBRES,
     DL.id_tipocarga,
     TC.descripcion AS TIPO_CARGA,
     DL.num_bigbag,
@@ -338,7 +354,7 @@ SELECT
     DL.cerradolote_usuarioregistro,
     DL.is_complemento,
 
-    IFNULL(DL.cierrelote_complementotara,0) AS COMPLEMENTO_TARA,
+    IFNULL(DL.cierrelote_complementotara, 0) AS COMPLEMENTO_TARA,
 
     (
     SELECT 
@@ -353,13 +369,12 @@ SELECT
     (
     SELECT SUM(DL_x.peso_distribuido)
     FROM despachos_segundotramo_distribucion_lotes DL_x
-    WHERE DL_x.Id IN(
+    WHERE DL_x.Id IN (
         SELECT DL_x2.Id
         FROM despachos_segundotramo_distribucion_lotes DL_x2
         WHERE DL_x2.is_complemento_de = DL.Id
         )
     ) AS COMPLEMENTO_PESODISTRIBUIDO,
-
 
     (
         SELECT SUM(DL_x.peso_distribuido)
@@ -367,12 +382,14 @@ SELECT
         WHERE DL_x.Id = DL.Id
     ) AS COMPLEMENTO_PESODISTRIBUIDO2,
     
-    COALESCE(usu.usu_usuario, CL.fechahora_usuario)  as usuario_registro,
+    COALESCE(usu.usu_usuario, CL.fechahora_usuario) AS usuario_registro,
     CONCAT_WS(' ',
         NULLIF(TRIM(emp.apellido_paterno), ''),
         NULLIF(TRIM(emp.apellido_materno), ''),
         NULLIF(TRIM(emp.nombres), '')
-    ) AS empleado_registro
+    ) AS empleado_registro,
+
+    DL.peso_tara_usuarioregistro AS USUARIO_PESISTA
 
 FROM despachos_segundotramo_programacion_detalle PD
 LEFT JOIN despachos_segundotramo_programacion P ON PD.id_programacion = P.Id
@@ -382,6 +399,15 @@ LEFT JOIN despachos_segundotramo_distribucion_lotes DL ON U.Id = DL.id_distribuc
 
 LEFT JOIN transporte UN ON U.id_unidad = UN.id_transporte
 LEFT JOIN transporte UN2 ON U.id_unidad2 = UN2.id_transporte
+
+LEFT JOIN controlingresovehiculo I ON 
+    I.placa = UN.cplaca
+    AND I.id_tipoingresounidad = 2
+    AND DATE(I.dFechaIngreso) >= DATE(U.fecha_ingresoplanta)
+    AND DATE(I.dFechaIngreso) <= DATE(P.fechaestimada_despacho)
+    
+LEFT JOIN tbconfig_conductores chof on chof.Id = I.id_choferes
+
 LEFT JOIN tb_clientes TR ON UN.id_Transportista = TR.Id
 LEFT JOIN tbconfig_plantas PL ON PD.id_planta = PL.Id
 LEFT JOIN tbconfig_modalidadenvio ME ON PD.id_modalidadenvio = ME.Id
@@ -394,8 +420,8 @@ LEFT JOIN tbconfig_producto PR ON V.lote_id_producto = PR.Id
 LEFT JOIN tbconfig_tipomineral TM ON V.lote_id_tipomineral = TM.Id
 LEFT JOIN consolidado_lotes_cierrecontable CL ON DL.Id = CL.id_registro AND CL.id_tipoingreso = 2
 
-LEFT JOIN tb_usuario usu on usu.usu_usuario = DL.peso_tara_usuarioregistro
-LEFT JOIN tb_empleados emp on emp.Id = usu.id_empleado 
+LEFT JOIN tb_usuario usu ON usu.usu_usuario = DL.peso_tara_usuarioregistro
+LEFT JOIN tb_empleados emp ON emp.Id = usu.id_empleado 
 
 WHERE MD5(DL.Id) = '" . $id_md5 . "'";
 
@@ -404,9 +430,9 @@ if ($res_datos = mysqli_query($enlace, $q_datos)) {
 		while ($row_datos = mysqli_fetch_array($res_datos)) {
 			$ticket_balanza = $row_datos["num_ticketbalanza"];
 			$cod_lote = $row_datos["cod_lote"];
-			$num_parte = $row_datos["num_parte"];
+			$num_parte = (string) $row_datos["num_parte"];
 			$placa_1 = $row_datos["PLACA1"];
-			$codigo_planta = $row_datos["codigo_planta"];
+			$codigo_planta = (string) $row_datos["codigo_planta"];
 			$placa_2 = $row_datos["PLACA2"];
 			$transportista_documento = $row_datos["TRANSPORTISTA_RUC"];
 			$transportista_razonsocial = $row_datos["TRANSPORTISTA_RAZONSOCIAL"];
@@ -417,14 +443,14 @@ if ($res_datos = mysqli_query($enlace, $q_datos)) {
 			$tipo_carga = $row_datos["TIPO_CARGA"];
 			$num_bigbag = $row_datos["num_bigbag"];
 			$zona_origen = 'PLANTA HUANCHACO';
-			$remitente_ruc = $row_datos["REMITENTE_RUC"];
-			$remitente_razonsocial = $row_datos["REMITENTE_RAZONSOCIAL"];
-			$producto = $row_datos["PRODUCTO"];
-			$tipo_mineral = $row_datos["TIPO_MATERIAL"];
-			$observacion = $row_datos["observacion"];
-			$guia_remitente = $row_datos["guiaremitente_serie"] . '-' . $row_datos["guiaremitente_numero"];
-			$guia_transportista = $row_datos["guiatransportista_serie"] . '-' . $row_datos["guiatransportista_numero"];
-			$usuario_registro = $row_datos["empleado_registro"];
+			$remitente_ruc = (string) $row_datos["REMITENTE_RUC"];
+			$remitente_razonsocial = (string) $row_datos["REMITENTE_RAZONSOCIAL"];
+			$producto = (string) $row_datos["PRODUCTO"];
+			// $tipo_mineral = $row_datos["TIPO_MATERIAL"];
+			$observacion = (string) $row_datos["observacion"];
+			$guia_remitente = (string) $row_datos["guiaremitente_serie"] . '-' . $row_datos["guiaremitente_numero"];
+			$guia_transportista = (string) $row_datos["guiatransportista_serie"] . '-' . $row_datos["guiatransportista_numero"];
+			$usuario_registro = (string) $row_datos["empleado_registro"];
 
 			// Obteniendo Peso Neto
 			$peso_neto = $row_datos["peso_neto"] * 1000;
@@ -472,6 +498,106 @@ if ($res_datos = mysqli_query($enlace, $q_datos)) {
 
 			// Genera QR
 			QRcode::png($url, $file_name, 'H', 3, 3);
+
+			// ---------------------------------------------------------------------------------------------
+			// CIERRE AUTOMATICO DEL LOTE
+			//
+			// Si el lote todavia no tiene ticket de balanza generado (CL.num_ticketbalanza vacio), significa
+			// que nunca paso por el cierre contable. Para no imprimir un ticket sin numero, aqui se ejecuta
+			// el mismo cierre que aplica el case 'grabar_SegundoTramo_EditBalanza' del backend:
+			//   1. Registra el correlativo del ticket.
+			//   2. Cierra el lote (is_cerradolote) y lo migra a consolidado_lotes_cierrecontable.
+			//   3. Vuelve a leer el numero de ticket recien generado para imprimirlo.
+			//
+			// El proceso es idempotente: si el ticket ya existe no se vuelve a cerrar ni a renumerar, por
+			// lo que recargar o volver a imprimir la pagina no altera nada.
+			//
+			// La consulta principal puede devolver varias filas por lote (por ejemplo cuando
+			// despachos_primertramo_validaciondatos tiene mas de un registro con el mismo lote_cod_lote),
+			// por eso el cierre se hace una sola vez por impresion y no en cada iteracion: de lo contrario
+			// se registrarian correlativos de ticket duplicados.
+			// ---------------------------------------------------------------------------------------------
+			if (!$cierre_ya_evaluado && strlen(trim((string) $ticket_balanza)) == 0) {
+				$cierre_ya_evaluado = true;
+
+				$id_lote_cierre = (int) $row_datos["Id"];
+				$cod_lote_cierre = (string) $row_datos["cod_lote"];
+
+				// Usuario que dispara el cierre. Prioriza la sesion (impresion desde el sistema) y si no
+				// existe cae al usuario que registro el peso del lote.
+				$usuario_cierre = '';
+
+				if (isset($_SESSION['usu_usuario']) && strlen(trim((string) $_SESSION['usu_usuario'])) > 0) {
+					$usuario_cierre = (string) $_SESSION['usu_usuario'];
+				} else {
+					$usuario_cierre = (string) $row_datos["USUARIO_PESISTA"];
+				}
+
+				if (strlen(trim($usuario_cierre)) == 0) {
+					$usuario_cierre = 'SISTEMA';
+				}
+
+				// Se bloquea por lote para que dos impresiones simultaneas del mismo lote no generaren
+				// dos numeros de ticket distintos.
+				$nombre_lock = 'ticket_cierrecontable_' . $id_lote_cierre;
+				$res_lock = mysqli_query($enlace, "SELECT GET_LOCK('" . $nombre_lock . "', 5) AS LOCK_OK");
+				$row_lock = ($res_lock) ? mysqli_fetch_assoc($res_lock) : null;
+				$tiene_lock = (is_array($row_lock) && intval($row_lock["LOCK_OK"]) == 1);
+
+				// Solo se cierra si el lote tiene peso tara registrado: sin el, la fecha de ingreso a
+				// balanza queda vacia y el numero de ticket se generaria con un prefijo invalido.
+				if ($tiene_lock && strlen(trim((string) $row_datos["peso_tara_fechahoraregistro"])) > 0) {
+
+					// Correlativo del ticket para el segundo tramo
+					$correlativo_ticket = 0;
+
+					$q_correlativo = "SELECT IFNULL(MAX(correlativo), 0) + 1 AS CORRELATIVO FROM correlativo_ticketsbalanza";
+
+					if ($res_correlativo = mysqli_query($enlace, $q_correlativo)) {
+						if ($row_correlativo = mysqli_fetch_assoc($res_correlativo)) {
+							$correlativo_ticket = intval($row_correlativo["CORRELATIVO"]);
+						}
+					}
+
+					// Guarda el correlativo en el lote
+					$q_save = "UPDATE despachos_segundotramo_distribucion_lotes SET";
+					$q_save .= "   num_ticketbalanza = " . $correlativo_ticket;
+					$q_save .= " WHERE Id = " . $id_lote_cierre;
+
+					if ($res_save = mysqli_query($enlace, $q_save)) {
+						// Registra el correlativo utilizado
+						$q_correlativo = "INSERT INTO correlativo_ticketsbalanza (is_segundotramo, correlativo, fechahora_registro, usuario_registro) VALUES (";
+						$q_correlativo .= "1, ";
+						$q_correlativo .= $correlativo_ticket . ", ";
+						$q_correlativo .= "'" . $g_fecha . "', ";
+						$q_correlativo .= "'" . $usuario_cierre . "')";
+
+						if ($res_correlativo = mysqli_query($enlace, $q_correlativo)) {
+
+							// Cierra el lote y lo migra al consolidado de cierre contable
+							cerrar_lote_desde_segundo_tramo($enlace, $id_lote_cierre, $g_fecha, $usuario_cierre);
+
+							// Vuelve a leer el numero de ticket generado
+							$q_ticket = "SELECT num_ticketbalanza
+																FROM consolidado_lotes_cierrecontable
+															WHERE id_tipoingreso = 2
+																	AND id_registro = " . $id_lote_cierre;
+
+							if ($res_ticket = mysqli_query($enlace, $q_ticket)) {
+								if (mysqli_num_rows($res_ticket) > 0) {
+									if ($row_ticket = mysqli_fetch_assoc($res_ticket)) {
+										$ticket_balanza = (string) $row_ticket["num_ticketbalanza"];
+									}
+								}
+							}
+						}
+					}
+				}
+
+				if ($tiene_lock) {
+					mysqli_query($enlace, "SELECT RELEASE_LOCK('" . $nombre_lock . "')");
+				}
+			}
 		}
 	}
 }
@@ -520,7 +646,7 @@ $html = '<!DOCTYPE html>
 						    </head>
 
 						    <body style="width: 100%; padding: 0px; text-align: center;">
-						    	<div style="width: 100%; margin-left: 0px; margin-top: ' . (($_SESSION['cod_rol'] != 4) ? '50px' : '0px') . ' margin-right: 0px;">
+						    	<div style="width: 100%; margin-left: 0px; margin-top: ' . (((isset($_SESSION['cod_rol']) ? $_SESSION['cod_rol'] : null) != 4) ? '50px' : '0px') . ' margin-right: 0px;">
 										<div class="row" style="text-align: center;">
 											<img src="' . $ruta_images . 'logo_oppm.png" width="130mm"/>
 										</div>
@@ -665,9 +791,13 @@ $html .= '			<div class="row" style="margin-top: -5px; margin-left: 10px; text-a
 											<label style="font-family: AgencyFBb;">Observación: </label>
 											<label>' . $observacion;
 
-if (strlen($codigo_planta) > 0) {
-	$html .= ((strlen($observacion) > 0) ? ' / ' : '') . $codigo_planta . '</label>
-																</div>';
+if (strlen(trim($observacion)) > 0 || strlen(trim($codigo_planta)) > 0) {
+	$separador_observacion = ((strlen(trim($observacion)) > 0) && (strlen(trim($codigo_planta)) > 0)) ? ' / ' : '';
+	$html .= $separador_observacion . $codigo_planta . '</label>
+															</div>';
+} else {
+	$html .= '</label>
+														</div>';
 }
 
 $html .= '			<div class="row" style="text-align: center;">
@@ -755,7 +885,7 @@ $document = new Dompdf($options);
 $document->loadHtml($html, 'UTF-8');
 
 // Solo si es balanza aumenta el Height
-if ($_SESSION['cod_rol'] == 4) {
+if ((isset($_SESSION['cod_rol']) ? $_SESSION['cod_rol'] : null) == 4) {
 	$document->setPaper(array(0, 0, 190, 6000));
 } else {
 	$document->setPaper(array(0, 0, 190, 700));
