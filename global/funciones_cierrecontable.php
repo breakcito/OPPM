@@ -339,6 +339,169 @@ function f_GenerarNumeroTicketCierreContable($enlace, $id_consolidado)
 	return '';
 }
 
+// ----------------------------------------------------------------------------------------------------------
+// Renumera los tickets de balanza (DDMMYY-NNN) de una fecha para que sigan el orden real de pesaje.
+//
+// Motivo: el numero de ticket se genera al cerrar el lote y toma el primer correlativo libre del dia
+// (ver f_GenerarNumeroTicketCierreContable), no el siguiente al ultimo pesado. Como el cierre contable no
+// ocurre necesariamente en el mismo orden en que los lotes entran a la balanza, la numeracion queda
+// desalineada frente a la secuencia real de pesaje: por ejemplo el ticket ...-012 queda entre el ...-005 y
+// el ...-006, cuando en realidad le corresponde el ...-006.
+//
+// Que hace: recibe el lote que se va a imprimir, toma la fecha en que empezo su pesaje, recupera todos los
+// tickets de esa fecha ya ordenados por fecha de inicio de pesaje y reescribe num_ticketbalanza de
+// consolidado_lotes_cierrecontable con el correlativo que le corresponde a cada posicion. Al ejecutarse antes
+// de la consulta principal del modulo, el ticket del lote observado sale ya con su numero correcto y el
+// resto de tickets del dia tambien queda ordenado.
+//
+// Precauciones:
+//   - El dia a renumerar es la fecha de pesaje (fecha_ingresobalanza), que es el mismo dia que usa
+//     f_GenerarNumeroTicketCierreContable para asignar el correlativo. No se filtra por la fecha de
+//     consolidacion porque un mismo dia de pesaje puede quedar repartido en varios dias de consolidacion
+//     (lotes que se cierran al dia siguiente): numerando solo una parte se repetirian correlativos ya emitidos.
+//   - Por lo mismo, un ticket cuyo prefijo no corresponde al dia se deja intacto y no consume correlativo.
+//   - El correlativo se arma con 3 digitos (mismo formato de f_GenerarNumeroTicketCierreContable), por lo que
+//     todo el dia queda con el mismo formato.
+//   - Solo se actualizan los registros cuyo numero cambia y cada numero se escribe una sola vez, por lo que la
+//     funcion es idempotente: volver a imprimir un ticket no altera nada.
+//
+// Parametros:
+//   $enlace        - conexion mysqli
+//   $id_md5        - MD5 del Id del lote que se esta imprimiendo
+//   $id_tipoingreso- 1 = primer tramo (despachos_primertramo_validaciondatos)
+//                     2 = segundo tramo (despachos_segundotramo_distribucion_lotes)
+//
+// Devuelve el numero de ticket ya corregido del lote observado, o '' si el lote aun no tiene ticket.
+// ----------------------------------------------------------------------------------------------------------
+function f_RenumerarTicketsBalanzaPorOrdenPesaje($enlace, $id_md5, $id_tipoingreso)
+{
+	$id_tipoingreso = intval($id_tipoingreso);
+	$id_md5 = mysqli_real_escape_string($enlace, (string) $id_md5);
+
+	// 1. Localiza el lote que se va a imprimir y la fecha en que empezo su pesaje.
+	if ($id_tipoingreso == 1) {
+		$q_lote = "SELECT val.Id, val.lote_pesoinicial_fechahoraregistro AS FECHA_INICIO_PESAJE
+						FROM despachos_primertramo_validaciondatos val
+						WHERE MD5(val.Id) = '" . $id_md5 . "'
+						LIMIT 1";
+	} else {
+		$q_lote = "SELECT lot.Id, lot.peso_tara_fechahoraregistro AS FECHA_INICIO_PESAJE
+						FROM despachos_segundotramo_distribucion_lotes lot
+						WHERE MD5(lot.Id) = '" . $id_md5 . "'
+						LIMIT 1";
+	}
+
+	$id_lote_observado = 0;
+	$fecha_pesaje = '';
+
+	if ($res_lote = mysqli_query($enlace, $q_lote)) {
+		if ($row_lote = mysqli_fetch_array($res_lote)) {
+			$id_lote_observado = intval($row_lote["Id"]);
+			$fecha_pesaje = trim((string) $row_lote["FECHA_INICIO_PESAJE"]);
+		}
+	}
+
+	if ($id_lote_observado == 0 || strlen($fecha_pesaje) == 0) {
+		return '';
+	}
+
+	// 2. Dia a renumerar: la fecha del pesaje del lote. Si la fecha no es valida (por ejemplo '0000-00-00' en
+	//    lotes que aun no pasaron por balanza) no hay nada que ordenar.
+	if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $fecha_pesaje, $partes)) {
+		return '';
+	}
+
+	if (!checkdate(intval($partes[2]), intval($partes[3]), intval($partes[1]))) {
+		return '';
+	}
+
+	$fecha_dia = $partes[1] . '-' . $partes[2] . '-' . $partes[3];
+
+	// Prefijo del dia (DDMMYY) con el mismo criterio de f_GenerarNumeroTicketCierreContable
+	$prefijo_dia = $partes[3] . $partes[2] . substr($partes[1], 2);
+
+	// 3. Tickets de ese dia, ordenados por la hora en que empezo el pesaje de cada lote.
+	$q_tickets_dia = "
+					SELECT 'primer_tramo' AS tramo,
+							1 AS id_tipoingreso,
+							val.Id AS id_lote,
+							cr.Id AS id_ticket,
+							cr.num_ticketbalanza AS ticket,
+							val.lote_pesoinicial_fechahoraregistro AS fecha_inicio_pesaje
+					FROM despachos_primertramo_validaciondatos val
+					INNER JOIN consolidado_lotes_cierrecontable cr ON
+						cr.id_registro = val.Id AND cr.id_tipoingreso = 1
+					WHERE cr.fecha_ingresobalanza = '" . $fecha_dia . "'
+
+					UNION ALL
+
+					SELECT 'segundo_tramo' AS tramo,
+							2 AS id_tipoingreso,
+							lot.Id AS id_lote,
+							cr.Id AS id_ticket,
+							cr.num_ticketbalanza AS ticket,
+							lot.peso_tara_fechahoraregistro AS fecha_inicio_pesaje
+					FROM despachos_segundotramo_distribucion_lotes lot
+					INNER JOIN consolidado_lotes_cierrecontable cr ON
+						cr.id_registro = lot.Id AND cr.id_tipoingreso = 2
+					WHERE cr.fecha_ingresobalanza = '" . $fecha_dia . "'
+
+					ORDER BY fecha_inicio_pesaje ASC";
+
+	// 4. Renumera. El bloqueo evita que dos impresiones simultaneas del mismo dia renumeren con
+	//    posiciones distintas y dejen tickets duplicados o saltados.
+	$nombre_lock = 'renumerar_ticketbalanza_' . $prefijo_dia;
+	$tiene_lock = false;
+
+	if ($res_lock = mysqli_query($enlace, "SELECT GET_LOCK('" . $nombre_lock . "', 5) AS LOCK_OK")) {
+		if ($row_lock = mysqli_fetch_assoc($res_lock)) {
+			$tiene_lock = (intval($row_lock["LOCK_OK"]) == 1);
+		}
+	}
+
+	$res_tickets_dia = mysqli_query($enlace, $q_tickets_dia);
+
+	$correlativo = 0;
+	$ticket_observado = '';
+
+	if ($res_tickets_dia) {
+		while ($row_ticket = mysqli_fetch_array($res_tickets_dia)) {
+			$ticket_actual = trim((string) $row_ticket["ticket"]);
+			$pos = strrpos($ticket_actual, '-');
+			$prefijo_actual = ($pos !== false) ? substr($ticket_actual, 0, $pos) : '';
+
+			// Los tickets de otro dia se dejan intactos y no consumen correlativo
+			if (strlen($prefijo_actual) > 0 && $prefijo_actual != $prefijo_dia) {
+				continue;
+			}
+
+			$correlativo++;
+
+			$ticket_nuevo = $prefijo_dia . '-' . str_pad($correlativo, 3, '0', STR_PAD_LEFT);
+
+			if ($ticket_nuevo != $ticket_actual) {
+				$q_update = "UPDATE consolidado_lotes_cierrecontable
+								SET num_ticketbalanza = '" . mysqli_real_escape_string($enlace, $ticket_nuevo) . "'
+							WHERE Id = " . intval($row_ticket["id_ticket"]);
+				mysqli_query($enlace, $q_update);
+			}
+
+			if (intval($row_ticket["id_lote"]) == $id_lote_observado
+					&& intval($row_ticket["id_tipoingreso"]) == $id_tipoingreso) {
+				$ticket_observado = $ticket_nuevo;
+			}
+		}
+
+		mysqli_free_result($res_tickets_dia);
+	}
+
+	if ($tiene_lock) {
+		mysqli_query($enlace, "SELECT RELEASE_LOCK('" . $nombre_lock . "')");
+	}
+
+	return $ticket_observado;
+}
+
 function cerrar_lote_desde_segundo_tramo($enlace, $id_lote_a_cerrar, $g_fecha, $usuario_registro)
 {
     // Grabando cierre

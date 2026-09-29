@@ -8,6 +8,7 @@ session_start();
 
 include('cnx/cnx.php');
 include('global/variables.php');
+require_once('global/funciones_cierrecontable.php');
 
 require_once 'dompdf/autoload.inc.php';
 
@@ -343,6 +344,11 @@ $guia_transportista = '';
 $usuario_registro = '';
 
 $m = 1;
+
+// Antes de obtener los datos del lote se ordena la numeracion de tickets de balanza de la fecha de pesaje:
+// el ticket de este lote sale con el correlativo que le corresponde por orden real de pesaje y de paso se
+// corrigen los demas tickets del mismo dia (ver f_RenumerarTicketsBalanzaPorOrdenPesaje).
+f_RenumerarTicketsBalanzaPorOrdenPesaje($enlace, $id_md5, 1);
 
 $q_balanza = "
 SELECT
