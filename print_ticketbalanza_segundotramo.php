@@ -339,8 +339,8 @@ SELECT
     TC.descripcion AS TIPO_CARGA,
     DL.num_bigbag,
     'PLANTA HUANCACO' AS ZONA_ORIGEN,
-    RE.ruc AS REMITENTE_RUC,
-    RE.razon_social AS REMITENTE_RAZONSOCIAL,
+    COALESCE(RE.ruc, rem.ruc) AS REMITENTE_RUC,
+    COALESCE(RE.razon_social, rem.descripcion) AS REMITENTE_RAZONSOCIAL,
     PR.descripcion AS PRODUCTO,
     TM.descripcion AS TIPO_MINERAL,
     DL.observacion,
@@ -415,7 +415,11 @@ LEFT JOIN tbconfig_tipocarga TC ON DL.id_tipocarga = TC.Id
 LEFT JOIN tbconfig_tipovehiculo TV ON UN.id_tipovehiculo = TV.Id
 LEFT JOIN despachos_primertramo_validaciondatos V ON PD.cod_lote = V.lote_cod_lote
 LEFT JOIN tbconfig_conductores CH ON DL.guias_idchofer = CH.Id
+
 LEFT JOIN tbconfig_remitentessegundotramo RE ON DL.guias_iddestino = RE.id_destino AND DL.guias_idmodalidadenvio = RE.id_modalidadenvio
+LEFT JOIN catalogolotes lot on lot.ccod_Lote = DL.cod_lote
+LEFT JOIN tbconfig_plantas rem on rem.Id = lot.balanza_id_planta
+
 LEFT JOIN tbconfig_producto PR ON V.lote_id_producto = PR.Id
 LEFT JOIN tbconfig_tipomineral TM ON V.lote_id_tipomineral = TM.Id
 LEFT JOIN consolidado_lotes_cierrecontable CL ON DL.Id = CL.id_registro AND CL.id_tipoingreso = 2
