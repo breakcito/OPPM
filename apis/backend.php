@@ -313,70 +313,90 @@ function nombre_meses($num_mes)
 	}
 }
 
+// Función robusta para guardar imágenes en base64 en disco
+function f_GuardarImagenBase64($imagen, $target_dir, $prefix = '')
+{
+	$imagen = trim($imagen);
+	if (strlen($imagen) == 0) {
+		return '';
+	}
+
+	$type = 'jpg';
+	$base64String = '';
+
+	if (preg_match('/^data:image\/([a-zA-Z0-9\+\-\.]+)(?:;[a-zA-Z0-9\=\-\s]+)*;base64,(.+)$/is', $imagen, $matches)) {
+		$mime = strtolower($matches[1]);
+		if ($mime === 'png') {
+			$type = 'png';
+		} elseif ($mime === 'webp') {
+			$type = 'webp';
+		} elseif ($mime === 'gif') {
+			$type = 'gif';
+		} else {
+			$type = 'jpg';
+		}
+		$base64String = $matches[2];
+	} elseif (strpos($imagen, ';base64,') !== false) {
+		$parts = explode(';base64,', $imagen, 2);
+		$base64String = $parts[1];
+	} else {
+		// Base64 sin prefijo data:
+		$base64String = $imagen;
+	}
+
+	$base64String = str_replace(array("\r", "\n", " "), '', $base64String);
+	$imagenData = base64_decode($base64String);
+
+	if ($imagenData === false || strlen($imagenData) == 0) {
+		return '';
+	}
+
+	if (!is_dir($target_dir)) {
+		@mkdir($target_dir, 0777, true);
+	}
+
+	$date = date("Ymd_His");
+	$randomHash = bin2hex(random_bytes(16));
+	$fileName = (!empty($prefix) ? $prefix . '_' : '') . $date . "_" . $randomHash . "." . $type;
+	$filePath = rtrim($target_dir, '/\\') . '/' . $fileName;
+
+	if (file_put_contents($filePath, $imagenData) !== false) {
+		return $fileName;
+	}
+
+	return '';
+}
+
 // Graba imágenes de Acompañantes en la Recepción de Unidades
 function f_GrabarImagenes_RecepcionAcompanantes($enlace, $id_registro, $arr_acompanantes)
 {
 	$estado = 1;
-
-	// Recupera variables
-	// $id_registro = mysqli_real_escape_string($enlace, $_POST["id_registro"]);
-	// $arr_acompanantes = $_POST["arr_acompanantes"];
-	// $usuario_registro = $_SESSION["usu_usuario"];
+	$target_dir = '../files/recepcion/';
 
 	// Graba datos de recepción
 	$arr_acompanantes = json_decode($arr_acompanantes, true);
 
+	if (!is_array($arr_acompanantes)) {
+		return 0;
+	}
+
 	foreach ($arr_acompanantes as $acompanante) {
 		$cod_auto = $acompanante['cod_auto'];
 		$imagen = trim($acompanante['imagen']);
+		$imagenBase64URL = '';
 
 		if (strlen($imagen) > 0) {
-			// $imagenBase64Comprimida = f_ComprimirImagenes($imagen);
-
-			// Eliminar la cabecera de datos si existe (por ejemplo, "data:image/png;base64,")
-			if (preg_match('/^data:image\/(\w+);base64,/', $imagen, $type)) {
-				$base64String = substr($imagen, strpos($imagen, ',') + 1);
-				$type = strtolower($type[1]); // jpg, png, gif, etc.
-			} else {
-				die('El formato base64 no es válido.');
-			}
-
-			// Decodificar el base64
-			$imagenData = base64_decode($base64String);
-
-			if ($imagenData === false) {
-				die('La decodificación de la imagen falló.');
-			}
-
-			// Generar un nombre aleatorio único con fecha y hora
-			$date = date("Ymd_His"); // Fecha y hora (ejemplo: 20250114_134500)
-			$randomHash = bin2hex(random_bytes(16)); // Genera 32 caracteres aleatorios (128 bits en hexadecimal)
-			$fileName = $date . "_" . $randomHash . "." . $type;
-
-			// Especificar la ruta y el nombre del archivo para guardar la imagen
-			$filePath = '../files/recepcion/' . $fileName;
-
-			// Guardar la imagen
-			file_put_contents($filePath, $imagenData);
-
-			$imagenBase64Comprimida = '';
-			$imagenBase64URL = $fileName;
-
-		} else {
-			$imagenBase64Comprimida = '';
-			$imagenBase64URL = '';
-
+			$imagenBase64URL = f_GuardarImagenBase64($imagen, $target_dir, 'acomp');
 		}
 
 		// Consulta para guardar el acompanante en la tabla correspondiente
 		$q_save = 'UPDATE controlingresovehiculo_acompanantes SET ';
-		$q_save .= "   imagen = " . ((strlen($imagenBase64Comprimida) == 0) ? 'NULL' : "'" . $imagenBase64Comprimida . "'");
+		$q_save .= "   imagen = NULL";
 		$q_save .= "   ,imagen_url = " . ((strlen($imagenBase64URL) == 0) ? 'NULL' : "'" . $imagenBase64URL . "'");
 		$q_save .= " WHERE id_controlingreso = " . $id_registro;
 		$q_save .= "   AND cod_auto = " . $cod_auto . '; ';
 
-		if ($res_save = mysqli_query($enlace, $q_save)) {
-		} else {
+		if (!$res_save = mysqli_query($enlace, $q_save)) {
 			$estado = 0;
 		}
 	}
@@ -388,62 +408,32 @@ function f_GrabarImagenes_RecepcionAcompanantes($enlace, $id_registro, $arr_acom
 function f_GrabarImagenes_RecepcionImagenesAdicionales($enlace, $id_registro, $arr_imagenes)
 {
 	$estado = 1;
-
-	// Recupera variables
-	// $id_registro = mysqli_real_escape_string($enlace, $_POST["id_registro"]);
-	// $arr_imagenes = $_POST["arr_imagenes"];
-	// $usuario_registro = $_SESSION["usu_usuario"];
+	$target_dir = '../files/recepcion/';
 
 	// Graba datos de recepción
 	$arr_imagenes = json_decode($arr_imagenes, true);
 
+	if (!is_array($arr_imagenes)) {
+		return 0;
+	}
+
 	foreach ($arr_imagenes as $imagen) {
 		$cod_auto = $imagen['cod_auto'];
-		$imagen = trim($imagen['imagen']);
+		$imagen_data = trim($imagen['imagen']);
+		$imagenBase64URL = '';
 
-		if (strlen($imagen) > 0) {
-			// Eliminar la cabecera de datos si existe (por ejemplo, "data:image/png;base64,")
-			if (preg_match('/^data:image\/(\w+);base64,/', $imagen, $type)) {
-				$base64String = substr($imagen, strpos($imagen, ',') + 1);
-				$type = strtolower($type[1]); // jpg, png, gif, etc.
-			} else {
-				die('El formato base64 no es válido.');
-			}
-
-			// Decodificar el base64
-			$imagenData = base64_decode($base64String);
-
-			if ($imagenData === false) {
-				die('La decodificación de la imagen falló.');
-			}
-
-			// Generar un nombre aleatorio único con fecha y hora
-			$date = date("Ymd_His"); // Fecha y hora (ejemplo: 20250114_134500)
-			$randomHash = bin2hex(random_bytes(16)); // Genera 32 caracteres aleatorios (128 bits en hexadecimal)
-			$fileName = $date . "_" . $randomHash . "." . $type;
-
-			// Especificar la ruta y el nombre del archivo para guardar la imagen
-			$filePath = '../files/recepcion/' . $fileName;
-
-			// Guardar la imagen
-			file_put_contents($filePath, $imagenData);
-			// $imagenBase64Comprimida = f_ComprimirImagenes($imagen);
-			$imagenBase64Comprimida = '';
-			$imagenBase64URL = $fileName;
-		} else {
-			$imagenBase64Comprimida = '';
-			$imagenBase64URL = '';
+		if (strlen($imagen_data) > 0) {
+			$imagenBase64URL = f_GuardarImagenBase64($imagen_data, $target_dir);
 		}
 
 		// Consulta para guardar el imagen en la tabla correspondiente
 		$q_save = 'UPDATE controlingresovehiculo_imagenes SET ';
-		$q_save .= "  imagen = " . ((strlen($imagenBase64Comprimida) == 0) ? 'NULL' : "'" . $imagenBase64Comprimida . "'");
+		$q_save .= "  imagen = NULL";
 		$q_save .= ", imagen_url = " . ((strlen($imagenBase64URL) == 0) ? 'NULL' : "'" . $imagenBase64URL . "'");
 		$q_save .= " WHERE id_controlingreso = " . $id_registro;
 		$q_save .= "   AND cod_auto = " . $cod_auto . '; ';
 
-		if ($res_save = mysqli_query($enlace, $q_save)) {
-		} else {
+		if (!$res_save = mysqli_query($enlace, $q_save)) {
 			$estado = 0;
 		}
 	}
@@ -18750,6 +18740,7 @@ switch ($_POST["accion"]) {
 		break;
 
 	case 'actualizar_recepcionunidades_imagenes':
+		@ini_set('memory_limit', '512M');
 		$estado = 1;
 
 		// Recupera variables
@@ -18797,39 +18788,18 @@ switch ($_POST["accion"]) {
 						}
 					}
 
-					// Decodifica el base64 y guarda el nuevo archivo
-					$imagenBase64Comprimida = '';
-					$imagenBase64URL = '';
-
-					if (preg_match('/^data:image\/(\w+);base64,/', $imagen_src, $type)) {
-						$base64String = substr($imagen_src, strpos($imagen_src, ',') + 1);
-						$type = strtolower($type[1]);
-
-						$imagenData = base64_decode($base64String);
-
-						if ($imagenData !== false) {
-							$date = date("Ymd_His");
-							$randomHash = bin2hex(random_bytes(16));
-							$fileName = $date . "_" . $randomHash . "." . $type;
-
-							$filePath = $target_dir . $fileName;
-
-							if (file_put_contents($filePath, $imagenData) !== false) {
-								$imagenBase64URL = $fileName;
-							}
-						}
-					}
+					$imagenBase64URL = f_GuardarImagenBase64($imagen_src, $target_dir);
 
 					// Actualiza la base de datos
 					$q_save = 'UPDATE controlingresovehiculo_imagenes SET ';
 					$q_save .= '  descripcion = ' . ((strlen($descripcion) == 0) ? 'NULL' : "'" . mysqli_real_escape_string($enlace, $descripcion) . "'") . ', ';
-					$q_save .= '  imagen = ' . ((strlen($imagenBase64Comprimida) == 0) ? 'NULL' : "'" . $imagenBase64Comprimida . "'") . ', ';
+					$q_save .= '  imagen = NULL, ';
 					$q_save .= '  imagen_url = ' . ((strlen($imagenBase64URL) == 0) ? 'NULL' : "'" . $imagenBase64URL . "'");
 					$q_save .= ' WHERE Id = ' . $id_imagen;
 
 					if ($res_save = mysqli_query($enlace, $q_save)) {
 						// Si se grabó correctamente y existía un archivo previo, eliminarlo
-						if (strlen($old_file) > 0 && strlen($imagenBase64URL) > 0) {
+						if (strlen($old_file) > 0 && strlen($imagenBase64URL) > 0 && $old_file != $imagenBase64URL) {
 							$old_path = $target_dir . $old_file;
 
 							if (file_exists($old_path)) {
@@ -18870,38 +18840,21 @@ switch ($_POST["accion"]) {
 				}
 			} else {
 				// Imagen nueva (id_imagen = 0)
-				$imagenBase64Comprimida = '';
-				$imagenBase64URL = '';
+				if ($cambiada == 1 && strlen($imagen_src) > 0) {
+					$imagenBase64URL = f_GuardarImagenBase64($imagen_src, $target_dir);
 
-				if (strlen($imagen_src) > 0 && preg_match('/^data:image\/(\w+);base64,/', $imagen_src, $type)) {
-					$base64String = substr($imagen_src, strpos($imagen_src, ',') + 1);
-					$type = strtolower($type[1]);
+					if (strlen($imagenBase64URL) > 0) {
+						$q_insert = 'INSERT INTO controlingresovehiculo_imagenes (id_controlingreso, cod_auto, descripcion, imagen, imagen_url) VALUES (';
+						$q_insert .= $id_registro . ', ';
+						$q_insert .= $cod_auto . ', ';
+						$q_insert .= ((strlen($descripcion) == 0) ? 'NULL' : "'" . mysqli_real_escape_string($enlace, $descripcion) . "'") . ', ';
+						$q_insert .= 'NULL, ';
+						$q_insert .= "'" . $imagenBase64URL . "')";
 
-					$imagenData = base64_decode($base64String);
-
-					if ($imagenData !== false) {
-						$date = date("Ymd_His");
-						$randomHash = bin2hex(random_bytes(16));
-						$fileName = $date . "_" . $randomHash . "." . $type;
-
-						$filePath = $target_dir . $fileName;
-
-						if (file_put_contents($filePath, $imagenData) !== false) {
-							$imagenBase64URL = $fileName;
+						if (!$res_insert = mysqli_query($enlace, $q_insert)) {
+							$estado = 0;
 						}
 					}
-				}
-
-				$q_insert = 'INSERT INTO controlingresovehiculo_imagenes (id_controlingreso, cod_auto, descripcion, imagen, imagen_url) VALUES (';
-				$q_insert .= $id_registro . ', ';
-				$q_insert .= $cod_auto . ', ';
-				$q_insert .= ((strlen($descripcion) == 0) ? 'NULL' : "'" . mysqli_real_escape_string($enlace, $descripcion) . "'") . ', ';
-				$q_insert .= ((strlen($imagenBase64Comprimida) == 0) ? 'NULL' : "'" . $imagenBase64Comprimida . "'") . ', ';
-				$q_insert .= ((strlen($imagenBase64URL) == 0) ? 'NULL' : "'" . $imagenBase64URL . "'") . ')';
-
-				if ($res_insert = mysqli_query($enlace, $q_insert)) {
-				} else {
-					$estado = 0;
 				}
 			}
 		}
@@ -19158,6 +19111,7 @@ switch ($_POST["accion"]) {
         break;
 
 	case 'grabar_recepcionvisitas_imagenes':
+		@ini_set('memory_limit', '512M');
 		$estado = 1;
 
 		// Recupera variables
@@ -19167,26 +19121,29 @@ switch ($_POST["accion"]) {
 
 		// Graba datos de recepción
 		$arr_visitas = json_decode($arr_visitas, true);
+		$target_dir = '../files/recepcion/';
 
-		foreach ($arr_visitas as $imagen) {
-			$cod_auto = $imagen['cod_auto'];
-			$imagen = trim($imagen['imagen']);
+		if (is_array($arr_visitas)) {
+			foreach ($arr_visitas as $imagen) {
+				$cod_auto = isset($imagen['cod_auto']) ? intval($imagen['cod_auto']) : 0;
+				$imagen_src = isset($imagen['imagen']) ? trim($imagen['imagen']) : '';
+				$imagenBase64URL = '';
 
-			if (strlen($imagen) > 0) {
-				$imagenBase64Comprimida = f_ComprimirImagenes($imagen);
-			} else {
-				$imagenBase64Comprimida = '';
-			}
+				if (strlen($imagen_src) > 0) {
+					$imagenBase64URL = f_GuardarImagenBase64($imagen_src, $target_dir, 'visita');
+				}
 
-			// Consulta para guardar la imagen en la tabla correspondiente
-			$q_save = 'UPDATE controlingreso_visitas_detalle SET ';
-			$q_save .= "   imagen = " . ((strlen($imagenBase64Comprimida) == 0) ? 'NULL' : "'" . $imagenBase64Comprimida . "'");
-			$q_save .= " WHERE id_controlingreso = " . $id_registro;
-			$q_save .= "	 AND cod_auto = " . $cod_auto . '; ';
+				// Consulta para guardar la imagen en la tabla correspondiente
+				$q_save = 'UPDATE controlingreso_visitas_detalle SET ';
+				$q_save .= "   imagen = NULL";
+				$q_save .= "   ,imagen_url = " . ((strlen($imagenBase64URL) == 0) ? 'NULL' : "'" . $imagenBase64URL . "'");
+				$q_save .= "   ,tiene_imagen = " . ((strlen($imagenBase64URL) > 0) ? '1' : '0');
+				$q_save .= " WHERE id_controlingreso = " . $id_registro;
+				$q_save .= "	 AND cod_auto = " . $cod_auto . '; ';
 
-			if ($res_save = mysqli_query($enlace, $q_save)) {
-			} else {
-				$estado = 0;
+				if (!$res_save = mysqli_query($enlace, $q_save)) {
+					$estado = 0;
+				}
 			}
 		}
 
@@ -19201,8 +19158,6 @@ switch ($_POST["accion"]) {
 		// Recupera parámetros
 		$fecha_inicio = mysqli_real_escape_string($enlace, $_POST['fecha_inicio']);
 		$fecha_fin = mysqli_real_escape_string($enlace, $_POST['fecha_fin']);
-		// $filtro_transportista = mysqli_real_escape_string($enlace, $_POST['filtro_transportista']);
-		// $filtro_placa = mysqli_real_escape_string($enlace, $_POST['filtro_placa']);
 
 		// Obtiene datos y arma el html
 		$d = 1;
@@ -19235,14 +19190,6 @@ switch ($_POST["accion"]) {
 														 INNER JOIN tbconfig_motivovisita MV ON V.id_motivovisita = MV.Id
 														 INNER JOIN tb_empleados E ON V.id_usuariocontacto = E.Id
 											 WHERE DATE(V.fechahora_registro) BETWEEN '" . $fecha_inicio . "' AND '" . $fecha_fin . "'";
-
-		// if (strlen($filtro_transportista) > 0){
-		// 	$q_ingreso .= "   AND I.id_transportista = ".$filtro_transportista;
-		// }
-
-		// if (strlen($filtro_placa) > 0){
-		// 	$q_ingreso .= "   AND I.placa LIKE '%".$filtro_placa."%'";
-		// }
 
 		$q_ingreso .= " ORDER BY V.fechahora_registro DESC";
 
@@ -19309,6 +19256,7 @@ switch ($_POST["accion"]) {
 																			 nombres,
 																			 tiene_imagen,
 																			 imagen,
+																			 imagen_url,
 																			 fechahora_salida,
 																			 usuario_salida
 																	FROM controlingreso_visitas_detalle
@@ -19330,18 +19278,31 @@ switch ($_POST["accion"]) {
 								$html .= '					' . mb_strtoupper($row_visitas["nombres"], 'UTF-8');
 								$html .= '  			</td>';
 
-								$html .= '				<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
-
-								if ($row_visitas["tiene_imagen"] == 1) {
-									$html .= '    			<img src="' . $img_view . '" style="width: 25px;" onclick="f_ShowDocumentoVisita(' . $row_visitas["Id"] . ", '" . $row_visitas["nombres"] . "'" . ');">';
+								$html .= '				<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; white-space: nowrap;">';
+								$nombre_escapado = htmlspecialchars($row_visitas["nombres"], ENT_QUOTES);
+								if ($row_visitas["tiene_imagen"] == 1 && (isset($row_visitas["imagen"]) || isset($row_visitas["imagen_url"]))) {
+									$html .= '    			<img src="' . $img_view . '" style="width: 25px; cursor: pointer;" onclick="f_ShowDocumentoVisita(' . $row_visitas["Id"] . ", '" . $nombre_escapado . "'" . ');" title="Ver documento">';
+									$html .= '    			<a href="javascript:void(0);" onclick="f_DescargarImagenVisita(' . $row_visitas["Id"] . ", '" . $nombre_escapado . "'" . ');" style="margin-left: 5px; cursor: pointer;" title="Descargar imagen original">';
+									$html .= '    				<img src="images/download.png" style="width: 25px;">';
+									$html .= '    			</a>';
+								} else {
+									$html .= '    			<a href="javascript:void(0);" onclick="f_AdminVisitas_ActualizarImagenes(' . $row_ingreso["Id"] . ');" style="color: #6c757d; font-size: 11px; text-decoration: none; cursor: pointer;" title="Subir foto">';
+									$html .= '    				<img src="' . $img_camara . '" style="width: 22px; opacity: 0.6; cursor: pointer;" title="Subir foto"><br><small style="color: #888;">Sin foto</small>';
+									$html .= '    			</a>';
 								}
+
+								$html .= '		<div class="d-flex justify-content-center" style="margin-top: 5px;">';
+								$html .= '	    <a style="background-color: #198754; padding: 5px; border: solid; border-width: 1px; border-color: #E6E9ED; border-radius: 7px; color: #ffffff; text-decoration: none;" href="javascript: f_AdminVisitas_ActualizarImagenes(' . $row_ingreso["Id"] . ');">';
+								$html .= '	    	<i class="bi bi-images"></i>';
+								$html .= '	      <label style="cursor: pointer; font-size: 14px; font-weight: 500; margin-left: 3px;"><u>Editar Imágenes</u></label>';
+								$html .= '	    </a>';
+								$html .= '	  </div>';
 
 								$html .= '  			</td>';
 
 								$html .= '				<td id="td_salidaacompanante_' . $row_visitas["Id"] . '" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
 
 								if (strlen($row_visitas["fechahora_salida"]) == 0) {
-									// $html .= '	<button class="btn btn-danger" type="button" onclick="f_RegistroSalida_Visitas('.$row_visitas["Id"].", '".$row_visitas["nombres"]."'".');" style="color: #ffffff; font-size: 11px; margin-top: -5px;">';
 									$html .= '	<button class="btn btn-danger" type="button" onclick="f_RegistroSalida(' . $row_ingreso["Id"] . ');" style="color: #ffffff; font-size: 11px; margin-top: -5px;">';
 									$html .= '		<b>Registrar Salida</b>';
 									$html .= '	</button>';
@@ -19351,31 +19312,6 @@ switch ($_POST["accion"]) {
 								}
 
 								$html .= '				</td>';
-
-								// // Información de Salida
-								// 	if ($a == 1){
-								// 		$html .= '  <td rowspan="'.$total_visitas.'" id="td_salida_1_'.$row_ingreso["Id"].'" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
-
-								// 		if (strlen($row_ingreso["fechahora_salida"]) == 0){
-								// 			$html .= '		<button class="btn btn-danger" type="button" onclick="f_RegistroSalida('.$row_ingreso["Id"].');" style="color: #ffffff; font-size: 12px; margin-top: -5px;">';
-								// 			$html .= '			<b>Registrar Salida</b>';
-								// 			$html .= '		</button>';
-								// 		}
-								// 		else{
-								// 			$html .= '			'.$row_ingreso["fechahora_salida"].'<br>';
-								// 			$html .= '			<i>'.$row_ingreso["usuario_salida"].'</i>';
-								// 		}
-
-								// 		$html .= '  </td>';
-
-								// 		$html .= '  <td rowspan="'.$total_visitas.'" id="td_salida_2_'.$row_ingreso["Id"].'" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle;">';
-
-								// 		if (strlen($row_ingreso["fechahora_salida"]) > 0){
-								// 			$html .= '		'.$row_ingreso["observacion_salida"];
-								// 		}
-
-								// 		$html .= '  </td>';
-								// 	}
 
 								if ($a > 1) {
 									$html .= '</tr>';
@@ -19398,6 +19334,136 @@ switch ($_POST["accion"]) {
 		}
 
 		echo json_encode(array('estado' => $estado, 'html' => $html));
+
+		break;
+
+	case 'get_ControlIngreso_VisitasImagenesAct':
+		$estado = 0;
+		$visitas = array();
+
+		$id_controlingreso = mysqli_real_escape_string($enlace, $_POST['id_controlingreso']);
+
+		$q_visitas = "SELECT Id,
+							cod_auto,
+							dni,
+							nombres,
+							tiene_imagen,
+							imagen,
+							imagen_url
+						FROM controlingreso_visitas_detalle
+					   WHERE id_controlingreso = " . $id_controlingreso . "
+					ORDER BY cod_auto, Id";
+
+		if ($res_visitas = mysqli_query($enlace, $q_visitas)) {
+			if (mysqli_num_rows($res_visitas) > 0) {
+				$estado = 1;
+				while ($row = mysqli_fetch_assoc($res_visitas)) {
+					$img_data = '';
+					if (!empty($row["imagen_url"])) {
+						$img_data = 'files/recepcion/' . $row["imagen_url"];
+					} elseif (!empty($row["imagen"])) {
+						$img_data = $row["imagen"];
+					}
+
+					$visitas[] = array(
+						'Id' => $row['Id'],
+						'cod_auto' => $row['cod_auto'],
+						'dni' => $row['dni'],
+						'nombres' => $row['nombres'],
+						'tiene_imagen' => $row['tiene_imagen'],
+						'imagen_url' => $row['imagen_url'],
+						'imagen_data' => $img_data
+					);
+				}
+			}
+		}
+
+		echo json_encode(array('estado' => $estado, 'visitas' => $visitas));
+
+		break;
+
+	case 'actualizar_recepcionvisitas_imagenes':
+		@ini_set('memory_limit', '512M');
+		$estado = 1;
+
+		$id_registro = mysqli_real_escape_string($enlace, $_POST['id_registro']);
+		$arr_visitas = $_POST['arr_visitas'];
+		$usuario_registro = $_SESSION["usu_usuario"];
+
+		if (strlen($id_registro) == 0 || $id_registro == '0') {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'No se ha definido el registro a actualizar.'));
+			break;
+		}
+
+		$arr_visitas = json_decode($arr_visitas, true);
+		if (!is_array($arr_visitas)) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'El formato de los datos no es válido.'));
+			break;
+		}
+
+		$target_dir = '../files/recepcion/';
+
+		foreach ($arr_visitas as $item) {
+			$id_visita_detalle = isset($item['id_visita_detalle']) ? intval($item['id_visita_detalle']) : 0;
+			$cambiada = isset($item['cambiada']) ? intval($item['cambiada']) : 0;
+			$imagen_src = isset($item['imagen']) ? trim($item['imagen']) : '';
+
+			if ($id_visita_detalle > 0 && $cambiada == 1) {
+				// Obtener nombre archivo previo para borrarlo
+				$old_file = '';
+				$q_get = "SELECT imagen_url FROM controlingreso_visitas_detalle WHERE Id = " . $id_visita_detalle;
+				if ($res_get = mysqli_query($enlace, $q_get)) {
+					if ($row_get = mysqli_fetch_assoc($res_get)) {
+						$old_file = $row_get["imagen_url"];
+					}
+				}
+
+				if (strlen($imagen_src) > 0) {
+					// Guardar nueva imagen
+					$fileName = f_GuardarImagenBase64($imagen_src, $target_dir, 'visita');
+					if (!empty($fileName)) {
+						$q_save = "UPDATE controlingreso_visitas_detalle SET ";
+						$q_save .= " tiene_imagen = 1, ";
+						$q_save .= " imagen = NULL, ";
+						$q_save .= " imagen_url = '" . mysqli_real_escape_string($enlace, $fileName) . "' ";
+						$q_save .= " WHERE Id = " . $id_visita_detalle;
+
+						if (mysqli_query($enlace, $q_save)) {
+							if (!empty($old_file) && $old_file != $fileName) {
+								$old_path = $target_dir . $old_file;
+								if (file_exists($old_path)) {
+									@unlink($old_path);
+								}
+							}
+						} else {
+							$estado = 0;
+						}
+					} else {
+						$estado = 0;
+					}
+				} else {
+					// El usuario quitó la imagen
+					$q_save = "UPDATE controlingreso_visitas_detalle SET ";
+					$q_save .= " tiene_imagen = 0, ";
+					$q_save .= " imagen = NULL, ";
+					$q_save .= " imagen_url = NULL ";
+					$q_save .= " WHERE Id = " . $id_visita_detalle;
+
+					if (mysqli_query($enlace, $q_save)) {
+						if (!empty($old_file)) {
+							$old_path = $target_dir . $old_file;
+							if (file_exists($old_path)) {
+								@unlink($old_path);
+							}
+						}
+					} else {
+						$estado = 0;
+					}
+				}
+			}
+		}
+
+		echo json_encode(array('estado' => $estado));
 
 		break;
 
@@ -19524,7 +19590,7 @@ switch ($_POST["accion"]) {
 		// Obtiene datos
 		$src = '';
 
-		$q_src = "SELECT imagen
+		$q_src = "SELECT imagen, imagen_url
 										FROM controlingreso_visitas_detalle
 									 WHERE Id = " . $id_img;
 
@@ -19533,7 +19599,11 @@ switch ($_POST["accion"]) {
 				$estado = 1;
 
 				while ($row_src = mysqli_fetch_array($res_src)) {
-					$src = $row_src["imagen"];
+					if (!empty($row_src["imagen_url"])) {
+						$src = 'files/recepcion/' . $row_src["imagen_url"];
+					} else {
+						$src = $row_src["imagen"];
+					}
 				}
 			}
 		}

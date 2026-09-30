@@ -640,7 +640,7 @@
 		      </div>
 		      <div class="modal-body">
 		        <div class="row" style="padding: 5px;">
-							<img id="img_documentovisita" alt="">
+							<img id="img_documentovisita" alt="" style="max-width: 100%; height: auto; margin: 0 auto; display: block;">
 
 							<div id="wt_documentoimagen" class="" style="font-size: 12px; text-align: center; display: none; padding-top: 5px;">
 								<img src="<?php echo $img_waiting ?>" style="width: 20px;">
@@ -651,6 +651,7 @@
 
 		      <div class="modal-footer">
 		        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+		        <button type="button" class="btn btn-success" onclick="f_DescargarImagenActualModal();"><i class="bi bi-download"></i> Descargar Imagen</button>
 		      </div>
 		    </div>
 		  </div>
@@ -665,7 +666,7 @@
 		      </div>
 		      <div class="modal-body">
 		        <div class="row" style="padding: 5px;">
-							<img id="img_imagenes" alt="">
+							<img id="img_imagenes" alt="" style="max-width: 100%; height: auto; margin: 0 auto; display: block;">
 
 							<div id="wt_imagenes" class="" style="font-size: 12px; text-align: center; display: none; padding-top: 5px;">
 								<img src="<?php echo $img_waiting ?>" style="width: 20px;">
@@ -676,6 +677,46 @@
 
 		      <div class="modal-footer">
 		        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+		        <button type="button" class="btn btn-success" onclick="f_DescargarImagenGenericaModal();"><i class="bi bi-download"></i> Descargar Imagen</button>
+		      </div>
+		    </div>
+		  </div>
+		</div>
+
+		<div class="modal fade" id="modal_actualizarimagenes_visitas" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="modal_actualizarimagenes_visitasLabel" aria-hidden="true">
+		  <div class="modal-dialog modal-lg">
+		    <div class="modal-content">
+		      <div class="modal-header" style="background-color: #f8da62;">
+		        <h1 class="modal-title fs-5" id="modal_actualizarimagenes_visitasLabel">Actualizar Imágenes de Visitas</h1>
+		        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+		      </div>
+		      <div class="modal-body">
+		        <input id="hd_actvisitas_idregistro" type="hidden" value="0">
+		        <div class="table-responsive">
+		          <table class="table table-bordered table-hover">
+		            <thead>
+		              <tr style="font-size: 12px; background-color: #37393c; color: #ffffff;">
+		                <th style="text-align: center; width: 45px;">Quitar</th>
+		                <th style="text-align: center; width: 35px;">N°</th>
+		                <th style="text-align: center;">Visitante (DNI - Nombres)</th>
+		                <th style="text-align: center; width: 110px;">Foto</th>
+		                <th style="text-align: center; width: 95px;">Acciones</th>
+		              </tr>
+		            </thead>
+		            <tbody id="tbl_actvisitas_imagenes">
+		            </tbody>
+		          </table>
+		        </div>
+		      </div>
+		      <div class="modal-footer">
+		        <div id="wt_actvisitas" style="font-size: 12px; text-align: center; display: none; padding-top: 5px;">
+		          <img src="<?php echo $img_waiting ?>" style="width: 20px;">
+		          <label style="font-style: italic;"> Guardando cambios...</label>
+		        </div>
+		        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+		        <button type="button" class="btn btn-primary" onclick="f_GrabarActualizarImagenesVisitas();">
+		          <i class="bi bi-arrow-up-circle"></i> <b>Actualizar Imágenes</b>
+		        </button>
 		      </div>
 		    </div>
 		  </div>
@@ -967,7 +1008,7 @@
   				_html += '</td>';
 
   				_html += '<td class="del_tr" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px;">';
-  				_html += '	<label style="border: solid; border-width: 1px; border-color: #D9D9D9; border-radius: 7px; padding-left: 6px; padding-right: 6px; padding-bottom: 1px; background-color: #FF5F5D; color: #ffffff; font-weight: bold; cursor: pointer;">X</label>';
+  				_html += '	<label style="border: solid; border-width: 1px; border-color: #D9D9D9; border-radius: 7px; padding-left: 6px; padding-right: 6px; padding-bottom: 1px; background-color: #FF5F5D; color: #ffffff; font-weight: bold; cursor: pointer;" title="Eliminar visitante">X</label>';
   				_html += '</td>';
 
   				_html += '<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px;">';
@@ -979,11 +1020,15 @@
   				_html += '</td>';
 
   				_html += '<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px;">';
-  				_html += '	<img class="imagen" src="" alt="" style="width: 80px; display: none;" id="img_visita_' + a + '" onclick="f_ShowDocumentoVisita(this.src, ' + "'" + visita_nombres + "', 1" + ');">';
+  				_html += '	<img class="imagen" src="" alt="" style="width: 80px; max-height: 60px; object-fit: cover; display: none; cursor: pointer; border-radius: 4px;" id="img_visita_' + a + '" onclick="f_ShowDocumentoVisita(this.src, ' + "'" + visita_nombres + "', 1" + ');">';
   				_html += '</td>';
 
-          _html += '<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px;">';
-          _html += '	<img src="<?php echo $img_camara ?>" style="width: 30px; cursor: pointer;" onclick="f_AddAcompanante_Imagen(' + a + ');">';
+          _html += '<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-size: 12px; white-space: nowrap;">';
+          _html += '	<label id="btn_quitar_foto_' + a + '" style="border: solid; border-width: 1px; border-color: #D9D9D9; border-radius: 7px; padding-left: 6px; padding-right: 6px; padding-bottom: 1px; background-color: #FF5F5D; color: #ffffff; font-weight: bold; cursor: pointer; display: none; margin-right: 5px;" onclick="f_QuitarImagenVisitaNueva(' + a + ');" title="Quitar foto">X</label>';
+          _html += '	<img src="<?php echo $img_camara ?>" style="width: 30px; cursor: pointer;" onclick="f_AddAcompanante_Imagen(' + a + ');" title="Subir foto (opcional)">';
+          _html += '	<a id="lnk_download_nueva_' + a + '" href="javascript:void(0);" style="margin-left: 5px; cursor: not-allowed; opacity: 0.4;" title="No hay imagen para descargar" onclick="return false;">';
+          _html += '		<img src="images/download.png" style="width: 30px;">';
+          _html += '	</a>';
           _html += '</td>';
 
           document.getElementById('tbl_visitas').insertRow(-1).innerHTML = _html;
@@ -1001,22 +1046,355 @@
           f_cerrarModal('modal_addvisita');
       }
 
+		function f_ProcesarImagenArchivo(file, callback){
+			if (!file) return;
+
+			if (!window.FileReader || !window.HTMLCanvasElement){
+				var reader = new FileReader();
+				reader.onload = function(e){ callback(e.target.result); };
+				reader.readAsDataURL(file);
+				return;
+			}
+
+			var reader = new FileReader();
+			reader.onload = function(e){
+				var img = new Image();
+				img.onload = function(){
+					var maxDim = 1600;
+					var width = img.width;
+					var height = img.height;
+
+					if (width > maxDim || height > maxDim){
+						if (width > height){
+							height = Math.round((height * maxDim) / width);
+							width = maxDim;
+						} else {
+							width = Math.round((width * maxDim) / height);
+							height = maxDim;
+						}
+					}
+
+					var canvas = document.createElement('canvas');
+					canvas.width = width;
+					canvas.height = height;
+					var ctx = canvas.getContext('2d');
+					ctx.drawImage(img, 0, 0, width, height);
+
+					try {
+						var dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+						callback(dataUrl);
+					} catch(err){
+						callback(e.target.result);
+					}
+				};
+				img.onerror = function(){
+					callback(e.target.result);
+				};
+				img.src = e.target.result;
+			};
+			reader.readAsDataURL(file);
+		}
+
 	    function f_AddAcompanante_Imagen(_id_row){
 			  var input = document.createElement('input');
 			  input.type = 'file';
 			  input.accept = 'image/*';
 			  input.onchange = function(event) {
 			    var file = event.target.files[0];
-			    var reader = new FileReader();
-			    reader.onload = function(e) {
+			    if (!file) return;
+
+			    f_ProcesarImagenArchivo(file, function(dataUrl){
 			      var imagen = document.getElementById('img_visita_' + _id_row);
-			      imagen.src = e.target.result;
-			    };
-			    reader.readAsDataURL(file);
+			      if (imagen){
+			        imagen.src = dataUrl;
+			        $(imagen).show();
+			      }
+
+			      $("#btn_quitar_foto_" + _id_row).show();
+
+			      var _lnk = document.getElementById('lnk_download_nueva_' + _id_row);
+			      if (_lnk){
+			      	_lnk.setAttribute('href', dataUrl);
+			      	_lnk.setAttribute('download', 'visita_' + _id_row + '.jpg');
+			      	_lnk.style.cursor = 'pointer';
+			      	_lnk.style.opacity = '1';
+			      	_lnk.setAttribute('title', 'Descargar imagen');
+			      	_lnk.setAttribute('onclick', '');
+			      }
+			    });
 			  };
 			  input.click();
+	    }
 
-			  $("#img_visita_" + _id_row).show();
+	    function f_QuitarImagenVisitaNueva(_id_row){
+	    	var imagen = document.getElementById('img_visita_' + _id_row);
+	    	if (imagen){
+	    		imagen.src = '';
+	    		$(imagen).hide();
+	    	}
+	    	$("#btn_quitar_foto_" + _id_row).hide();
+
+	    	var _lnk = document.getElementById('lnk_download_nueva_' + _id_row);
+	    	if (_lnk){
+	    		_lnk.setAttribute('href', 'javascript:void(0);');
+	    		_lnk.style.cursor = 'not-allowed';
+	    		_lnk.style.opacity = '0.4';
+	    		_lnk.setAttribute('title', 'No hay imagen para descargar');
+	    		_lnk.setAttribute('onclick', 'return false;');
+	    	}
+	    }
+
+	    function f_ShowImagenes(_id_img, _is_local, _item){
+	        $("#modal_showimagenesLabel").html('Imagen: ' + (_item || ''));
+	        $("#img_imagenes").attr('src', '');
+
+	        if (_is_local == 1){
+	            var modalImg = document.getElementById('img_imagenes');
+	            if (modalImg) modalImg.src = _id_img;
+	        } else {
+	            var modalImg = document.getElementById('img_imagenes');
+	            if (modalImg) modalImg.src = _id_img;
+	        }
+
+	        f_OpenModal('modal_showimagenes');
+	    }
+
+	    function f_DescargarImagenVisita(_id_img, _nombres){
+	        $.post("apis/backend.php", { accion: "get_ControlIngreso_VisitasSRC", id_img: _id_img }, function(data){
+	            if (data.estado == 1 && data.src && data.src.length > 0){
+	                var a = document.createElement('a');
+	                a.href = data.src;
+	                var ext = '.jpg';
+	                if (data.src.indexOf('.png') !== -1 || data.src.indexOf('data:image/png') !== -1){
+	                    ext = '.png';
+	                }
+	                var nomLimpio = (_nombres ? _nombres.toString().replace(/[^a-zA-Z0-9_-]/g, '_') : _id_img);
+	                a.download = 'visita_' + nomLimpio + ext;
+	                document.body.appendChild(a);
+	                a.click();
+	                document.body.removeChild(a);
+	            } else {
+	                alert("No se encontró la imagen para descargar.");
+	            }
+	        }, "json");
+	    }
+
+	    function f_DescargarImagenActualModal(){
+	        var src = $("#img_documentovisita").attr('src');
+	        var titulo = $("#modal_showdocumentovisitaLabel").text() || 'visita';
+	        if (src && src.length > 0){
+	            var a = document.createElement('a');
+	            a.href = src;
+	            var ext = '.jpg';
+	            if (src.indexOf('.png') !== -1 || src.indexOf('data:image/png') !== -1){
+	                ext = '.png';
+	            }
+	            var nomLimpio = titulo.replace(/[^a-zA-Z0-9_-]/g, '_');
+	            a.download = 'visita_' + nomLimpio + ext;
+	            document.body.appendChild(a);
+	            a.click();
+	            document.body.removeChild(a);
+	        } else {
+	            alert("No hay imagen disponible para descargar.");
+	        }
+	    }
+
+	    function f_DescargarImagenGenericaModal(){
+	        var src = $("#img_imagenes").attr('src');
+	        var titulo = $("#modal_showimagenesLabel").text() || 'imagen';
+	        if (src && src.length > 0){
+	            var a = document.createElement('a');
+	            a.href = src;
+	            var ext = '.jpg';
+	            if (src.indexOf('.png') !== -1 || src.indexOf('data:image/png') !== -1){
+	                ext = '.png';
+	            }
+	            var nomLimpio = titulo.replace(/[^a-zA-Z0-9_-]/g, '_');
+	            a.download = nomLimpio + ext;
+	            document.body.appendChild(a);
+	            a.click();
+	            document.body.removeChild(a);
+	        } else {
+	            alert("No hay imagen disponible para descargar.");
+	        }
+	    }
+
+	    function f_AdminVisitas_ActualizarImagenes(_id_registro){
+	        $("#hd_actvisitas_idregistro").val(_id_registro);
+	        $("#modal_actualizarimagenes_visitasLabel").html('Actualizar Imágenes de Visitas (Registro N° ' + _id_registro + ')');
+	        $("#tbl_actvisitas_imagenes").html('<tr><td colspan="5" class="text-center" style="padding: 15px;"><img src="<?php echo $img_waiting ?>" style="width: 25px;"> Cargando visitantes...</td></tr>');
+
+	        f_OpenModal('modal_actualizarimagenes_visitas');
+
+	        $.post("apis/backend.php", { accion: "get_ControlIngreso_VisitasImagenesAct", id_controlingreso: _id_registro }, function(data){
+	            if (data.estado == 1 && data.visitas && data.visitas.length > 0){
+	                f_BuildTablaVisitasImagenesAct(data.visitas);
+	            } else {
+	                $("#tbl_actvisitas_imagenes").html('<tr><td colspan="5" class="text-center" style="padding: 15px; color: #888;">No se encontraron visitantes en este registro.</td></tr>');
+	            }
+	        }, "json");
+	    }
+
+	    function f_BuildTablaVisitasImagenesAct(_visitas){
+	        var _html = '';
+	        var i = 1;
+	        $.each(_visitas, function(key, val){
+	            var _id_detalle = val.Id;
+	            var _cod_auto = val.cod_auto;
+	            var _dni = val.dni || '';
+	            var _nombres = (val.nombres || '').toUpperCase();
+	            var _tiene_imagen = val.tiene_imagen;
+	            var _imagen_data = val.imagen_data || '';
+	            var _has_img = (_imagen_data.length > 0 && _tiene_imagen == 1);
+
+	            _html += '<tr data-row-index="' + i + '" data-id-detalle="' + _id_detalle + '">';
+	            _html += '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; width: 45px;">';
+	            _html += '    <label style="border: solid; border-width: 1px; border-color: #D9D9D9; border-radius: 7px; padding-left: 6px; padding-right: 6px; padding-bottom: 1px; background-color: #FF5F5D; color: #ffffff; font-weight: bold; cursor: pointer;" onclick="f_QuitarImagenVisitaFila(' + i + ');" title="Quitar imagen">X</label>';
+	            _html += '  </td>';
+
+	            _html += '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; width: 35px;">';
+	            _html += '    ' + i;
+	            _html += '    <input id="tmp_actvisitas_iddetalle_' + i + '" type="hidden" value="' + _id_detalle + '">';
+	            _html += '    <input id="tmp_actvisitas_codauto_' + i + '" type="hidden" value="' + _cod_auto + '">';
+	            _html += '    <input id="tmp_actvisitas_cambiada_' + i + '" type="hidden" value="0">';
+	            _html += '    <input id="tmp_actvisitas_nombres_' + i + '" type="hidden" value="' + _nombres.replace(/"/g, '&quot;') + '">';
+	            _html += '  </td>';
+
+	            _html += '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; font-size: 13px;">';
+	            _html += '    <b>' + _dni + '</b> - ' + _nombres;
+	            _html += '  </td>';
+
+	            _html += '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; width: 110px;">';
+	            if (_has_img){
+	                _html += '    <img class="imagen_visita_act" src="' + _imagen_data + '" alt="" style="width: 80px; max-height: 60px; object-fit: cover; cursor: pointer; border-radius: 4px;" id="img_actvisita_' + i + '" onclick="f_ShowImagenes(this.src, 1, \'' + _nombres + '\');">';
+	            } else {
+	                _html += '    <img class="imagen_visita_act" src="" alt="" style="width: 80px; max-height: 60px; object-fit: cover; display: none; cursor: pointer; border-radius: 4px;" id="img_actvisita_' + i + '" onclick="f_ShowImagenes(this.src, 1, \'' + _nombres + '\');">';
+	            }
+	            _html += '  </td>';
+
+	            _html += '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; white-space: nowrap; width: 95px;">';
+	            _html += '    <img src="<?php echo $img_camara ?>" style="width: 30px; cursor: pointer;" onclick="f_AddImagenVisitaAct(' + i + ');" title="' + (_has_img ? 'Reemplazar imagen' : 'Subir imagen') + '">';
+	            if (_has_img){
+	                _html += '    <a id="lnk_actvisita_download_' + i + '" href="' + _imagen_data + '" download="visita_' + _nombres.replace(/[^a-zA-Z0-9_-]/g, '_') + '.jpg" style="margin-left: 5px; cursor: pointer;" title="Descargar imagen original">';
+	                _html += '      <img src="images/download.png" style="width: 30px;">';
+	                _html += '    </a>';
+	            } else {
+	                _html += '    <a id="lnk_actvisita_download_' + i + '" href="javascript:void(0);" style="margin-left: 5px; cursor: not-allowed; opacity: 0.4;" title="No hay imagen para descargar" onclick="return false;">';
+	                _html += '      <img src="images/download.png" style="width: 30px;">';
+	                _html += '    </a>';
+	            }
+	            _html += '  </td>';
+
+	            _html += '</tr>';
+	            i++;
+	        });
+
+	        $("#tbl_actvisitas_imagenes").html(_html);
+	    }
+
+	    function f_AddImagenVisitaAct(_id_row){
+	        var input = document.createElement('input');
+	        input.type = 'file';
+	        input.accept = 'image/*';
+	        input.onchange = function(event){
+	            var file = event.target.files[0];
+	            if (!file) return;
+
+	            f_ProcesarImagenArchivo(file, function(dataUrl){
+	                var imagen = document.getElementById('img_actvisita_' + _id_row);
+	                if (imagen){
+	                    imagen.src = dataUrl;
+	                    imagen.style.display = 'block';
+	                }
+
+	                var _nombres = $("#tmp_actvisitas_nombres_" + _id_row).val() || 'visita';
+	                var _lnk = document.getElementById('lnk_actvisita_download_' + _id_row);
+	                if (_lnk){
+	                    _lnk.setAttribute('href', dataUrl);
+	                    _lnk.setAttribute('download', 'visita_' + _nombres.replace(/[^a-zA-Z0-9_-]/g, '_') + '.jpg');
+	                    _lnk.style.cursor = 'pointer';
+	                    _lnk.style.opacity = '1';
+	                    _lnk.setAttribute('title', 'Descargar imagen');
+	                    _lnk.setAttribute('onclick', '');
+	                }
+
+	                $("#tmp_actvisitas_cambiada_" + _id_row).val('1');
+	            });
+	        };
+	        input.click();
+	    }
+
+	    function f_QuitarImagenVisitaFila(_id_row){
+	        var imagen = document.getElementById('img_actvisita_' + _id_row);
+	        if (imagen){
+	            imagen.src = '';
+	            imagen.style.display = 'none';
+	        }
+
+	        var _lnk = document.getElementById('lnk_actvisita_download_' + _id_row);
+	        if (_lnk){
+	            _lnk.setAttribute('href', 'javascript:void(0);');
+	            _lnk.style.cursor = 'not-allowed';
+	            _lnk.style.opacity = '0.4';
+	            _lnk.setAttribute('title', 'No hay imagen para descargar');
+	            _lnk.setAttribute('onclick', 'return false;');
+	        }
+
+	        $("#tmp_actvisitas_cambiada_" + _id_row).val('1');
+	    }
+
+	    function f_GrabarActualizarImagenesVisitas(){
+	        var id_registro = $("#hd_actvisitas_idregistro").val();
+	        if (!id_registro || id_registro == '0'){
+	            alert("No se ha definido el registro.");
+	            return;
+	        }
+
+	        var arr_visitas = [];
+	        var _hay_cambios = false;
+
+	        $('#tbl_actvisitas_imagenes tr').each(function(){
+	            var _id_detalle = parseInt($(this).find("input[id^='tmp_actvisitas_iddetalle_']").val() || 0);
+	            var _cod_auto = parseInt($(this).find("input[id^='tmp_actvisitas_codauto_']").val() || 0);
+	            var _cambiada = parseInt($(this).find("input[id^='tmp_actvisitas_cambiada_']").val() || 0);
+	            var _src = $(this).find('.imagen_visita_act').attr('src') || '';
+
+	            if (_id_detalle > 0 && _cambiada == 1){
+	                arr_visitas.push({
+	                    id_visita_detalle: _id_detalle,
+	                    cod_auto: _cod_auto,
+	                    imagen: _src,
+	                    cambiada: _cambiada
+	                });
+	                _hay_cambios = true;
+	            }
+	        });
+
+	        if (!_hay_cambios){
+	            alert("No se realizaron cambios en las imágenes.");
+	            f_cerrarModal('modal_actualizarimagenes_visitas');
+	            return;
+	        }
+
+	        $("#wt_actvisitas").show();
+
+	        $.post("apis/backend.php", {
+	            accion: "actualizar_recepcionvisitas_imagenes",
+	            id_registro: id_registro,
+	            arr_visitas: JSON.stringify(arr_visitas)
+	        }, function(data){
+	            $("#wt_actvisitas").hide();
+	            if (data.estado == 1){
+	                alert("Las imágenes se actualizaron correctamente.");
+	                f_cerrarModal('modal_actualizarimagenes_visitas');
+	                f_LoadResultados();
+	            } else {
+	                alert(data.mensaje || "Ocurrió un error al momento de actualizar las imágenes.");
+	            }
+	        }, "json").fail(function(){
+	            $("#wt_actvisitas").hide();
+	            alert("Error de comunicación con el servidor al actualizar las imágenes.");
+	        });
 	    }
 
 	    function f_ShowDocumentoVisita(_id_img, _nombres, _is_local){
@@ -1200,18 +1578,21 @@
 
           $('#tbl_visitas tr').each(function () {
           	if (a <= _rows_visitas){
+	            var _img_src = $(this).find('.imagen').attr('src') || '';
+	            var _has_img = (_img_src.trim().length > 0) ? 1 : 0;
+
 	            var _visita = {
 	            	cod_auto: a,
 					      dni: $(this).find("td").eq(2).html(),
 					      nombres: $(this).find("td").eq(3).html(),
-					      imagen: $(this).find('.imagen').attr('src')
+					      imagen: _img_src
 					    };
 
 					    var _visita_datos = {
 	            	cod_auto: a,
 					      dni: $(this).find("td").eq(2).html(),
 					      nombres: $(this).find("td").eq(3).html(),
-					      tiene_imagen: (($(this).find('.imagen').attr('src').length > 0) ? 1 : 0)
+					      tiene_imagen: _has_img
 					    };
 
 					    arr_visitas.push(_visita);
@@ -1521,18 +1902,21 @@
 
           $('#tbl_visitas tr').each(function () {
           	if (a <= _rows_visitas){
+	            var _img_src = $(this).find('.imagen').attr('src') || '';
+	            var _has_img = (_img_src.trim().length > 0) ? 1 : 0;
+
 	            var _visita = {
 	            	cod_auto: a,
 					      dni: $(this).find("td").eq(2).html(),
 					      nombres: $(this).find("td").eq(3).html(),
-					      imagen: $(this).find('.imagen').attr('src')
+					      imagen: _img_src
 					    };
 
 					    var _visita_datos = {
 	            	cod_auto: a,
 					      dni: $(this).find("td").eq(2).html(),
 					      nombres: $(this).find("td").eq(3).html(),
-					      tiene_imagen: (($(this).find('.imagen').attr('src').length > 0) ? 1 : 0)
+					      tiene_imagen: _has_img
 					    };
 
 					    arr_visitas.push(_visita);

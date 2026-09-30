@@ -13,12 +13,16 @@ Archivo backend: \apis\backend.php
 
 ==================================================
 
-Modulo de Programación de Despachos: C:\wamp64\www\oppmerp\despachossegundotramo_programacion.php
-- Actualmente al registrar un despacho, se le muestra al usuario los códigos de despacho que va a tener el despacho y cada lote del despacho. Sin embargo, haz que incluso despues del registro del despacho, se puedan editar estos codigos. Recuerda que todos los lotes de VIII SAC (VIII) o 48 SAC (CO) tendran los mismos codigos respectivamente, no se mezclan. Ademas los codigos de Colibri es C y para solanda en S. Asi que si edita un codigo de un lote, haz que haya un check automarcado que sea para indicar que si por ejemplo edita un codigo de ese despacho de por ejemplo Colibri y con VIII y le pone el codigo de 'C578-VIII149' entonces todos los demas lotes del mismo despacho para colibri de VIII tendran el mismo codig. Pero si desmarca ese check de 'Actualizar otros lotes de VIII' entonces lo unico que hara es actualizar el codigo de ese lote pero ya no los demas.
+Modulo de Recepcion de Visitas: C:\wamp64\www\oppmerp\registro_visitas.php
+- Permite que subir fotos sea opcional y que luego, similar al modulo de recepcion de unidades, se puedan actualizar las fotos subidas o quitarlas segun quiera el usuario. Tambien permite la opcion de descargar la imagen original. 
 
-Cases relevante para que revises:
-- get_LotesProgramadosParaDespacho
-- confirmar_ProgramacionLote
-- confirmar_ProgramacionLote_AddLote
-- eliminar_Programacion
-- get_DespachosProgramacion_ListaProgramaciones
+Cases usados:
+- grabar_recepcionvisitas
+- get_ListaIngresoVisitas
+
+Modulo de ingreso de unidades de ejemplo: C:\wamp64\www\oppmerp\recepcion_unidades.php
+Cases de ese modulo de refernecia:
+- grabar_recepcionunidades
+- actualizar_recepcionunidades_imagenes
+
+NOTA: Asegurate de que los cases usados en ambos modulos, no fallen al subir archivos desde el navegador en el celular o en una computadora windows o mac o linux

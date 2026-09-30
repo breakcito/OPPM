@@ -2880,18 +2880,69 @@
 	        });
 	    });
 
+		function f_ProcesarImagenArchivo(file, callback){
+			if (!file) return;
+
+			if (!window.FileReader || !window.HTMLCanvasElement){
+				var reader = new FileReader();
+				reader.onload = function(e){ callback(e.target.result); };
+				reader.readAsDataURL(file);
+				return;
+			}
+
+			var reader = new FileReader();
+			reader.onload = function(e){
+				var img = new Image();
+				img.onload = function(){
+					var maxDim = 1600;
+					var width = img.width;
+					var height = img.height;
+
+					if (width > maxDim || height > maxDim){
+						if (width > height){
+							height = Math.round((height * maxDim) / width);
+							width = maxDim;
+						} else {
+							width = Math.round((width * maxDim) / height);
+							height = maxDim;
+						}
+					}
+
+					var canvas = document.createElement('canvas');
+					canvas.width = width;
+					canvas.height = height;
+					var ctx = canvas.getContext('2d');
+					ctx.drawImage(img, 0, 0, width, height);
+
+					try {
+						var dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+						callback(dataUrl);
+					} catch(err){
+						callback(e.target.result);
+					}
+				};
+				img.onerror = function(){
+					callback(e.target.result);
+				};
+				img.src = e.target.result;
+			};
+			reader.readAsDataURL(file);
+		}
+
 	    function f_AddAcompanante_Imagen(_id_row){
 			  var input = document.createElement('input');
 			  input.type = 'file';
 			  input.accept = 'image/*';
 			  input.onchange = function(event) {
 			    var file = event.target.files[0];
-			    var reader = new FileReader();
-			    reader.onload = function(e) {
+			    if (!file) return;
+
+			    f_ProcesarImagenArchivo(file, function(dataUrl){
 			      var imagen = document.getElementById('img_acompanante_' + _id_row);
-			      imagen.src = e.target.result;
-			    };
-			    reader.readAsDataURL(file);
+			      if (imagen){
+			        imagen.src = dataUrl;
+			      }
+			    });
 			  };
 			  input.click();
 
@@ -2904,16 +2955,19 @@
 			  input.accept = 'image/*';
 			  input.onchange = function(event) {
 			    var file = event.target.files[0];
-			    var reader = new FileReader();
-			    reader.onload = function(e) {
+			    if (!file) return;
+
+			    f_ProcesarImagenArchivo(file, function(dataUrl){
 			      var imagen = document.getElementById('img_imagenes_' + _id_row);
-			      imagen.src = e.target.result;
-			      imagen.style.display = 'block';
+			      if (imagen){
+			        imagen.src = dataUrl;
+			        imagen.style.display = 'block';
+			      }
 
 			      // Activar el botón DESCARGAR (al subir imagen)
 			      var _lnk = document.getElementById('lnk_download_' + _id_row);
 			      if (_lnk){
-			      	_lnk.setAttribute('href', imagen.src);
+			      	_lnk.setAttribute('href', dataUrl);
 			      	_lnk.setAttribute('download', 'imagen_' + _id_row + '.jpg');
 			      	_lnk.style.cursor = 'pointer';
 			      	_lnk.style.opacity = '1';
@@ -2926,8 +2980,7 @@
 			      if (_modo == 'U'){
 			      	$("#tmp_imagenes_cambiada_" + _id_row).val(1);
 			      }
-			    };
-			    reader.readAsDataURL(file);
+			    });
 			  };
 			  input.click();
 
