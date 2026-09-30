@@ -13,14 +13,12 @@ Archivo backend: \apis\backend.php
 
 ==================================================
 
-Modulo de Proveedores Mineros: C:\wamp64\www\oppmerp\admin_proveedoresmineros.php
-Necesito que, cuando se intente registrar un proveedor y se escriba DNI o RUC y sea consultado a la api para rellenar automaticamente sus datos, pero la api de APIS peru falle o ya se haya acabado la cuota, entonces que devuelva un estado 0 y que el modulo detecte esto y diga 'NO ENCONTRADO' para que el usuario mismo escriba la razon social de este proveedor. Por ejemplo actualmente sale este error:
+Modulo de Programación de Despachos: C:\wamp64\www\oppmerp\despachossegundotramo_programacion.php
+- Actualmente al registrar un despacho, se le muestra al usuario los códigos de despacho que va a tener el despacho y cada lote del despacho. Sin embargo, haz que incluso despues del registro del despacho, se puedan editar estos codigos. Recuerda que todos los lotes de VIII SAC (VIII) o 48 SAC (CO) tendran los mismos codigos respectivamente, no se mezclan. Ademas los codigos de Colibri es C y para solanda en S. Asi que si edita un codigo de un lote, haz que haya un check automarcado que sea para indicar que si por ejemplo edita un codigo de ese despacho de por ejemplo Colibri y con VIII y le pone el codigo de 'C578-VIII149' entonces todos los demas lotes del mismo despacho para colibri de VIII tendran el mismo codig. Pero si desmarca ese check de 'Actualizar otros lotes de VIII' entonces lo unico que hara es actualizar el codigo de ese lote pero ya no los demas.
 
-{
-    "estado": 1,
-    "res": "{\"message\":\"Ha excedido el l\\u00edmite del plan, espere el siguiente mes o p\\u00f3ngase en contacto con soporte t\\u00e9cnico soporte@apisperu.com \\\/ whatsapp +51935600914\"}"
-}
-
-Case utilizado para esto:
-- get_infocliente
-
+Cases relevante para que revises:
+- get_LotesProgramadosParaDespacho
+- confirmar_ProgramacionLote
+- confirmar_ProgramacionLote_AddLote
+- eliminar_Programacion
+- get_DespachosProgramacion_ListaProgramaciones

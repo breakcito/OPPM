@@ -46,6 +46,15 @@ if (!isset($_SESSION["Id"])) {
 		let itemprog_Selected = 0;
 		let idprog_Selected = 0;
 
+		// Codigos de despacho sugeridos por el sistema para la programacion en curso
+		// (cabecera global y detalle por modalidad). El operador puede modificarlos.
+		var CODIGOS_SUGERIDOS = {
+			es_generador: 0,
+			prefijo_cabecera: '',
+			cabecera: { correlativo: 0, codigo: '' },
+			detalle: {}
+		};
+
 		var itemagrupacion_Selected = 0;
 		var iddistribucionunidad_selected = 0;
 		var iddestino_selected = 0;
@@ -626,15 +635,34 @@ if (!isset($_SESSION["Id"])) {
 								</div>
 
 								<div id="div_campana_select" class="d-flex" style="margin-left: 15px; display: none; flex: 1;">
-									<div class="flex-fill" style="max-width: 60%;">
-										<select id="select_campana_activa" class="form-select" data-placeholder="Elija una campaña activa..." style="font-size: 14px;">
+								<div class="flex-fill" style="max-width: 60%;">
+									<select id="select_campana_activa" class="form-select" data-placeholder="Elija una campaña activa..." style="font-size: 14px;" onchange="f_LoadCodigosSugeridosProgramacion();">
 
-										</select>
-									</div>
+									</select>
+								</div>
 									<label id="lbl_sin_campanas" style="font-size: 12px; font-style: italic; color: #999; margin-top: 8px; margin-left: 10px; display: none;">
 										No hay campañas activas registradas.
 									</label>
 								</div>
+							</div>
+						</div>
+					</div>
+
+					<!-- Codigo de Despacho (solo plantas que generan codigo: Colibri y Solandra) -->
+					<div class="row" id="div_codigodespacho" style="display: none;">
+						<div class="col-md-12 col-sm-12 col-xs-12">
+							<div class="d-flex" style="padding: 3px; margin-top: 0px;">
+								<h6 style="font-size: 14px; margin-top: 7px; min-width: 130px;">
+									Código Despacho:
+								</h6>
+
+								<div class="flex-fill" style="max-width: 40%; min-width: 150px;">
+									<input id="input_codigodespacho" type="text" class="form-control" style="text-align: center; font-size: 14px; font-weight: bold; text-transform: uppercase;" placeholder="C578" onblur="f_RefrescarCodigosLotes();">
+								</div>
+
+								<label id="lbl_ayuda_codigodespacho" style="font-size: 12px; font-style: italic; color: #6c757d; margin-top: 9px; margin-left: 10px;">
+									Sugerido por el sistema. Si el correlativo real es otro, modifíquelo.
+								</label>
 							</div>
 						</div>
 					</div>
@@ -655,11 +683,11 @@ if (!isset($_SESSION["Id"])) {
 					<div class="d-flex justify-content-center" style="padding: 5px; height: 350px; overflow-y: scroll;">
 						<table class="table table-bordered table-hover">
 							<thead>
-								<tr style="font-size: 12px;">
-									<th colspan="8" style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle; border-top-left-radius: 15px; border-top-right-radius: 15px;">
-										Información Lotes
-									</th>
-								</tr>
+							<tr style="font-size: 12px;">
+								<th colspan="9" style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle; border-top-left-radius: 15px; border-top-right-radius: 15px;">
+									Información Lotes
+								</th>
+							</tr>
 
 								<tr style="font-size: 12px;">
 									<th style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle; min-width: 60px; max-width: 60px;">
@@ -691,15 +719,19 @@ if (!isset($_SESSION["Id"])) {
 										Neto<br>(TMH)
 									</th>
 
-									<th style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle;">
-										Neto<br>(TMS)
-									</th>
-								</tr>
-							</thead>
+								<th style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle;">
+									Neto<br>(TMS)
+								</th>
 
-							<tbody id="tbl_FiltroLotes">
+								<th id="th_codigodespacho" style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle; min-width: 120px; display: none;">
+									Código<br>Despacho
+								</th>
+							</tr>
+						</thead>
 
-							</tbody>
+						<tbody id="tbl_FiltroLotes">
+
+						</tbody>
 						</table>
 					</div>
 
@@ -2416,6 +2448,15 @@ if (!isset($_SESSION["Id"])) {
 				$("#div_campana_solandra").hide();
 			}
 
+			// Resetea los controles del Codigo de Despacho
+			f_ResetCodigosDespacho();
+
+			// Muestra el bloque de Codigo de Despacho solo en las plantas que lo generan
+			// (Colibri = 3 y Solandra = 5).
+			if (idplanta_Selected == 3 || idplanta_Selected == 5) {
+				f_LoadCodigosSugeridosProgramacion();
+			}
+
 			// Cargando datos
 			f_LoadFiltroModalidadEnvio();
 			f_LoadFiltroLotes();
@@ -2423,6 +2464,163 @@ if (!isset($_SESSION["Id"])) {
 			// Abre modal
 			f_OpenModal('modal_adminprogramaciones');
 		};
+
+		// ================================================================
+		// CODIGO DE DESPACHO (cabecera y detalle por lote)
+		// El sistema sugiere el proximo correlativo en los inputs, pero la
+		// empresa ejecuta despachos que no cuadran con esa numeracion, por lo
+		// que el operador puede escribir el correlativo real.
+		// ================================================================
+		function f_ResetCodigosDespacho() {
+			CODIGOS_SUGERIDOS = {
+				es_generador: 0,
+				prefijo_cabecera: '',
+				cabecera: { correlativo: 0, codigo: '' },
+				detalle: {}
+			};
+
+			$("#div_codigodespacho").hide();
+			$("#th_codigodespacho").hide();
+			$("#input_codigodespacho").val('');
+			$("#input_codigodespacho").removeAttr('data-editado');
+			$("#lbl_ayuda_codigodespacho").html('Sugerido por el sistema. Si el correlativo real es otro, modifíquelo.');
+		}
+
+		// Marca el input como editado a mano para que no se vuelva a sobrescribir.
+		function f_MarcarCodigoEditado(_obj) {
+			$(_obj).attr('data-editado', '1');
+		}
+
+		// Extrae el correlativo numerico del final de un codigo. Ej: "C578-VIII149" -> 149
+		function f_GetCorrelativoDeCodigo(_codigo) {
+			var _match = String((_codigo === null || typeof _codigo === 'undefined') ? '' : _codigo).trim().match(/(\d+)$/);
+
+			return (_match === null) ? 0 : parseInt(_match[1], 10);
+		}
+
+		function f_GetCodigoCabeceraIngresado() {
+			var _codigo = $("#input_codigodespacho").val();
+
+			return (typeof _codigo === 'undefined' || _codigo === null) ? '' : String(_codigo).trim();
+		}
+
+		// Cabecera tal como quedara registrada. Si el operador escribio solo el numero,
+		// se antepone el prefijo del sistema (mismo criterio que el backend).
+		function f_GetCodigoCabeceraEfectivo() {
+			var _ingresado = f_GetCodigoCabeceraIngresado();
+
+			if (_ingresado === '') {
+				return '';
+			}
+
+			if (!/[A-Za-z]/.test(_ingresado)) {
+				return ((CODIGOS_SUGERIDOS.prefijo_cabecera || '') + _ingresado).toUpperCase();
+			}
+
+			return _ingresado.toUpperCase();
+		}
+
+		// Arma el codigo de detalle sugerido para un lote a partir de la cabecera
+		// que se esta usando y del correlativo de detalle de su modalidad.
+		function f_ConstruirCodigoDetalleLote(_correlativo, _modalidad) {
+			var _cabecera = f_GetCodigoCabeceraEfectivo();
+
+			if (_cabecera === '' || !_correlativo) {
+				return '';
+			}
+
+			var _prefijo_empresa = (_modalidad == 5) ? 'VIII' : 'CO';
+
+			return _cabecera + '-' + _prefijo_empresa + _correlativo;
+		}
+
+		// Consulta los codigos que el sistema asignaria en esta programacion.
+		function f_LoadCodigosSugeridosProgramacion() {
+			var _modo = $("#modo_grabarprogramacion").val();
+			var _is_aplica_campana = 0;
+			var _id_campana = 0;
+
+			// La campana solo se consulta al crear una programacion nueva de Solandra.
+			if (idplanta_Selected == 5 && _modo == 'N') {
+				_is_aplica_campana = ($("#chk_aplica_campana").prop('checked')) ? 1 : 0;
+				_id_campana = parseInt($("#select_campana_activa").val() || 0, 10);
+
+				if (isNaN(_id_campana)) {
+					_id_campana = 0;
+				}
+			}
+
+			$("#div_codigodespacho").show();
+			$("#th_codigodespacho").show();
+
+			$.post("apis/backend.php", {
+					accion: "get_Programacion_CodigosSugeridos",
+					id_planta: idplanta_Selected,
+					is_aplica_campana: _is_aplica_campana,
+					id_campana: _id_campana,
+					id_programacion: (_modo == 'E') ? (parseInt($("#id_programacion").val() || 0, 10) || 0) : 0
+				},
+				function(data) {
+					if (data.es_generador != 1) {
+						$("#div_codigodespacho").hide();
+						$("#th_codigodespacho").hide();
+
+						return;
+					}
+
+					CODIGOS_SUGERIDOS = data;
+
+					$("#input_codigodespacho").val((data.cabecera && data.cabecera.codigo) ? data.cabecera.codigo : '');
+					$("#input_codigodespacho").removeAttr('data-editado');
+
+					if (_modo == 'E') {
+						$("#lbl_ayuda_codigodespacho").html('Código ya registrado en el despacho. Si debe cambiar, modifíquelo.');
+					} else {
+						$("#lbl_ayuda_codigodespacho").html('Sugerido por el sistema. Si el correlativo real es otro, modifíquelo.');
+					}
+
+					f_RefrescarCodigosLotes();
+				}, "json");
+		}
+
+		// Pinta el codigo de despacho sugerido en los lotes seleccionados.
+		// No sobrescribe los codigos que el operador ya edito a mano, y deshabilita
+		// el input de las modalidades que no generan codigo de despacho.
+		function f_RefrescarCodigosLotes() {
+			if (!CODIGOS_SUGERIDOS || CODIGOS_SUGERIDOS.es_generador != 1) {
+				return;
+			}
+
+			var d = 1;
+
+			$("#tbl_FiltroLotes tr").filter(function() {
+				var _input = $("#codigodespacho_lote_" + d);
+				var _modalidad = parseInt($(this).attr('data-modalidad') || 0, 10);
+
+				if (_input.length > 0) {
+					if (_modalidad != 5 && _modalidad != 6) {
+						_input.val('');
+						_input.prop('disabled', true);
+					} else {
+						_input.prop('disabled', false);
+
+						if ($("#chk_lote_" + d).prop('checked') && _input.attr('data-editado') != '1') {
+							var _sugerido = (CODIGOS_SUGERIDOS.detalle) ? CODIGOS_SUGERIDOS.detalle[String(_modalidad)] : null;
+
+							if (_sugerido) {
+								var _correlativo = f_GetCorrelativoDeCodigo(_sugerido.codigo);
+
+								_input.val(f_ConstruirCodigoDetalleLote(_correlativo, _modalidad));
+							}
+						}
+					}
+				}
+
+				d++;
+
+				return true;
+			});
+		}
 
 		function f_LoadCampanasActivasSolandra() {
 			$("#select_campana_activa").html('');
@@ -2456,6 +2654,9 @@ if (!isset($_SESSION["Id"])) {
 				$("#div_campana_select").hide();
 				$("#select_campana_activa").val('');
 			}
+
+			// El prefijo de la cabecera depende de la campana aplicada.
+			f_LoadCodigosSugeridosProgramacion();
 		}
 
 		function f_LoadFiltroModalidadEnvio() {
@@ -2474,11 +2675,15 @@ if (!isset($_SESSION["Id"])) {
 		}
 
 		function f_LoadFiltroLotes() {
-			var _modo = $("#modo_grabarprogramacion").val();
-
 			var cod_lote = $("#filtrolotes_lote").val();
 			var cod_proveedorminero = $("#filtro_proveedorminero").val();
 			var cod_modalidadenvio = $("#filtro_modalidadenvio").val();
+
+			// Solo Colibri (3) y Solandra (5) generan codigo de despacho por lote.
+			// Aplica tanto al crear una programacion como al agregar lotes a una existente.
+			var is_muestracodigos = ((idplanta_Selected == 3 || idplanta_Selected == 5) ? 1 : 0);
+
+			$("#th_codigodespacho").toggle(is_muestracodigos == 1);
 
 			// Cargando datos
 			f_LoadingLotes(1);
@@ -2490,12 +2695,16 @@ if (!isset($_SESSION["Id"])) {
 					id_planta: idplanta_Selected,
 					cod_lote: cod_lote,
 					cod_proveedorminero: cod_proveedorminero,
-					cod_modalidadenvio: cod_modalidadenvio
+					cod_modalidadenvio: cod_modalidadenvio,
+					is_muestracodigos: is_muestracodigos
 				},
 				function(data) {
 					if (data.estado == 1) {
 						$("#tbl_FiltroLotes").html(data.html);
 					}
+
+					// Sugiere el codigo de despacho de los lotes ya marcados.
+					f_RefrescarCodigosLotes();
 
 					f_LoadingLotes(0);
 
@@ -3409,6 +3618,9 @@ if (!isset($_SESSION["Id"])) {
 			// Setea el total de Netos
 			$("#lbl_totaltmh").html(f_RedondearDecimales(_total_tmh, 3));
 			$("#lbl_totaltms").html(f_RedondearDecimales(_total_tms, 3));
+
+			// Sugiere el codigo de despacho de los lotes recien marcados.
+			f_RefrescarCodigosLotes();
 		}
 
 		function f_SelectChkLotes_Distribucion() {
@@ -3599,14 +3811,44 @@ if (!isset($_SESSION["Id"])) {
 			// Arma Array de Lotes seleccionados
 			var l = 1;
 			var arr_lotes = '';
+			var arr_codigos_detalle = '';
+			var is_codigo_invalido = false;
 
 			$("#tbl_FiltroLotes tr").each(function() {
 				if ($("#chk_lote_" + l).prop('checked')) {
-					arr_lotes += $(this).find("td:eq(1)").text().trim() + '|';
+					var _cod_lote = $(this).find("td:eq(1)").text().trim();
+
+					arr_lotes += _cod_lote + '|';
+
+					// Codigo de despacho del lote ("LOTE|CODIGO|LOTE|CODIGO|...")
+					var _input_codigo = $("#codigodespacho_lote_" + l);
+
+					if (_input_codigo.length > 0 && _input_codigo.prop('disabled') == false) {
+						var _codigo_lote = _input_codigo.val();
+						_codigo_lote = (typeof _codigo_lote === 'undefined' || _codigo_lote === null) ? '' : String(_codigo_lote).trim().toUpperCase();
+
+						if (f_GetCorrelativoDeCodigo(_codigo_lote) <= 0) {
+							is_codigo_invalido = true;
+
+							return false;
+						}
+
+						arr_codigos_detalle += _cod_lote + '|' + _codigo_lote + '|';
+					}
 				}
 
 				l++;
 			});
+
+			if (is_codigo_invalido) {
+				alert("Complete el Codigo de Despacho de los Lotes seleccionados (ej. C578-VIII149).");
+				return;
+			}
+
+			if (arr_lotes === '') {
+				alert("Debe seleccionar al menos un Lote.");
+				return;
+			}
 
 			arr_lotes = arr_lotes.substring(0, arr_lotes.length - 1);
 
@@ -3652,6 +3894,19 @@ if (!isset($_SESSION["Id"])) {
 				}
 			}
 
+			// Validacion: el Codigo de Despacho (cabecera) debe ser valido en las plantas
+			// que lo generan. Viene sugerido por el sistema y puede ser corregido.
+			var codigo_cabecera = '';
+
+			if (CODIGOS_SUGERIDOS && CODIGOS_SUGERIDOS.es_generador == 1) {
+				codigo_cabecera = f_GetCodigoCabeceraIngresado().toUpperCase();
+
+				if (f_GetCorrelativoDeCodigo(codigo_cabecera) <= 0) {
+					alert("Indique un Codigo de Despacho valido (ej. C578).");
+					return;
+				}
+			}
+
 			// Grabando Datos
 			f_LoadingGrabarProgramacion(1);
 
@@ -3661,7 +3916,9 @@ if (!isset($_SESSION["Id"])) {
 						id_planta: idplanta_Selected,
 						arr_lotes: arr_lotes,
 						is_aplica_campana: is_aplica_campana,
-						id_campana: id_campana_sel
+						id_campana: id_campana_sel,
+						codigo_cabecera: codigo_cabecera,
+						arr_codigos_detalle: arr_codigos_detalle
 					},
 					function(data) {
 						if (data.estado == 1) {
@@ -3686,7 +3943,9 @@ if (!isset($_SESSION["Id"])) {
 						arr_lotes: arr_lotes,
 						is_loteaum: 0,
 						is_aplica_campana: is_aplica_campana,
-						id_campana: id_campana_sel
+						id_campana: id_campana_sel,
+						codigo_cabecera: codigo_cabecera,
+						arr_codigos_detalle: arr_codigos_detalle
 					},
 					function(data) {
 						if (data.estado == 1) {
