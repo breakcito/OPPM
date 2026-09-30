@@ -2122,6 +2122,119 @@ if (!isset($_SESSION["Id"])) {
 		</div>
 	</div>
 
+	<!-- Modal Editar Código Despacho Lote -->
+	<div class="modal fade" id="modal_EditCodigoDespachoLote" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="modal_EditCodigoDespachoLoteLabel" aria-hidden="true">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h1 class="modal-title fs-6">Lote: </h1>
+					<h1 class="modal-title fs-6" id="modal_EditCodigoDespachoLoteLabel_lote" style="margin-left: 5px; color: #337ab7; font-weight: bold;"></h1>
+					<h1 class="modal-title fs-6" style="margin-left: 5px;">| Editar Código Despacho</h1>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+					<div class="row" style="margin-bottom: 10px;">
+						<div class="col-md-6 col-sm-6 col-xs-6">
+							<label style="font-size: 14px; color: #6c757d;">Despacho:</label>
+							<div id="lbl_editCodigoLote_despacho" style="font-weight: bold; font-size: 14px;"></div>
+						</div>
+						<div class="col-md-6 col-sm-6 col-xs-6">
+							<label style="font-size: 14px; color: #6c757d;">Modalidad:</label>
+							<div id="lbl_editCodigoLote_empresa" style="font-weight: bold; font-size: 14px; color: #337ab7;"></div>
+						</div>
+					</div>
+
+					<div class="row">
+						<div class="col-md-12 col-sm-12 col-xs-12">
+							<label style="font-size: 14px; font-weight: bold; margin-bottom: 5px;">Código:</label>
+							<input id="input_editCodigoLote_codigo" type="text" class="form-control" style="text-align: center; font-size: 15px; font-weight: bold; text-transform: uppercase;" placeholder="Ej. C578-VIII149" oninput="f_OnInputCodigoLote(this);">
+							<label id="lbl_editCodigoLote_ayuda" style="font-size: 11px; font-style: italic; color: #6c757d; margin-top: 4px; display: block;"></label>
+						</div>
+					</div>
+
+					<div class="row" style="margin-top: 15px;">
+						<div class="col-md-12 col-sm-12 col-xs-12">
+							<div class="form-check" style="background-color: #f1f5f9; padding: 10px 10px 10px 35px; border-radius: 6px; border: 1px solid #cbd5e1;">
+								<input class="form-check-input" type="checkbox" id="chk_editCodigoLote_actualizar_otros" checked style="transform: scale(1.3); cursor: pointer;">
+								<label class="form-check-label" for="chk_editCodigoLote_actualizar_otros" id="lbl_editCodigoLote_chk" style="font-weight: bold; cursor: pointer; margin-left: 5px;">
+									Actualizar otros lotes de VIII
+								</label>
+								<!-- <div style="font-size: 11px; color: #64748b; margin-top: 3px;">
+									Al marcar esta opción, todos los demás lotes de la misma empresa en este despacho compartirán este mismo código. Si se desmarca, solo se modificará este lote.
+								</div> -->
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<input id="editCodigoLote_iddetalle" type="hidden">
+				<input id="editCodigoLote_idprogramacion" type="hidden">
+				<input id="editCodigoLote_idmodalidad" type="hidden">
+				<input id="editCodigoLote_codigodespacho" type="hidden">
+				<input id="editCodigoLote_codigoactual" type="hidden">
+
+				<div class="modal-footer" style="margin-top: -10px;">
+					<div id="wt_EditCodigoDespachoLote" style="font-size: 12px; text-align: center; display: none; padding-top: 5px;">
+						<img src="<?php echo $img_waiting ?>" style="width: 20px;">
+						<label style="font-style: italic;"> Grabando datos...</label>
+					</div>
+
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="font-size: 14px;">Cancelar</button>
+					<button type="button" id="btn_guardar_editcodigolote" class="btn btn-primary" style="font-size: 14px;" onclick="f_GuardarEdicionCodigoDespachoLote();">Guardar</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Modal Editar Código Despacho Cabecera -->
+	<div class="modal fade" id="modal_EditCodigoDespachoCabecera" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="modal_EditCodigoDespachoCabeceraLabel" aria-hidden="true">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h1 class="modal-title fs-6">Editar Código de Despacho: </h1>
+					<h1 class="modal-title fs-6" id="modal_EditCodigoDespachoCabeceraLabel_codigo" style="margin-left: 5px; color: #337ab7; font-weight: bold;"></h1>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+					<div class="row">
+						<div class="col-md-12 col-sm-12 col-xs-12">
+							<label style="font-size: 13px; font-weight: bold; margin-bottom: 5px;">Nuevo Código de Despacho:</label>
+							<input id="input_editCodigoCab_codigo" type="text" class="form-control" style="text-align: center; font-size: 15px; font-weight: bold; text-transform: uppercase;" placeholder="Ej. C578">
+							<label id="lbl_editCodigoCab_ayuda" style="font-size: 11px; font-style: italic; color: #6c757d; margin-top: 4px; display: block;"></label>
+						</div>
+					</div>
+
+					<div class="row" style="margin-top: 15px;">
+						<div class="col-md-12 col-sm-12 col-xs-12">
+							<div class="form-check" style="background-color: #f1f5f9; padding: 10px 10px 10px 35px; border-radius: 6px; border: 1px solid #cbd5e1;">
+								<input class="form-check-input" type="checkbox" id="chk_editCodigoCab_actualizar_lotes" checked style="transform: scale(1.3); cursor: pointer;">
+								<label class="form-check-label" for="chk_editCodigoCab_actualizar_lotes" style="font-weight: bold; cursor: pointer; margin-left: 5px;">
+									Actualizar prefijo en códigos de los lotes
+								</label>
+								<!-- <div style="font-size: 11px; color: #64748b; margin-top: 3px;">
+									Al marcar esta opción, los códigos de comercialización de los lotes del despacho (ej. C577-VIII148) actualizarán su prefijo con el nuevo código (ej. C578-VIII148).
+								</div> -->
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<input id="editCodigoCab_idprogramacion" type="hidden">
+				<input id="editCodigoCab_codigoactual" type="hidden">
+
+				<div class="modal-footer" style="margin-top: -10px;">
+					<div id="wt_EditCodigoDespachoCabecera" style="font-size: 12px; text-align: center; display: none; padding-top: 5px;">
+						<img src="<?php echo $img_waiting ?>" style="width: 20px;">
+						<label style="font-style: italic;"> Grabando datos...</label>
+					</div>
+
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="font-size: 14px;">Cancelar</button>
+					<button type="button" id="btn_guardar_editcodigocab" class="btn btn-primary" style="font-size: 14px;" onclick="f_GuardarEdicionCodigoDespachoCabecera();">Guardar</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
 	<!-- Referenciando a JQuery -->
 	<script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
 	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-A3rJD856KowSb7dwlZdYEkO39Gagi7vIsF0jrRAoQmDKKtQBHUuLZ9AsSv4jD4Xa" crossorigin="anonymous"></script>
@@ -2265,6 +2378,10 @@ if (!isset($_SESSION["Id"])) {
 			$(".th_codigoscmh").hide();
 
 			$("#th_distribucion_infolote").attr('colspan', 5);
+
+			if (_id_planta == 3 || _id_planta == 5) {
+				$("#th_codigocomercializacion").show();
+			}
 
 			if (_id_planta == 3) {
 				$("#th_distribucion_codplanta").show();
@@ -4821,6 +4938,194 @@ if (!isset($_SESSION["Id"])) {
 					f_cerrarModal("modal_EditCodigoPlanta");
 
 				}, "json");
+		}
+		function f_EditCodigoDespachoLote(_id_detalle, _id_programacion, _cod_lote, _id_modalidad, _codigo_comercializacion, _codigo_despacho) {
+			$("#modal_EditCodigoDespachoLoteLabel_lote").html(_cod_lote);
+			$("#lbl_editCodigoLote_despacho").html(_codigo_despacho || '---');
+			$("#editCodigoLote_iddetalle").val(_id_detalle);
+			$("#editCodigoLote_idprogramacion").val(_id_programacion);
+			$("#editCodigoLote_idmodalidad").val(_id_modalidad);
+			$("#editCodigoLote_codigodespacho").val(_codigo_despacho);
+			$("#editCodigoLote_codigoactual").val(_codigo_comercializacion);
+			$("#input_editCodigoLote_codigo").val(_codigo_comercializacion);
+
+			var nombre_empresa = (_id_modalidad == 5) ? 'VIII' : ((_id_modalidad == 6) ? '48 SAC' : 'esta empresa');
+			if (_id_modalidad == 0 || !_id_modalidad) {
+				if (_codigo_comercializacion.indexOf('VIII') !== -1) {
+					nombre_empresa = 'VIII';
+					$("#editCodigoLote_idmodalidad").val(5);
+				} else if (_codigo_comercializacion.indexOf('CO') !== -1) {
+					nombre_empresa = '48 SAC';
+					$("#editCodigoLote_idmodalidad").val(6);
+				}
+			}
+
+			$("#lbl_editCodigoLote_empresa").html((nombre_empresa == 'VIII') ? 'VIII S.A.C.' : ((nombre_empresa == '48 SAC') ? '48 S.A.C.' : nombre_empresa));
+			$("#lbl_editCodigoLote_chk").html("Actualizar otros lotes de " + nombre_empresa);
+			$("#chk_editCodigoLote_actualizar_otros").prop('checked', true); // Check automarcado
+
+			if (idplanta_Selected == 3) {
+				// $("#lbl_editCodigoLote_ayuda").html("Planta Colibrí: El código debe iniciar con 'C' (ej. C578-" + ((nombre_empresa == '48 SAC') ? 'CO...' : 'VIII...') + ").");
+			} else if (idplanta_Selected == 5) {
+				// $("#lbl_editCodigoLote_ayuda").html("Planta Solandra: El código debe contener 'S' (ej. S228-" + ((nombre_empresa == '48 SAC') ? 'CO...' : 'VIII...') + " o CP33-S228-...).");
+			} else {
+				// $("#lbl_editCodigoLote_ayuda").html("");
+			}
+
+			f_OpenModal('modal_EditCodigoDespachoLote');
+		}
+
+		function f_OnInputCodigoLote(_obj) {
+			var val = $(_obj).val().toUpperCase();
+			if (val.indexOf('CO') !== -1 && val.indexOf('VIII') === -1) {
+				$("#lbl_editCodigoLote_chk").html("Actualizar otros lotes de 48 SAC");
+				$("#lbl_editCodigoLote_empresa").html("48 S.A.C.");
+				$("#editCodigoLote_idmodalidad").val(6);
+			} else if (val.indexOf('VIII') !== -1 && val.indexOf('CO') === -1) {
+				$("#lbl_editCodigoLote_chk").html("Actualizar otros lotes de VIII");
+				$("#lbl_editCodigoLote_empresa").html("VIII S.A.C.");
+				$("#editCodigoLote_idmodalidad").val(5);
+			}
+		}
+
+		function f_GuardarEdicionCodigoDespachoLote() {
+			var id_detalle = $("#editCodigoLote_iddetalle").val();
+			var id_programacion = $("#editCodigoLote_idprogramacion").val();
+			var id_modalidad = parseInt($("#editCodigoLote_idmodalidad").val(), 10);
+			var codigo_actual = $("#editCodigoLote_codigoactual").val().trim();
+			var codigo_nuevo = f_CleanInjection($("#input_editCodigoLote_codigo").val().trim().toUpperCase());
+			var actualizar_otros = ($("#chk_editCodigoLote_actualizar_otros").prop('checked')) ? 1 : 0;
+
+			if (!codigo_nuevo || codigo_nuevo.length === 0) {
+				alert("Debe ingresar el código de despacho del lote.");
+				return;
+			}
+
+			if (f_GetCorrelativoDeCodigo(codigo_nuevo) <= 0) {
+				alert("El código debe terminar en un correlativo numérico válido (ej. C578-VIII149).");
+				return;
+			}
+
+			if (idplanta_Selected == 3 && !codigo_nuevo.startsWith('C')) {
+				alert("Para la planta Colibrí el código de despacho debe comenzar con 'C' (ej. C578-VIII149).");
+				return;
+			}
+			if (idplanta_Selected == 5 && codigo_nuevo.indexOf('S') === -1) {
+				alert("Para la planta Solandra el código de despacho debe contener 'S' (ej. S228-VIII149 o CP33-S228-VIII149).");
+				return;
+			}
+
+			if (id_modalidad == 5) {
+				if (codigo_nuevo.indexOf('VIII') === -1 || codigo_nuevo.indexOf('CO') !== -1) {
+					alert("Para lotes de VIII SAC el código debe incluir 'VIII' y no 'CO' (ej. C578-VIII149).");
+					return;
+				}
+			} else if (id_modalidad == 6) {
+				if (codigo_nuevo.indexOf('CO') === -1 || codigo_nuevo.indexOf('VIII') !== -1) {
+					alert("Para lotes de 48 SAC el código debe incluir 'CO' y no 'VIII' (ej. C578-CO150).");
+					return;
+				}
+			}
+
+			$("#wt_EditCodigoDespachoLote").show();
+			$("#btn_guardar_editcodigolote").prop('disabled', true);
+
+			$.post("apis/backend.php", {
+					accion: "grabar_ProgramacionDespachos_EditarCodigoDespachoLote",
+					id_detalle: id_detalle,
+					id_programacion: id_programacion,
+					id_modalidadenvio: id_modalidad,
+					codigo_nuevo: codigo_nuevo,
+					actualizar_otros: actualizar_otros
+				},
+				function(data) {
+					$("#wt_EditCodigoDespachoLote").hide();
+					$("#btn_guardar_editcodigolote").prop('disabled', false);
+
+					if (data.estado == 1) {
+						f_cerrarModal("modal_EditCodigoDespachoLote");
+						f_LoadItemPlanta(itemplanta_Selected, idplanta_Selected, 1, $("#item_programacion").val(), id_programacion);
+					} else {
+						var msg = (data.mensaje) ? data.mensaje : "Ocurrió un error al momento de grabar el Código.";
+						alert(msg);
+					}
+				}, "json")
+				.fail(function() {
+					$("#wt_EditCodigoDespachoLote").hide();
+					$("#btn_guardar_editcodigolote").prop('disabled', false);
+					alert("Error de comunicación con el servidor.");
+				});
+		}
+
+		function f_EditCodigoDespachoCabecera(_id_programacion, _codigo_despacho) {
+			$("#modal_EditCodigoDespachoCabeceraLabel_codigo").html(_codigo_despacho);
+			$("#editCodigoCab_idprogramacion").val(_id_programacion);
+			$("#editCodigoCab_codigoactual").val(_codigo_despacho);
+			$("#input_editCodigoCab_codigo").val(_codigo_despacho);
+			$("#chk_editCodigoCab_actualizar_lotes").prop('checked', true);
+
+			if (idplanta_Selected == 3) {
+				// $("#lbl_editCodigoCab_ayuda").html("Planta Colibrí: El código debe comenzar con 'C' (ej. C578).");
+			} else if (idplanta_Selected == 5) {
+				// $("#lbl_editCodigoCab_ayuda").html("Planta Solandra: El código debe contener 'S' (ej. S228 o CP33-S228).");
+			} else {
+				// $("#lbl_editCodigoCab_ayuda").html("");
+			}
+
+			f_OpenModal('modal_EditCodigoDespachoCabecera');
+		}
+
+		function f_GuardarEdicionCodigoDespachoCabecera() {
+			var id_programacion = $("#editCodigoCab_idprogramacion").val();
+			var codigo_actual = $("#editCodigoCab_codigoactual").val().trim();
+			var codigo_nuevo = f_CleanInjection($("#input_editCodigoCab_codigo").val().trim().toUpperCase());
+			var actualizar_lotes = ($("#chk_editCodigoCab_actualizar_lotes").prop('checked')) ? 1 : 0;
+
+			if (!codigo_nuevo || codigo_nuevo.length === 0) {
+				alert("Debe ingresar el código de despacho.");
+				return;
+			}
+
+			if (f_GetCorrelativoDeCodigo(codigo_nuevo) <= 0) {
+				alert("El código debe terminar en un correlativo numérico válido (ej. C578).");
+				return;
+			}
+
+			if (idplanta_Selected == 3 && !codigo_nuevo.startsWith('C')) {
+				alert("Para la planta Colibrí el código de despacho debe comenzar con 'C' (ej. C578).");
+				return;
+			}
+			if (idplanta_Selected == 5 && codigo_nuevo.indexOf('S') === -1) {
+				alert("Para la planta Solandra el código de despacho debe contener 'S' (ej. S228 o CP33-S228).");
+				return;
+			}
+
+			$("#wt_EditCodigoDespachoCabecera").show();
+			$("#btn_guardar_editcodigocab").prop('disabled', true);
+
+			$.post("apis/backend.php", {
+					accion: "grabar_ProgramacionDespachos_EditarCodigoDespachoCabecera",
+					id_programacion: id_programacion,
+					codigo_nuevo: codigo_nuevo,
+					actualizar_lotes: actualizar_lotes
+				},
+				function(data) {
+					$("#wt_EditCodigoDespachoCabecera").hide();
+					$("#btn_guardar_editcodigocab").prop('disabled', false);
+
+					if (data.estado == 1) {
+						f_cerrarModal("modal_EditCodigoDespachoCabecera");
+						f_LoadItemPlanta(itemplanta_Selected, idplanta_Selected, 1, $("#item_programacion").val(), id_programacion);
+					} else {
+						var msg = (data.mensaje) ? data.mensaje : "Ocurrió un error al momento de grabar el Código de Despacho.";
+						alert(msg);
+					}
+				}, "json")
+				.fail(function() {
+					$("#wt_EditCodigoDespachoCabecera").hide();
+					$("#btn_guardar_editcodigocab").prop('disabled', false);
+					alert("Error de comunicación con el servidor.");
+				});
 		}
 	</script>
 

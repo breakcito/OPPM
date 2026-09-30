@@ -19052,73 +19052,110 @@ switch ($_POST["accion"]) {
 		break;
 
 	case 'grabar_recepcionvisitas':
-		$estado = 0;
-		$estado_visitas = 0;
-		$id_registro = 0;
+        $estado = 0;
+        $estado_visitas = 0;
+        $id_registro = 0;
 
-		// Recupera variables
-		$visita_motivo = mysqli_real_escape_string($enlace, $_POST["visita_motivo"]);
-		$registro_contacto = mysqli_real_escape_string($enlace, $_POST["registro_contacto"]);
-		$registro_observacion = strtoupper(mysqli_real_escape_string($enlace, $_POST["registro_observacion"]));
-		$tiene_vehiculoparticular = mysqli_real_escape_string($enlace, $_POST["tiene_vehiculoparticular"]);
-		$visita_placa = mysqli_real_escape_string($enlace, $_POST["visita_placa"]);
-		$arr_visitas_datos = $_POST["arr_visitas_datos"];
-		$usuario_registro = $_SESSION["usu_usuario"];
+        // Recuperar y sanitizar variables de cabecera
+        $visita_motivo           = isset($_POST["visita_motivo"]) ? intval($_POST["visita_motivo"]) : 0;
+        $registro_contacto       = isset($_POST["registro_contacto"]) ? intval($_POST["registro_contacto"]) : 0;
+        $tiene_vehiculoparticular = (isset($_POST["tiene_vehiculoparticular"]) && $_POST["tiene_vehiculoparticular"] == 1) ? 1 : 0;
+        $registro_observacion    = isset($_POST["registro_observacion"]) ? strtoupper(trim($_POST["registro_observacion"])) : '';
+        $registro_observacion    = mysqli_real_escape_string($enlace, $registro_observacion);
+        
+        $visita_placa = '';
+        if ($tiene_vehiculoparticular === 1 && !empty($_POST["visita_placa"])) {
+            $visita_placa = "'" . strtoupper(mysqli_real_escape_string($enlace, trim($_POST["visita_placa"]))) . "'";
+        } else {
+            $visita_placa = "NULL";
+        }
 
-		// Guardando datos
-		$q_save = "INSERT INTO controlingreso_visitas (id_motivovisita, id_usuariocontacto, tiene_vehiculoparticular, vehiculo_placa, observaciones, fechahora_registro, usuario_registro) VALUES (";
-		$q_save .= $visita_motivo . ', ';
-		$q_save .= $registro_contacto . ', ';
-		$q_save .= $tiene_vehiculoparticular . ', ';
+        $usuario_registro = isset($_SESSION["usu_usuario"]) ? mysqli_real_escape_string($enlace, $_SESSION["usu_usuario"]) : 'SYSTEM';
+        $fecha_registro   = isset($g_fecha) ? mysqli_real_escape_string($enlace, $g_fecha) : date('Y-m-d H:i:s');
 
-		if ($tiene_vehiculoparticular == 1) {
-			$q_save .= "'" . strtoupper($visita_placa) . "', ";
-		} else {
-			$q_save .= "NULL, ";
-		}
+        // Procesar array de acompañantes
+        $raw_visitas = $_POST["arr_visitas_datos"] ?? [];
+        if (is_string($raw_visitas)) {
+            $arr_visitas_datos = json_decode($raw_visitas, true);
+        } elseif (is_array($raw_visitas)) {
+            $arr_visitas_datos = $raw_visitas;
+        } else {
+            $arr_visitas_datos = [];
+        }
 
-		$q_save .= "'" . strtoupper($registro_observacion) . "', ";
-		$q_save .= "'" . $g_fecha . "', ";
-		$q_save .= "'" . $usuario_registro . "')";
+        // Iniciar transacción para consistencia atómica
+        mysqli_begin_transaction($enlace);
 
-		// Grabando datos
-		if ($res_exists = mysqli_query($enlace, $q_save)) {
-			$estado = 1;
+        try {
+            $q_save = "INSERT INTO controlingreso_visitas (
+                        id_motivovisita, 
+                        id_usuariocontacto, 
+                        tiene_vehiculoparticular, 
+                        vehiculo_placa, 
+                        observaciones, 
+                        fechahora_registro, 
+                        usuario_registro
+                      ) VALUES (
+                        $visita_motivo, 
+                        $registro_contacto, 
+                        $tiene_vehiculoparticular, 
+                        $visita_placa, 
+                        '$registro_observacion', 
+                        '$fecha_registro', 
+                        '$usuario_registro'
+                      )";
 
-			$id_registro = mysqli_insert_id($enlace);
+            if (!mysqli_query($enlace, $q_save)) {
+                throw new Exception("Error al insertar cabecera: " . mysqli_error($enlace));
+            }
 
-			// Guardando parcialmente Acompañantes
-			$arr_visitas_datos = json_decode($arr_visitas_datos, true);
+            $id_registro = mysqli_insert_id($enlace);
+            $estado = 1;
 
-			if (count($arr_visitas_datos) > 0) {
-				$q_insert = 'INSERT INTO controlingreso_visitas_detalle (id_controlingreso, cod_auto, dni, nombres, tiene_imagen) VALUES ';
+            // Procesar detalle si existen registros
+            if (is_array($arr_visitas_datos) && count($arr_visitas_datos) > 0) {
+                $values = [];
 
-				foreach ($arr_visitas_datos as $visita) {
-					$cod_auto = $visita['cod_auto'];
-					$dni = trim($visita['dni']);
-					$nombres = trim($visita['nombres']);
-					$tiene_imagen = $visita['tiene_imagen'];
+                foreach ($arr_visitas_datos as $visita) {
+                    $cod_auto     = isset($visita['cod_auto']) ? intval($visita['cod_auto']) : 0;
+                    $dni          = isset($visita['dni']) ? mysqli_real_escape_string($enlace, trim($visita['dni'])) : '';
+                    $nombres      = isset($visita['nombres']) ? mysqli_real_escape_string($enlace, strtoupper(trim($visita['nombres']))) : '';
+                    $tiene_imagen = (!empty($visita['tiene_imagen']) && $visita['tiene_imagen'] != '0') ? 1 : 0;
 
-					// Consulta para guardar el visita en la tabla correspondiente
-					$q_insert .= "(";
-					$q_insert .= $id_registro . ', ';
-					$q_insert .= $cod_auto . ', ';
-					$q_insert .= "'" . $dni . "', ";
-					$q_insert .= "'" . $nombres . "', ";
-					$q_insert .= $tiene_imagen . '),';
-				}
+                    $values[] = "($id_registro, $cod_auto, '$dni', '$nombres', $tiene_imagen)";
+                }
 
-				$q_insert = substr($q_insert, 0, -1);
+                if (!empty($values)) {
+                    $q_insert = "INSERT INTO controlingreso_visitas_detalle (
+                                    id_controlingreso, 
+                                    cod_auto, 
+                                    dni, 
+                                    nombres, 
+                                    tiene_imagen
+                                ) VALUES " . implode(', ', $values);
 
-				if ($res_insert = mysqli_query($enlace, $q_insert)) {
-					$estado_visitas = 1;
-				}
-			}
-		}
+                    if (!mysqli_query($enlace, $q_insert)) {
+                        throw new Exception("Error al insertar detalle: " . mysqli_error($enlace));
+                    }
 
-		echo json_encode(array('estado' => $estado, 'id_registro' => $id_registro, 'estado_visitas' => $estado_visitas));
+                    $estado_visitas = 1;
+                }
+            }
 
-		break;
+            mysqli_commit($enlace);
+        } catch (Exception $e) {
+            mysqli_rollback($enlace);
+            $estado = 0;
+            $estado_visitas = 0;
+            $id_registro = 0;
+        }
+
+        echo json_encode([
+            'estado' => $estado,
+            'id_registro' => $id_registro,
+            'estado_visitas' => $estado_visitas
+        ]);
+        break;
 
 	case 'grabar_recepcionvisitas_imagenes':
 		$estado = 1;
@@ -28684,6 +28721,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 													 PD.cod_lote,
 													 PD.codigo_despacho,
 													 PD.codigo_despacho_comercializacion,
+													 IFNULL(PD.id_modalidadenvio, IFNULL((SELECT despacho_id_modalidadenvio FROM despachos_primertramo_validaciondatos WHERE lote_cod_lote = PD.cod_lote LIMIT 1), 0)) AS ID_MODALIDADENVIO,
 													 IFNULL(PD.codigo_planta, '') AS CODIGO_PLANTA,
 													 P.is_cerrado,
 													 P.cerrado_fechahoraregistro,
@@ -28818,12 +28856,30 @@ case 'confirmar_ProgramacionLote_AddLote':
 					}
 
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; background-color: #ffffff; font-weight: bold;">';
-					$html .= '    ' . $row_datos["codigo_despacho"];
+					$html .= '    <div id="trdiv_CodigoDespacho_' . $row_datos["ID_DETALLE"] . '">';
+					$html .= '      ' . $row_datos["codigo_despacho"];
+					if ($id_planta == 3 || $id_planta == 5) {
+						$html .= '      <i class="bi bi-pencil-square" style="cursor: pointer; margin-left: 5px; color: #337ab7;" title="Editar código de despacho (cabecera)" onclick="f_EditCodigoDespachoCabecera(' . $row_datos["Id"] . ", '" . addslashes($row_datos["codigo_despacho"]) . "'" . ')"></i>';
+					}
+					$html .= '    </div>';
 					$html .= '    <input id="td_programacionloteaum_' . $d . '" type="hidden" value="' . $is_loteaum . '">';
 					$html .= '  </td>';
 
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; background-color: #ffffff; font-weight: bold;" ' . (($id_planta != 3) ? '' : '') . '>';
-					$html .= '    ' . $row_datos["codigo_despacho_comercializacion"];
+					$html .= '    <div id="trdiv_CodigoDespachoComercializacion_' . $row_datos["ID_DETALLE"] . '">';
+					$html .= '      ' . $row_datos["codigo_despacho_comercializacion"];
+					if ($id_planta == 3 || $id_planta == 5) {
+						$modalidad_lote = intval($row_datos["ID_MODALIDADENVIO"]);
+						if ($modalidad_lote == 0) {
+							if (strpos($row_datos["codigo_despacho_comercializacion"], 'VIII') !== false) {
+								$modalidad_lote = 5;
+							} elseif (strpos($row_datos["codigo_despacho_comercializacion"], 'CO') !== false) {
+								$modalidad_lote = 6;
+							}
+						}
+						$html .= '      <i class="bi bi-pencil-square" style="cursor: pointer; margin-left: 5px; color: #337ab7;" title="Editar código de despacho del lote" onclick="f_EditCodigoDespachoLote(' . $row_datos["ID_DETALLE"] . ', ' . $row_datos["Id"] . ", '" . addslashes($row_datos["cod_lote"]) . "', " . $modalidad_lote . ", '" . addslashes($row_datos["codigo_despacho_comercializacion"]) . "', '" . addslashes($row_datos["codigo_despacho"]) . "'" . ')"></i>';
+					}
+					$html .= '    </div>';
 					$html .= '  </td>';
 
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; background-color: #ffffff; font-weight: bold;" ' . (($id_planta != 3) ? 'hidden' : '') . '>';
@@ -50637,6 +50693,313 @@ case 'confirmar_ProgramacionLote_AddLote':
 
 		echo json_encode(array('estado' => $estado));
 
+		break;
+
+	case 'grabar_ProgramacionDespachos_EditarCodigoDespachoLote':
+		$estado = 0;
+		$mensaje = '';
+
+		// Recupera variables
+		$id_detalle = intval($_POST["id_detalle"]);
+		$id_programacion = intval($_POST["id_programacion"]);
+		$id_modalidadenvio = intval(isset($_POST["id_modalidadenvio"]) ? $_POST["id_modalidadenvio"] : 0);
+		$codigo_nuevo = strtoupper(trim(mysqli_real_escape_string($enlace, $_POST["codigo_nuevo"])));
+		$actualizar_otros = intval(isset($_POST["actualizar_otros"]) ? $_POST["actualizar_otros"] : 1);
+		$usuario_registro = $_SESSION["usu_usuario"];
+
+		if ($id_detalle <= 0 || $id_programacion <= 0) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'Parámetros inválidos.'));
+			break;
+		}
+
+		if (empty($codigo_nuevo)) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'El código no puede estar vacío.'));
+			break;
+		}
+
+		// Obtener datos del lote actual
+		$q_lote = "SELECT PD.Id, PD.id_programacion, PD.cod_lote, PD.id_planta,
+		                  IFNULL(PD.id_modalidadenvio, 0) AS id_modalidadenvio,
+		                  PD.codigo_despacho, PD.codigo_despacho_comercializacion,
+		                  P.id_campana
+		           FROM despachos_segundotramo_programacion_detalle PD
+		           INNER JOIN despachos_segundotramo_programacion P ON PD.id_programacion = P.Id
+		           WHERE PD.Id = " . $id_detalle . " LIMIT 1";
+		$res_lote = mysqli_query($enlace, $q_lote);
+		if (!$res_lote || mysqli_num_rows($res_lote) == 0) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'No se encontró el registro del lote.'));
+			break;
+		}
+
+		$row_lote = mysqli_fetch_assoc($res_lote);
+		$id_planta = intval($row_lote['id_planta']);
+		$cod_lote = $row_lote['cod_lote'];
+		$id_campana = is_null($row_lote['id_campana']) ? null : intval($row_lote['id_campana']);
+		$codigo_despacho_anterior = trim($row_lote['codigo_despacho']);
+		$codigo_comercializacion_anterior = trim($row_lote['codigo_despacho_comercializacion']);
+
+		if ($id_modalidadenvio <= 0) {
+			$id_modalidadenvio = intval($row_lote['id_modalidadenvio']);
+		}
+		if ($id_modalidadenvio <= 0) {
+			$q_mod_val = "SELECT despacho_id_modalidadenvio FROM despachos_primertramo_validaciondatos WHERE lote_cod_lote = '" . mysqli_real_escape_string($enlace, $cod_lote) . "' LIMIT 1";
+			if ($res_mod_val = mysqli_query($enlace, $q_mod_val)) {
+				if ($row_mod_val = mysqli_fetch_assoc($res_mod_val)) {
+					$id_modalidadenvio = intval($row_mod_val['despacho_id_modalidadenvio']);
+				}
+			}
+		}
+		if ($id_modalidadenvio <= 0) {
+			if (strpos($codigo_nuevo, 'VIII') !== false || strpos($codigo_comercializacion_anterior, 'VIII') !== false) {
+				$id_modalidadenvio = 5;
+			} elseif (strpos($codigo_nuevo, 'CO') !== false || strpos($codigo_comercializacion_anterior, 'CO') !== false) {
+				$id_modalidadenvio = 6;
+			}
+		}
+
+		// Validar correlativo numérico
+		$correlativo_nuevo = f_ExtraerCorrelativoDeCodigo($codigo_nuevo);
+		if ($correlativo_nuevo <= 0) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'El código debe terminar en un correlativo numérico válido (ej. C578-VIII149).'));
+			break;
+		}
+
+		// Validar planta
+		if ($id_planta == 3 && substr($codigo_nuevo, 0, 1) !== 'C') {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'Para Colibrí el código de despacho debe comenzar con C (ej. C578-VIII149).'));
+			break;
+		}
+		if ($id_planta == 5 && strpos($codigo_nuevo, 'S') === false) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'Para Solandra el código de despacho debe contener S (ej. S228-VIII149 o CP33-S228-VIII149).'));
+			break;
+		}
+
+		// Validar modalidad (VIII vs 48 SAC / CO)
+		if ($id_modalidadenvio == 5) {
+			if (strpos($codigo_nuevo, 'VIII') === false || strpos($codigo_nuevo, 'CO') !== false) {
+				echo json_encode(array('estado' => 0, 'mensaje' => 'Para lotes de VIII SAC el código debe incluir VIII y no CO (ej. C578-VIII149).'));
+				break;
+			}
+		} elseif ($id_modalidadenvio == 6) {
+			if (strpos($codigo_nuevo, 'CO') === false || strpos($codigo_nuevo, 'VIII') !== false) {
+				echo json_encode(array('estado' => 0, 'mensaje' => 'Para lotes de 48 SAC el código debe incluir CO y no VIII (ej. C578-CO150).'));
+				break;
+			}
+		}
+
+		// Extraer cabecera si el código tiene formato CABECERA-EMPRESA...
+		$pos_guion = strrpos($codigo_nuevo, '-');
+		$cabecera_del_codigo = ($pos_guion !== false) ? substr($codigo_nuevo, 0, $pos_guion) : '';
+		$correlativo_cabecera = ($cabecera_del_codigo !== '') ? f_ExtraerCorrelativoDeCodigo($cabecera_del_codigo) : 0;
+
+		// Sincronizar id_modalidadenvio en los lotes de esta programación si alguno estuviera nulo/cero
+		mysqli_query($enlace, "UPDATE despachos_segundotramo_programacion_detalle PD
+		                       INNER JOIN despachos_primertramo_validaciondatos V ON PD.cod_lote = V.lote_cod_lote
+		                       SET PD.id_modalidadenvio = V.despacho_id_modalidadenvio
+		                       WHERE PD.id_programacion = " . $id_programacion . "
+		                         AND (PD.id_modalidadenvio IS NULL OR PD.id_modalidadenvio = 0)");
+
+		if ($actualizar_otros == 1) {
+			// Actualizar todos los lotes de la misma empresa en este despacho
+			$q_upd_lotes = "UPDATE despachos_segundotramo_programacion_detalle SET
+			                codigo_despacho_comercializacion = '" . $codigo_nuevo . "',
+			                id_modalidadenvio = " . $id_modalidadenvio;
+			if (!empty($cabecera_del_codigo)) {
+				$q_upd_lotes .= ", codigo_despacho = '" . $cabecera_del_codigo . "'";
+			}
+			$q_upd_lotes .= " WHERE id_programacion = " . $id_programacion . " AND id_modalidadenvio = " . $id_modalidadenvio;
+			mysqli_query($enlace, $q_upd_lotes);
+
+			// Asegurar que el lote actual quede actualizado incluso si no tenía id_modalidadenvio
+			mysqli_query($enlace, "UPDATE despachos_segundotramo_programacion_detalle SET
+			                       codigo_despacho_comercializacion = '" . $codigo_nuevo . "',
+			                       id_modalidadenvio = " . $id_modalidadenvio . "
+			                       WHERE Id = " . $id_detalle);
+
+			// Actualizar correlativo_despacho_detalle
+			$q_corr_exists = "SELECT Id FROM correlativo_despacho_detalle
+			                  WHERE id_programacion = " . $id_programacion . "
+			                    AND id_planta = " . $id_planta . "
+			                    AND id_modalidadenvio = " . $id_modalidadenvio . "
+			                    AND codigo = '" . $codigo_nuevo . "'
+			                  LIMIT 1";
+			$res_corr_exists = mysqli_query($enlace, $q_corr_exists);
+			if (mysqli_num_rows($res_corr_exists) == 0) {
+				$q_corr_old = "SELECT Id FROM correlativo_despacho_detalle
+				               WHERE id_programacion = " . $id_programacion . "
+				                 AND id_planta = " . $id_planta . "
+				                 AND id_modalidadenvio = " . $id_modalidadenvio . "
+				                 AND codigo = '" . mysqli_real_escape_string($enlace, $codigo_comercializacion_anterior) . "'
+				               LIMIT 1";
+				$res_corr_old = mysqli_query($enlace, $q_corr_old);
+				if ($row_corr_old = mysqli_fetch_assoc($res_corr_old)) {
+					mysqli_query($enlace, "UPDATE correlativo_despacho_detalle SET
+					                       codigo = '" . $codigo_nuevo . "',
+					                       correlativo = " . $correlativo_nuevo . ",
+					                       fechahora_registro = '" . $g_fecha . "',
+					                       usuario_registro = '" . $usuario_registro . "'
+					                       WHERE Id = " . $row_corr_old['Id']);
+				} else {
+					mysqli_query($enlace, "INSERT INTO correlativo_despacho_detalle (id_programacion, id_planta, id_modalidadenvio, id_campana, correlativo, codigo, fechahora_registro, usuario_registro) VALUES (
+						" . $id_programacion . ", " . $id_planta . ", " . $id_modalidadenvio . ", " . (($id_campana === null || $id_campana == 0) ? 'NULL' : $id_campana) . ", " . $correlativo_nuevo . ", '" . $codigo_nuevo . "', '" . $g_fecha . "', '" . $usuario_registro . "'
+					)");
+				}
+			} else {
+				mysqli_query($enlace, "UPDATE correlativo_despacho_detalle SET correlativo = " . $correlativo_nuevo . " WHERE id_programacion = " . $id_programacion . " AND id_planta = " . $id_planta . " AND id_modalidadenvio = " . $id_modalidadenvio . " AND codigo = '" . $codigo_nuevo . "'");
+			}
+
+			// Limpiar códigos huérfanos en correlativo_despacho_detalle para este despacho
+			$codigos_activos = array();
+			$q_cod_act = "SELECT DISTINCT codigo_despacho_comercializacion 
+			              FROM despachos_segundotramo_programacion_detalle 
+			              WHERE id_programacion = " . $id_programacion . " 
+			                AND codigo_despacho_comercializacion IS NOT NULL";
+			if ($res_cod_act = mysqli_query($enlace, $q_cod_act)) {
+				while ($row_ca = mysqli_fetch_assoc($res_cod_act)) {
+					if (!empty($row_ca['codigo_despacho_comercializacion'])) {
+						$codigos_activos[] = "'" . mysqli_real_escape_string($enlace, $row_ca['codigo_despacho_comercializacion']) . "'";
+					}
+				}
+			}
+			if (!empty($codigos_activos)) {
+				$str_codigos = implode(",", $codigos_activos);
+				mysqli_query($enlace, "DELETE FROM correlativo_despacho_detalle
+				                       WHERE id_programacion = " . $id_programacion . "
+				                         AND id_planta = " . $id_planta . "
+				                         AND id_modalidadenvio = " . $id_modalidadenvio . "
+				                         AND codigo != '" . $codigo_nuevo . "'
+				                         AND codigo NOT IN (" . $str_codigos . ")");
+			}
+
+			// Si todos los lotes del despacho tienen la misma cabecera, actualizar correlativo_despacho
+			if (!empty($cabecera_del_codigo) && $correlativo_cabecera > 0) {
+				$q_all_cabs = "SELECT COUNT(DISTINCT codigo_despacho) AS CANT_CABS, MAX(codigo_despacho) AS CAB
+				               FROM despachos_segundotramo_programacion_detalle
+				               WHERE id_programacion = " . $id_programacion . " AND codigo_despacho IS NOT NULL";
+				if ($res_all_cabs = mysqli_query($enlace, $q_all_cabs)) {
+					if ($row_all_cabs = mysqli_fetch_assoc($res_all_cabs)) {
+						if (intval($row_all_cabs['CANT_CABS']) == 1) {
+							$cab_unica = $row_all_cabs['CAB'];
+							$corr_unica = f_ExtraerCorrelativoDeCodigo($cab_unica);
+							mysqli_query($enlace, "UPDATE correlativo_despacho SET
+							                       codigo_programacion = '" . mysqli_real_escape_string($enlace, $cab_unica) . "',
+							                       correlativo = " . $corr_unica . "
+							                       WHERE id_programacion = " . $id_programacion . " AND id_planta = " . $id_planta);
+						}
+					}
+				}
+			}
+
+			$estado = 1;
+			$mensaje = 'Lotes actualizados correctamente.';
+		} else {
+			// Solo actualizar este lote
+			$q_upd_lote = "UPDATE despachos_segundotramo_programacion_detalle SET
+			               codigo_despacho_comercializacion = '" . $codigo_nuevo . "',
+			               id_modalidadenvio = " . $id_modalidadenvio;
+			if (!empty($cabecera_del_codigo)) {
+				$q_upd_lote .= ", codigo_despacho = '" . $cabecera_del_codigo . "'";
+			}
+			$q_upd_lote .= " WHERE Id = " . $id_detalle;
+			mysqli_query($enlace, $q_upd_lote);
+
+			// Asegurar que el nuevo código esté en correlativo_despacho_detalle
+			$q_corr_exists = "SELECT Id FROM correlativo_despacho_detalle
+			                  WHERE id_programacion = " . $id_programacion . "
+			                    AND id_planta = " . $id_planta . "
+			                    AND id_modalidadenvio = " . $id_modalidadenvio . "
+			                    AND codigo = '" . $codigo_nuevo . "'
+			                  LIMIT 1";
+			$res_corr_exists = mysqli_query($enlace, $q_corr_exists);
+			if (mysqli_num_rows($res_corr_exists) == 0) {
+				mysqli_query($enlace, "INSERT INTO correlativo_despacho_detalle (id_programacion, id_planta, id_modalidadenvio, id_campana, correlativo, codigo, fechahora_registro, usuario_registro) VALUES (
+					" . $id_programacion . ", " . $id_planta . ", " . $id_modalidadenvio . ", " . (($id_campana === null || $id_campana == 0) ? 'NULL' : $id_campana) . ", " . $correlativo_nuevo . ", '" . $codigo_nuevo . "', '" . $g_fecha . "', '" . $usuario_registro . "'
+				)");
+			}
+
+			// Limpiar código anterior si ya ningún lote lo utiliza en este despacho
+			if (!empty($codigo_comercializacion_anterior) && $codigo_comercializacion_anterior != $codigo_nuevo) {
+				$q_chk_old = "SELECT COUNT(Id) AS _C FROM despachos_segundotramo_programacion_detalle
+				              WHERE id_programacion = " . $id_programacion . "
+				                AND codigo_despacho_comercializacion = '" . mysqli_real_escape_string($enlace, $codigo_comercializacion_anterior) . "'";
+				$res_chk_old = mysqli_query($enlace, $q_chk_old);
+				if ($row_chk_old = mysqli_fetch_assoc($res_chk_old)) {
+					if (intval($row_chk_old['_C']) == 0) {
+						mysqli_query($enlace, "DELETE FROM correlativo_despacho_detalle
+						                       WHERE id_programacion = " . $id_programacion . "
+						                         AND id_planta = " . $id_planta . "
+						                         AND id_modalidadenvio = " . $id_modalidadenvio . "
+						                         AND codigo = '" . mysqli_real_escape_string($enlace, $codigo_comercializacion_anterior) . "'");
+					}
+				}
+			}
+
+			$estado = 1;
+			$mensaje = 'Lote actualizado correctamente.';
+		}
+
+		echo json_encode(array(
+			'estado' => $estado,
+			'mensaje' => $mensaje,
+			'codigo_nuevo' => $codigo_nuevo,
+			'actualizar_otros' => $actualizar_otros
+		));
+		break;
+
+	case 'grabar_ProgramacionDespachos_EditarCodigoDespachoCabecera':
+		$estado = 0;
+		$id_programacion = intval($_POST["id_programacion"]);
+		$codigo_nuevo = strtoupper(trim(mysqli_real_escape_string($enlace, $_POST["codigo_nuevo"])));
+		$actualizar_lotes = intval(isset($_POST["actualizar_lotes"]) ? $_POST["actualizar_lotes"] : 1);
+		$usuario_registro = $_SESSION["usu_usuario"];
+
+		if ($id_programacion <= 0) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'Programación inválida.'));
+			break;
+		}
+
+		if (empty($codigo_nuevo)) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'El código no puede estar vacío.'));
+			break;
+		}
+
+		$q_prog = "SELECT P.Id, P.id_planta, P.id_campana,
+		                  (SELECT codigo_despacho FROM despachos_segundotramo_programacion_detalle WHERE id_programacion = P.Id AND codigo_despacho IS NOT NULL LIMIT 1) AS codigo_anterior
+		           FROM despachos_segundotramo_programacion P
+		           WHERE P.Id = " . $id_programacion . " LIMIT 1";
+		$res_prog = mysqli_query($enlace, $q_prog);
+		if (!$res_prog || mysqli_num_rows($res_prog) == 0) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'No se encontró la programación.'));
+			break;
+		}
+
+		$row_prog = mysqli_fetch_assoc($res_prog);
+		$id_planta = intval($row_prog['id_planta']);
+		$codigo_anterior = trim($row_prog['codigo_anterior']);
+
+		$correlativo_nuevo = f_ExtraerCorrelativoDeCodigo($codigo_nuevo);
+		if ($correlativo_nuevo <= 0) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'El código de despacho debe terminar en un correlativo numérico válido (ej. C578).'));
+			break;
+		}
+
+		if ($id_planta == 3 && substr($codigo_nuevo, 0, 1) !== 'C') {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'Para Colibrí el código de despacho debe comenzar con C (ej. C578).'));
+			break;
+		}
+		if ($id_planta == 5 && strpos($codigo_nuevo, 'S') === false) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'Para Solandra el código de despacho debe contener S (ej. S228 o CP33-S228).'));
+			break;
+		}
+
+		if ($actualizar_lotes == 1) {
+			f_ActualizarCodigoCabeceraProgramacion($enlace, $id_planta, $id_programacion, $codigo_anterior, $codigo_nuevo, $correlativo_nuevo, $g_fecha, $usuario_registro);
+		} else {
+			mysqli_query($enlace, "UPDATE despachos_segundotramo_programacion_detalle SET codigo_despacho = '" . $codigo_nuevo . "' WHERE id_programacion = " . $id_programacion);
+			mysqli_query($enlace, "UPDATE correlativo_despacho SET codigo_programacion = '" . $codigo_nuevo . "', correlativo = " . $correlativo_nuevo . " WHERE id_programacion = " . $id_programacion . " AND id_planta = " . $id_planta);
+		}
+
+		echo json_encode(array('estado' => 1, 'mensaje' => 'Código de despacho actualizado correctamente.', 'codigo_nuevo' => $codigo_nuevo));
 		break;
 
 	case 'get_ControlIngreso_ImagenesURL':
