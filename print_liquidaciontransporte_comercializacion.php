@@ -21,6 +21,70 @@ $tiene_VR = $_GET["vr"];
 error_reporting(0);
 ini_set('display_errors', 0);
 ini_set('display_startuo_errors', 0);
+// ini_set('display_errors', 1);
+// error_reporting(E_ALL);
+
+// Función de utilidad para logging
+function saveLog($datos)
+{
+	try {
+		// Carpeta 'logs' en el mismo nivel que este script
+		$directorio = __DIR__ . DIRECTORY_SEPARATOR . 'logs_api';
+
+		// un nombre de archivo por día para no sobrescribir todo siempre
+		$nombreArchivo = 'log_' . date('Y-m-d') . '.json';
+		$rutaCompleta = $directorio . DIRECTORY_SEPARATOR . $nombreArchivo;
+
+		// Crear directorio si no existe con permisos totales
+		if (!is_dir($directorio)) {
+			mkdir($directorio, 0777, true);
+			chmod($directorio, 0777); // para Linux
+		}
+
+		// Limpieza de caracteres especiales (\r, \n, \t) ---
+		$limpiar = function ($item) use (&$limpiar) {
+			if (is_array($item)) {
+				return array_map($limpiar, $item);
+			}
+			if (is_string($item)) {
+				return str_replace(["\r", "\n", "\t"], ' ', $item);
+			}
+			return $item;
+		};
+		$datosLimpios = $limpiar($datos);
+
+		// Agregamos una marca de tiempo al registro para saber cuándo ocurrió exactamente
+		$registro = [
+			'timestamp' => date('Y-m-d H:i:s'),
+			'data' => $datosLimpios
+		];
+
+		// Si el archivo ya existe, leemos y añadimos, si no, creamos nuevo array
+		$listaLogs = [];
+		if (file_exists($rutaCompleta)) {
+			$contenidoActual = file_get_contents($rutaCompleta);
+			$listaLogs = json_decode($contenidoActual, true) ?: [];
+		}
+
+		$listaLogs[] = $registro;
+
+		// Convertir a JSON
+		// JSON_UNESCAPED_SLASHES evita las barras extra en rutas de Windows
+		$jsonContenido = json_encode($listaLogs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+		// Escribir y forzar permisos
+		if (file_put_contents($rutaCompleta, $jsonContenido) !== false) {
+			chmod($rutaCompleta, 0777);
+			return true;
+		}
+
+		return false;
+
+	} catch (Exception $e) {
+		// si todo falla, enviamos al log del servidor
+		return false;
+	}
+}
 
 // Funciones
 function formatearFecha($fecha)
@@ -215,6 +279,13 @@ if ($res_datos = mysqli_query($enlace, $q_datos)) {
 				$codigo_despacho = $row_datos["codigo_despacho"];
 				$codigo_planta = $row_datos["codigo_planta"];
 				$codigo_despacho_comercializacion = $row_datos["codigo_despacho_comercializacion"];
+
+				// Código de despacho completo para la impresión: código de despacho + código de comercialización
+				$codigo_despacho_impresion = (strlen(trim($codigo_despacho)) > 0) ? trim($codigo_despacho) : trim($codigo_despacho_comercializacion);
+
+				if (strlen(trim($codigo_despacho_comercializacion)) > 0 && trim($codigo_despacho_comercializacion) != trim($codigo_despacho)) {
+					$codigo_despacho_impresion .= ' / ' . trim($codigo_despacho_comercializacion);
+				}
 				$transportista_ruc = $row_datos["TRANSPORTISTA_RUC"];
 				$transportista_razonsocial = $row_datos["TRANSPORTISTA_RAZONSOCIAL"];
 				$placa1 = $row_datos["PLACA1"];
@@ -301,8 +372,8 @@ $html = '	<!DOCTYPE html>
 													Código de despacho
 												</td>
 
-												<td style="text-align: center; border: solid; border-width: 1px; border-color: #E6E9ED; height: 30px; vertical-align: middle; font-weight: bold;">
-													' . (($id_planta == 3) ? $codigo_despacho_comercializacion : $codigo_despacho) . '
+												<td style="text-align: center; border: solid; border-width: 1px; border-color: #E6E9ED; height: 30px; vertical-align: middle; font-weight: bold; white-space: nowrap;">
+													' . $codigo_despacho_impresion . '
 												</td>
 											</tr>
 										</table>

@@ -13,16 +13,26 @@ Archivo backend: \apis\backend.php
 
 ==================================================
 
-Modulo de Recepcion de Visitas: C:\wamp64\www\oppmerp\registro_visitas.php
-- Permite que subir fotos sea opcional y que luego, similar al modulo de recepcion de unidades, se puedan actualizar las fotos subidas o quitarlas segun quiera el usuario. Tambien permite la opcion de descargar la imagen original. 
+Script de impresion: C:\wamp64\www\oppmerp\print_liquidaciontransporte_comercializacion.php
+- A diferencia el modulo C:\wamp64\www\oppmerp\despachos_transporteregistro.php donde en la columa de Código si se ve completo utilizando el case de get_GestionTransporte_ListaUnidades y lo coloca en la segunda columa :
 
-Cases usados:
-- grabar_recepcionvisitas
-- get_ListaIngresoVisitas
+------------------------------------------
+$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-weight: bold;">';
+					$html .= '    ' . $row_datos["codigo_despacho"];
 
-Modulo de ingreso de unidades de ejemplo: C:\wamp64\www\oppmerp\recepcion_unidades.php
-Cases de ese modulo de refernecia:
-- grabar_recepcionunidades
-- actualizar_recepcionunidades_imagenes
+					if ($row_datos["ID_MODALIDAD_ENVIO"] == 6 || $row_datos["ID_MODALIDAD_ENVIO"] == 3 || $row_datos["ID_MODALIDAD_ENVIO"] == 4 || $row_datos["ID_MODALIDAD_ENVIO"] == 5) {
+						$html .= ' / ' . $row_datos["codigo_despacho_comercializacion"];
+					}
 
-NOTA: Asegurate de que los cases usados en ambos modulos, no fallen al subir archivos desde el navegador en el celular o en una computadora windows o mac o linux
+					$html .= '  </td>';
+------------------------------------------
+Sin embargo, aqui C:\wamp64\www\oppmerp\print_liquidaciontransporte_comercializacion.php en el campo de Código de
+despacho no sale completo, solo sale la primera parte y ya
+
+Script de impresion:
+- C:\wamp64\www\oppmerp\print_programaciondistribucion.php
+- C:\wamp64\www\oppmerp\print_programaciondistribucion2.php
+
+Corrige los scripts de impresion, por ejemplo actualmente en el script de print_programaciondistribucion, los cuadros al final se ven mal y el documento se ve roto.
+
+Aqui te comparto evidencias:

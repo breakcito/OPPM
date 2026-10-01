@@ -193,7 +193,16 @@
         	// Obteniendo datos
         		if ($d == 1){
         			$fecha_salida = formatearFecha(substr($row_datos["FECHAHORA_SALIDA"], 0, 10));
-	      			$codigo_despacho = $row_datos["codigo_despacho"];
+        			$codigo_despacho = $row_datos["codigo_despacho"];
+        			$codigo_despacho_comercializacion = $row_datos["codigo_despacho_comercializacion"];
+
+        			// Código de despacho completo para la impresión: código de despacho + código de comercialización
+        			$codigo_despacho_impresion = (strlen(trim($codigo_despacho)) > 0) ? trim($codigo_despacho) : trim($codigo_despacho_comercializacion);
+
+        			if (strlen(trim($codigo_despacho_comercializacion)) > 0 && trim($codigo_despacho_comercializacion) != trim($codigo_despacho)) {
+        				$codigo_despacho_impresion .= ' / ' . trim($codigo_despacho_comercializacion);
+        			}
+        			
 	      			$transportista_ruc = $row_datos["TRANSPORTISTA_RUC"];
 	      			$transportista_razonsocial = $row_datos["TRANSPORTISTA_RAZONSOCIAL"];
 							$placa1 = $row_datos["PLACA1"];
@@ -244,7 +253,7 @@
 													LIQUIDACIÓN DE FLETE
 												</td>
 
-												<td rowspan="3" style="text-align: center; border: solid; border-width: 1px; border-color: #000000; width: 60px; vertical-align: middle;">
+												<td rowspan="4" style="text-align: center; border: solid; border-width: 1px; border-color: #000000; width: 60px; vertical-align: middle;">
 													<img src="'.$ruta_images.'logo_colibri.png" style="width: 60px; height: 60px;"/>
 												</td>
 											</tr>
@@ -274,6 +283,16 @@
 
 												<td colspan="4" style="text-align: center; border: solid; border-width: 1px; border-color: #000000; vertical-align: middle; width: 400px;">
 													'.$transportista_ruc.'
+												</td>
+											</tr>
+
+											<tr style="font-weight: bold; font-size: 9px;">
+												<td style="border: solid; border-width: 1px; border-color: #000000; vertical-align: middle; width: 70px; color: #000000; text-align: center;">
+													Código de despacho
+												</td>
+
+												<td colspan="7" style="text-align: center; border: solid; border-width: 1px; border-color: #000000; vertical-align: middle; white-space: nowrap;">
+													'.$codigo_despacho_impresion.'
 												</td>
 											</tr>
 
