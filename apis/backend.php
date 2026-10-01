@@ -1832,7 +1832,10 @@ function f_GetPrefijoCabeceraDespacho($id_planta, $codigo_campana)
 
 // Convierte "LOTE1|CODIGO1|LOTE2|CODIGO2|..." en un mapa:
 //	[cod_lote] => array('correlativo' => N, 'codigo' => '...')
-// Descarta los pares sin correlativo numérico válido.
+// El operador puede escribir el codigo que quiera: se guarda TAL COMO lo digito.
+// El correlativo solo se extrae del final para la columna "correlativo" de los
+// correlativos; si el texto no termina en digitos queda en 0 y NO se descarta
+// el codigo (la empresa despacha con numeracion propia).
 function f_GetCodigosDetalleUsuario($arr_codigos_detalle)
 {
 	$mapa = array();
@@ -1849,11 +1852,11 @@ function f_GetCodigosDetalleUsuario($arr_codigos_detalle)
 	while ($p < count($pares)) {
 		$cod_lote = trim($pares[$p]);
 		$codigo = (($p + 1) < count($pares)) ? trim($pares[$p + 1]) : '';
-		$correlativo = f_ExtraerCorrelativoDeCodigo($codigo);
+		$codigo = strtoupper($codigo);
 
-		if (strlen($cod_lote) > 0 && $correlativo > 0) {
+		if (strlen($cod_lote) > 0 && strlen($codigo) > 0) {
 			$mapa[$cod_lote] = array(
-				'correlativo' => $correlativo,
+				'correlativo' => f_ExtraerCorrelativoDeCodigo($codigo),
 				'codigo' => $codigo
 			);
 		}
@@ -1862,6 +1865,114 @@ function f_GetCodigosDetalleUsuario($arr_codigos_detalle)
 	}
 
 	return $mapa;
+}
+// Busca si alguno de los codigos de despacho que el operador escribio a mano ya
+// esta siendo usado por OTRA programacion de la misma planta.
+// La empresa ejecuta despachos con numeracion propia, por lo que el codigo
+// repetido puede ser intencional: esta funcion solo INFORMA, nunca bloquea.
+//   $codigos                  = array de codigos a verificar (cabecera y/o detalle)
+//   $id_programacion_excluir  = programacion que se esta editando (0 si es nueva)
+// Devuelve array('codigos' => array(codigos repetidos), 'programaciones' => array(...)).
+function f_GetProgramacionesDuplicadasDespacho($enlace, $codigos, $id_planta, $id_programacion_excluir = 0)
+{
+	$resultado = array('codigos' => array(), 'programaciones' => array());
+
+	$arr_codigos = array();
+
+	foreach ($codigos as $codigo) {
+		$codigo = strtoupper(trim((string) $codigo));
+
+		if (strlen($codigo) > 0) {
+			$arr_codigos[$codigo] = true;
+		}
+	}
+
+	if (count($arr_codigos) == 0) {
+		return $resultado;
+	}
+
+	$in = array();
+
+	foreach (array_keys($arr_codigos) as $codigo) {
+		$in[] = "'" . mysqli_real_escape_string($enlace, $codigo) . "'";
+	}
+
+	$str_in = implode(',', $in);
+
+	$q_datos = "SELECT P.Id AS id_programacion,
+								P.fechahora_registro,
+								P.usuario_registro,
+								P.is_cerrado,
+								PD.codigo_despacho,
+								PD.codigo_despacho_comercializacion,
+								PD.cod_lote
+							FROM despachos_segundotramo_programacion P
+								 INNER JOIN despachos_segundotramo_programacion_detalle PD ON P.Id = PD.id_programacion
+							WHERE P.id_planta = " . intval($id_planta) . "
+								AND P.Id <> " . intval($id_programacion_excluir) . "
+								AND (PD.codigo_despacho IN (" . $str_in . ")
+									OR PD.codigo_despacho_comercializacion IN (" . $str_in . "))
+							ORDER BY P.fechahora_registro DESC, PD.cod_lote";
+
+	$codigos_encontrados = array();
+	$por_programacion = array();
+
+	if ($res_datos = mysqli_query($enlace, $q_datos)) {
+		while ($row_datos = mysqli_fetch_assoc($res_datos)) {
+			// Solo se reportan los codigos que el operador esta escribiendo.
+			$codigos_del_registro = array();
+
+			if (isset($arr_codigos[strtoupper($row_datos['codigo_despacho'])])) {
+				$codigos_del_registro[] = strtoupper($row_datos['codigo_despacho']);
+			}
+
+			if (isset($arr_codigos[strtoupper($row_datos['codigo_despacho_comercializacion'])])) {
+				$codigos_del_registro[] = strtoupper($row_datos['codigo_despacho_comercializacion']);
+			}
+
+			if (count($codigos_del_registro) == 0) {
+				continue;
+			}
+
+			foreach ($codigos_del_registro as $codigo_encontrado) {
+				$codigos_encontrados[$codigo_encontrado] = true;
+			}
+
+			// Se agrupa por programacion: un mismo despacho puede tener varios
+			// lotes usando el codigo y debe informarse UNA sola vez.
+			$id_prog = intval($row_datos['id_programacion']);
+
+			if (!isset($por_programacion[$id_prog])) {
+				$por_programacion[$id_prog] = array(
+					'id_programacion' => $id_prog,
+					'fechahora_registro' => $row_datos['fechahora_registro'],
+					'usuario_registro' => $row_datos['usuario_registro'],
+					'is_cerrado' => intval($row_datos['is_cerrado']),
+					'lotes' => array(),
+					'codigos' => array()
+				);
+			}
+
+			if (strlen(trim($row_datos['cod_lote'])) > 0) {
+				$por_programacion[$id_prog]['lotes'][] = $row_datos['cod_lote'];
+			}
+
+			foreach ($codigos_del_registro as $codigo_encontrado) {
+				$por_programacion[$id_prog]['codigos'][$codigo_encontrado] = true;
+			}
+		}
+	}
+
+	foreach ($por_programacion as $id_prog => $info_prog) {
+		$info_prog['lotes'] = array_values(array_unique($info_prog['lotes']));
+		$info_prog['codigos'] = array_keys($info_prog['codigos']);
+
+		$resultado['programaciones'][] = $info_prog;
+	}
+
+	$resultado['codigos'] = array_keys($codigos_encontrados);
+
+	return $resultado;
 }
 
 // Devuelve los códigos que el sistema asignaría en la próxima programación:
@@ -2016,6 +2127,11 @@ function f_ActualizarCodigoCabeceraProgramacion($enlace, $id_planta, $id_program
 	$cod_anterior = mysqli_real_escape_string($enlace, $codigo_anterior);
 	$cod_nuevo = mysqli_real_escape_string($enlace, $codigo_nuevo);
 
+	// Los codigos de despacho los digita el operador, por lo que pueden traer
+	// comodines de LIKE ('%' o '_'). Se escapan para que el filtro LIKE de los
+	// pasos 3 y 4 compare el texto literal y no un patron.
+	$cod_anterior_like = str_replace(array('\\', '%', '_'), array('\\\\', '\\%', '\\_'), $cod_anterior);
+
 	// 1. Correlativo de cabecera
 	$q_cab = "UPDATE correlativo_despacho
 					SET codigo_programacion = '" . $cod_nuevo . "',
@@ -2038,22 +2154,21 @@ function f_ActualizarCodigoCabeceraProgramacion($enlace, $id_planta, $id_program
 	}
 
 	// 3. Códigos de detalle de los lotes que siguen el formato de la cabecera anterior
-	$q_det = "UPDATE despachos_segundotramo_programacion_detalle
-						SET codigo_despacho_comercializacion = REPLACE(codigo_despacho_comercializacion, '" . $cod_anterior . "-', '" . $cod_nuevo . "-')
-			  WHERE id_programacion = " . intval($id_programacion) . "
-				AND id_planta = " . intval($id_planta) . "
-				AND codigo_despacho_comercializacion LIKE '" . $cod_anterior . "-%'";
+    $q_det = "UPDATE despachos_segundotramo_programacion_detalle
+              SET codigo_despacho_comercializacion = REPLACE(codigo_despacho_comercializacion, '" . $cod_anterior . "-', '" . $cod_nuevo . "-')
+              WHERE id_programacion = " . intval($id_programacion) . "
+                AND id_planta = " . intval($id_planta) . "
+                AND codigo_despacho_comercializacion LIKE '" . $cod_anterior_like . "-%'";
 
-	if ($res_det = mysqli_query($enlace, $q_det)) {
-	}
+    if ($res_det = mysqli_query($enlace, $q_det)) {
+    }
 
-	// 4. Correlativos de detalle que siguen el formato de la cabecera anterior
-	$q_cor = "UPDATE correlativo_despacho_detalle
-						SET codigo = REPLACE(codigo, '" . $cod_anterior . "-', '" . $cod_nuevo . "-')
-			  WHERE id_programacion = " . intval($id_programacion) . "
-				AND id_planta = " . intval($id_planta) . "
-				AND codigo LIKE '" . $cod_anterior . "-%'";
-
+    // 4. Correlativos de detalle que siguen el formato de la cabecera anterior
+    $q_cor = "UPDATE correlativo_despacho_detalle
+              SET codigo = REPLACE(codigo, '" . $cod_anterior . "-', '" . $cod_nuevo . "-')
+              WHERE id_programacion = " . intval($id_programacion) . "
+                AND id_planta = " . intval($id_planta) . "
+                AND codigo LIKE '" . $cod_anterior_like . "-%'";
 	if ($res_cor = mysqli_query($enlace, $q_cor)) {
 	}
 
@@ -26620,7 +26735,6 @@ switch ($_POST["accion"]) {
 
 		// Obtiene datos
 		$d = 1;
-		$id_lote = 0;
 
 		$q_datos = "SELECT V.lote_cod_lote,
 												 V.despacho_id_modalidadenvio AS ID_MODALIDADENVIO,
@@ -26667,16 +26781,11 @@ switch ($_POST["accion"]) {
 
 		$q_datos .= " GROUP BY V.lote_cod_lote, V.despacho_id_modalidadenvio, EM.nombres, PM.razon_social, ME.descripcion, HC.cierre_prom, IFNULL(PL.nombre_comercial, PL.descripcion)";
 
-		saveLog(["xd" => $q_datos]);
 		if ($res_datos = mysqli_query($enlace, $q_datos)) {
 			if (mysqli_num_rows($res_datos) > 0) {
 				$estado = 1;
 
 				while ($row_datos = mysqli_fetch_array($res_datos)) {
-					if ($d == 1) {
-						$id_lote = $row_datos["Id"];
-					}
-
 					$html .= '<tr id="tr_planta_' . $d . '" data-codlote="' . $row_datos["lote_cod_lote"] . '" data-modalidad="' . intval($row_datos["ID_MODALIDADENVIO"]) . '" style="cursor: pointer; font-size: 12px; max-height: 25px;">';
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: right;">';
 					$html .= '    ' . $d;
@@ -26737,7 +26846,7 @@ switch ($_POST["accion"]) {
 			}
 		}
 
-		echo json_encode(array('estado' => $estado, 'html' => $html, 'id_lote' => $id_lote));
+		echo json_encode(array('estado' => $estado, 'html' => $html));
 
 		break;
 
@@ -26857,6 +26966,7 @@ switch ($_POST["accion"]) {
 		$arr_lotes = mysqli_real_escape_string($enlace, $_POST["arr_lotes"]);
 		$is_aplica_campana = isset($_POST["is_aplica_campana"]) ? intval($_POST["is_aplica_campana"]) : 0;
 		$id_campana_input = isset($_POST["id_campana"]) ? intval($_POST["id_campana"]) : 0;
+		$is_confirmado_duplicado = isset($_POST["is_confirmado_duplicado"]) ? intval($_POST["is_confirmado_duplicado"]) : 0;
 		$usuario_registro = $_SESSION["usu_usuario"];
 
 		// Pre-condición: sólo se permite registrar programación para Colibri (3) o Solandra (5)
@@ -27007,20 +27117,22 @@ switch ($_POST["accion"]) {
 		);
 
 		// 4.1 CODIGO DE DESPACHO DIGITADO POR EL USUARIO
-		//     Si el operador escribio un codigo en el modal, se respeta el suyo y se
-		//     toma de el el correlativo a registrar.
-		$codigo_cabecera_usuario = trim(isset($_POST["codigo_cabecera"]) ? $_POST["codigo_cabecera"] : '');
-		$correlativo_cabecera_usuario = f_ExtraerCorrelativoDeCodigo($codigo_cabecera_usuario);
+		//     El operador puede escribir lo que quiera: se guarda TAL COMO lo
+		//     digito (solo en mayusculas). Del texto se extrae el correlativo
+		//     para la tabla de correlativos; si no hay, se registra en 0.
+		//     Se escapa para el SQL porque el texto es libre.
+		$codigo_cabecera_usuario = strtoupper(trim(isset($_POST["codigo_cabecera"]) ? mysqli_real_escape_string($enlace, $_POST["codigo_cabecera"]) : ''));
 
-		if ($correlativo_cabecera_usuario > 0) {
-			$prefijo_cabecera = f_GetPrefijoCabeceraDespacho($id_planta, $codigo_campana);
+		if (strlen($codigo_cabecera_usuario) > 0) {
+			$correlativo_cabecera_usuario = f_ExtraerCorrelativoDeCodigo($codigo_cabecera_usuario);
 
 			$cabecera_global['correlativo'] = $correlativo_cabecera_usuario;
-			$cabecera_global['codigo'] = f_AplicarCorrelativoACodigo($codigo_cabecera_usuario, $prefijo_cabecera, $correlativo_cabecera_usuario);
+			$cabecera_global['codigo'] = $codigo_cabecera_usuario;
 		}
 
 		// 4.2 CODIGOS DE DESPACHO DIGITADOS POR LOTE ("LOTE|CODIGO|LOTE|CODIGO|...")
-		$detalle_manual_por_lote = f_GetCodigosDetalleUsuario(isset($_POST["arr_codigos_detalle"]) ? $_POST["arr_codigos_detalle"] : '');
+		//     El texto es libre, por eso se escapa antes de armar el mapa.
+		$detalle_manual_por_lote = f_GetCodigosDetalleUsuario(isset($_POST["arr_codigos_detalle"]) ? mysqli_real_escape_string($enlace, $_POST["arr_codigos_detalle"]) : '');
 
 		// 4.3 Correlativos de detalle ya escritos a mano, agrupados por modalidad, para
 		//     que el correlativo calculado para el lote NO colisione con ellos.
@@ -27042,11 +27154,41 @@ switch ($_POST["accion"]) {
 				continue;
 			}
 
+			// Solo se evita colisionar el correlativo automatico con uno ya escrito
+			// a mano. No se valida el formato: el operador escribe lo que quiere.
+			if ($info_manual['correlativo'] <= 0) {
+				continue;
+			}
+
 			if (!isset($correlativos_usados_por_modalidad[$mod_manual])) {
 				$correlativos_usados_por_modalidad[$mod_manual] = array();
 			}
 
 			$correlativos_usados_por_modalidad[$mod_manual][$info_manual['correlativo']] = true;
+		}
+
+		// 4.4 AVISO DE CODIGOS REPETIDOS: la empresa ejecuta despachos con
+		//     numeracion propia, asi que repetir un codigo puede ser intencional.
+		//     Solo se informa y se espera confirmacion del operador; NO se bloquea.
+		//     Los codigos generados por el sistema son unicos por definicion
+		//     (MAX+1), por lo que solo se verifican los digitados a mano.
+		if ($is_confirmado_duplicado == 0) {
+			$arr_codigos_a_verificar = array($cabecera_global['codigo']);
+
+			foreach ($detalle_manual_por_lote as $info_manual) {
+				$arr_codigos_a_verificar[] = $info_manual['codigo'];
+			}
+
+			$duplicados = f_GetProgramacionesDuplicadasDespacho($enlace, $arr_codigos_a_verificar, $id_planta, 0);
+
+			if (count($duplicados['programaciones']) > 0) {
+				echo json_encode(array(
+					'estado' => 20,
+					'mensaje' => 'El Codigo de Despacho ya esta registrado en otra programacion.',
+					'duplicados' => $duplicados
+				));
+				return;
+			}
 		}
 
 		// 5. Registra la CABECERA de la programacion (sin modalidad, es solo agrupador)
@@ -27222,6 +27364,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$is_loteaum = intval(mysqli_real_escape_string($enlace, $_POST["is_loteaum"]));
 		$is_aplica_campana = isset($_POST["is_aplica_campana"]) ? intval($_POST["is_aplica_campana"]) : 0;
 		$id_campana_input = isset($_POST["id_campana"]) ? intval($_POST["id_campana"]) : 0;
+		$is_confirmado_duplicado = isset($_POST["is_confirmado_duplicado"]) ? intval($_POST["is_confirmado_duplicado"]) : 0;
 		$usuario_registro = $_SESSION["usu_usuario"];
 
 		// Solo aplica a Colibri y Solandra
@@ -27341,14 +27484,17 @@ case 'confirmar_ProgramacionLote_AddLote':
 		}
 
 		// 2.2 CODIGO DE DESPACHO DIGITADO POR EL USUARIO
-		//     Si el operador edito el codigo de cabecera, se respeta el suyo y se
-		//     propaga a los lotes y correlativos ya registrados de la programacion.
-		$codigo_cabecera_usuario = trim(isset($_POST["codigo_cabecera"]) ? $_POST["codigo_cabecera"] : '');
-		$correlativo_cabecera_usuario = f_ExtraerCorrelativoDeCodigo($codigo_cabecera_usuario);
+		//     El operador puede escribir lo que quiera: se guarda TAL COMO lo
+		//     digito y se propaga a los lotes y correlativos ya registrados.
+		//     Se escapa para el SQL porque el texto es libre.
+		$codigo_cabecera_usuario = strtoupper(trim(isset($_POST["codigo_cabecera"]) ? mysqli_real_escape_string($enlace, $_POST["codigo_cabecera"]) : ''));
 
-		if (!is_null($cabecera_global_existente) && $correlativo_cabecera_usuario > 0) {
-			$prefijo_cabecera = f_GetPrefijoCabeceraDespacho($id_planta, $codigo_campana);
-			$codigo_cabecera_nuevo = f_AplicarCorrelativoACodigo($codigo_cabecera_usuario, $prefijo_cabecera, $correlativo_cabecera_usuario);
+		if (strlen($codigo_cabecera_usuario) > 0) {
+			$correlativo_cabecera_usuario = f_ExtraerCorrelativoDeCodigo($codigo_cabecera_usuario);
+		}
+
+		if (!is_null($cabecera_global_existente) && strlen($codigo_cabecera_usuario) > 0) {
+			$codigo_cabecera_nuevo = $codigo_cabecera_usuario;
 
 			if ($codigo_cabecera_nuevo != $cabecera_global_existente['codigo']) {
 				$codigo_cabecera_anterior = $cabecera_global_existente['codigo'];
@@ -27371,7 +27517,34 @@ case 'confirmar_ProgramacionLote_AddLote':
 		}
 
 		// 2.3 CODIGOS DE DESPACHO DIGITADOS POR LOTE ("LOTE|CODIGO|LOTE|CODIGO|...")
-		$detalle_manual_por_lote = f_GetCodigosDetalleUsuario(isset($_POST["arr_codigos_detalle"]) ? $_POST["arr_codigos_detalle"] : '');
+		//     El texto es libre, por eso se escapa antes de armar el mapa.
+		$detalle_manual_por_lote = f_GetCodigosDetalleUsuario(isset($_POST["arr_codigos_detalle"]) ? mysqli_real_escape_string($enlace, $_POST["arr_codigos_detalle"]) : '');
+
+		// 2.4 AVISO DE CODIGOS REPETIDOS: solo informa y espera confirmacion del
+		//     operador, NO bloquea el registro. Se excluye la propia programacion
+		//     porque se esta agregando lote a un despacho que ya existe.
+		if ($is_confirmado_duplicado == 0) {
+			$arr_codigos_a_verificar = array();
+
+			if (!is_null($cabecera_global_existente)) {
+				$arr_codigos_a_verificar[] = $cabecera_global_existente['codigo'];
+			}
+
+			foreach ($detalle_manual_por_lote as $info_manual) {
+				$arr_codigos_a_verificar[] = $info_manual['codigo'];
+			}
+
+			$duplicados = f_GetProgramacionesDuplicadasDespacho($enlace, $arr_codigos_a_verificar, $id_planta, $id_programacion);
+
+			if (count($duplicados['programaciones']) > 0) {
+				echo json_encode(array(
+					'estado' => 20,
+					'mensaje' => 'El Codigo de Despacho ya esta registrado en otra programacion.',
+					'duplicados' => $duplicados
+				));
+				return;
+			}
+		}
 
 		// Correlativos de detalle ya escritos a mano, agrupados por modalidad, para
 		// que el correlativo generado para una modalidad nueva no colisione con ellos.
@@ -27392,6 +27565,12 @@ case 'confirmar_ProgramacionLote_AddLote':
 			}
 
 			if ($modalidad_manual != 5 && $modalidad_manual != 6) {
+				continue;
+			}
+
+			// Solo se evita colisionar el correlativo automatico con uno ya escrito
+			// a mano. No se valida el formato: el operador escribe lo que quiere.
+			if ($info_manual['correlativo'] <= 0) {
 				continue;
 			}
 
@@ -28735,7 +28914,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$d = 1;
 
 		// Recuperando parámetros
-		$id_planta = mysqli_real_escape_string($enlace, $_POST["id_planta"]);
+		$id_planta = intval($_POST["id_planta"]);
 		$fecha_inicio = mysqli_real_escape_string($enlace, $_POST['fecha_inicio']);
 		$fecha_fin = mysqli_real_escape_string($enlace, $_POST['fecha_fin']);
 		$estado_cierre = mysqli_real_escape_string($enlace, $_POST['estado_cierre']);
@@ -28748,7 +28927,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 
 		if (isset($filtro_lote) && is_array($filtro_lote)) {
 			while ($l < count($filtro_lote)) {
-				$arr_lotes .= "'" . $filtro_lote[$l] . "', ";
+				$arr_lotes .= "'" . mysqli_real_escape_string($enlace, $filtro_lote[$l]) . "', ";
 
 				$l++;
 			}
@@ -28764,7 +28943,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 
 		if (isset($filtro_codigodespacho) && is_array($filtro_codigodespacho)) {
 			while ($l < count($filtro_codigodespacho)) {
-				$arr_codigosdespacho .= "'" . $filtro_codigodespacho[$l] . "', ";
+				$arr_codigosdespacho .= "'" . mysqli_real_escape_string($enlace, $filtro_codigodespacho[$l]) . "', ";
 
 				$l++;
 			}
@@ -28775,6 +28954,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 		}
 
 		// Obtiene datos
+
 		$x = 1;
 		$d = 1;
 		$p = 0;
@@ -50773,8 +50953,9 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$id_detalle = intval($_POST["id_detalle"]);
 		$id_programacion = intval($_POST["id_programacion"]);
 		$id_modalidadenvio = intval(isset($_POST["id_modalidadenvio"]) ? $_POST["id_modalidadenvio"] : 0);
-		$codigo_nuevo = strtoupper(trim(mysqli_real_escape_string($enlace, $_POST["codigo_nuevo"])));
+		$codigo_ingresado = strtoupper(trim(mysqli_real_escape_string($enlace, $_POST["codigo_nuevo"])));
 		$actualizar_otros = intval(isset($_POST["actualizar_otros"]) ? $_POST["actualizar_otros"] : 1);
+		$is_confirmado_duplicado = isset($_POST["is_confirmado_duplicado"]) ? intval($_POST["is_confirmado_duplicado"]) : 0;
 		$usuario_registro = $_SESSION["usu_usuario"];
 
 		if ($id_detalle <= 0 || $id_programacion <= 0) {
@@ -50782,7 +50963,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 			break;
 		}
 
-		if (empty($codigo_nuevo)) {
+		if (empty($codigo_ingresado)) {
 			echo json_encode(array('estado' => 0, 'mensaje' => 'El código no puede estar vacío.'));
 			break;
 		}
@@ -50820,47 +51001,53 @@ case 'confirmar_ProgramacionLote_AddLote':
 			}
 		}
 		if ($id_modalidadenvio <= 0) {
-			if (strpos($codigo_nuevo, 'VIII') !== false || strpos($codigo_comercializacion_anterior, 'VIII') !== false) {
+			// Ultimo recurso: deducir la modalidad del SEGMENTO de empresa del
+			// codigo (lo que va despues del ultimo guion), no de todo el texto,
+			// para no confundirla con la cabecera ni con el codigo de campana.
+			$pos_guion_det = strrpos($codigo_ingresado, '-');
+			$segmento_empresa = ($pos_guion_det !== false) ? substr($codigo_ingresado, $pos_guion_det + 1) : $codigo_ingresado;
+
+			if (strpos($segmento_empresa, 'VIII') === 0 || strpos($codigo_comercializacion_anterior, 'VIII') !== false) {
 				$id_modalidadenvio = 5;
-			} elseif (strpos($codigo_nuevo, 'CO') !== false || strpos($codigo_comercializacion_anterior, 'CO') !== false) {
+			} elseif (strpos($segmento_empresa, 'CO') === 0 || strpos($codigo_comercializacion_anterior, 'CO') !== false) {
 				$id_modalidadenvio = 6;
 			}
 		}
 
-		// Validar correlativo numérico
+		// El operador puede escribir lo que quiera: se guarda TAL COMO lo digito
+		// (solo en mayusculas). El correlativo solo se extrae del texto final para
+		// la tabla de correlativos; si no hay digitos queda en 0.
+		$codigo_nuevo = $codigo_ingresado;
 		$correlativo_nuevo = f_ExtraerCorrelativoDeCodigo($codigo_nuevo);
-		if ($correlativo_nuevo <= 0) {
-			echo json_encode(array('estado' => 0, 'mensaje' => 'El código debe terminar en un correlativo numérico válido (ej. C578-VIII149).'));
-			break;
-		}
 
-		// Validar planta
-		if ($id_planta == 3 && substr($codigo_nuevo, 0, 1) !== 'C') {
-			echo json_encode(array('estado' => 0, 'mensaje' => 'Para Colibrí el código de despacho debe comenzar con C (ej. C578-VIII149).'));
-			break;
-		}
-		if ($id_planta == 5 && strpos($codigo_nuevo, 'S') === false) {
-			echo json_encode(array('estado' => 0, 'mensaje' => 'Para Solandra el código de despacho debe contener S (ej. S228-VIII149 o CP33-S228-VIII149).'));
-			break;
-		}
-
-		// Validar modalidad (VIII vs 48 SAC / CO)
-		if ($id_modalidadenvio == 5) {
-			if (strpos($codigo_nuevo, 'VIII') === false || strpos($codigo_nuevo, 'CO') !== false) {
-				echo json_encode(array('estado' => 0, 'mensaje' => 'Para lotes de VIII SAC el código debe incluir VIII y no CO (ej. C578-VIII149).'));
-				break;
-			}
-		} elseif ($id_modalidadenvio == 6) {
-			if (strpos($codigo_nuevo, 'CO') === false || strpos($codigo_nuevo, 'VIII') !== false) {
-				echo json_encode(array('estado' => 0, 'mensaje' => 'Para lotes de 48 SAC el código debe incluir CO y no VIII (ej. C578-CO150).'));
-				break;
-			}
-		}
-
-		// Extraer cabecera si el código tiene formato CABECERA-EMPRESA...
+		// La cabecera del lote se deriva del codigo solo si este trae un guion.
+		// Si el operador escribio un texto sin guion, se conserva la cabecera que
+		// ya tenia el lote (no hay nada que derivar).
 		$pos_guion = strrpos($codigo_nuevo, '-');
-		$cabecera_del_codigo = ($pos_guion !== false) ? substr($codigo_nuevo, 0, $pos_guion) : '';
-		$correlativo_cabecera = ($cabecera_del_codigo !== '') ? f_ExtraerCorrelativoDeCodigo($cabecera_del_codigo) : 0;
+		$cabecera_del_codigo = (($pos_guion !== false) && ($pos_guion > 0)) ? substr($codigo_nuevo, 0, $pos_guion) : '';
+		$correlativo_cabecera = (strlen($cabecera_del_codigo) > 0) ? f_ExtraerCorrelativoDeCodigo($cabecera_del_codigo) : 0;
+
+		// AVISO DE CODIGO REPETIDO: solo informa y espera confirmacion del
+		// operador, NO bloquea la edicion. Se excluye la propia programacion
+		// porque el codigo puede seguir en uso en otros lotes de este despacho.
+		if ($is_confirmado_duplicado == 0) {
+			$arr_codigos_a_verificar = array($codigo_nuevo);
+
+			if (strlen($cabecera_del_codigo) > 0) {
+				$arr_codigos_a_verificar[] = $cabecera_del_codigo;
+			}
+
+			$duplicados = f_GetProgramacionesDuplicadasDespacho($enlace, $arr_codigos_a_verificar, $id_planta, $id_programacion);
+
+			if (count($duplicados['programaciones']) > 0) {
+				echo json_encode(array(
+					'estado' => 20,
+					'mensaje' => 'El Codigo de Despacho ya esta registrado en otra programacion.',
+					'duplicados' => $duplicados
+				));
+				break;
+			}
+		}
 
 		// Sincronizar id_modalidadenvio en los lotes de esta programación si alguno estuviera nulo/cero
 		mysqli_query($enlace, "UPDATE despachos_segundotramo_programacion_detalle PD
@@ -50941,7 +51128,12 @@ case 'confirmar_ProgramacionLote_AddLote':
 				                         AND codigo NOT IN (" . $str_codigos . ")");
 			}
 
-			// Si todos los lotes del despacho tienen la misma cabecera, actualizar correlativo_despacho
+			// Si todos los lotes del despacho tienen la misma cabecera, actualizar correlativo_despacho.
+			// Si la edicion en bloque dejo la programacion con MAS DE UNA cabecera, el correlativo
+			// de cabecera NO se toca (ya no representaria al despacho) y se avisa al operador
+			// en vez de dejar el estado inconsistente en silencio.
+			$is_cabecera_unica = true;
+
 			if (!empty($cabecera_del_codigo) && $correlativo_cabecera > 0) {
 				$q_all_cabs = "SELECT COUNT(DISTINCT codigo_despacho) AS CANT_CABS, MAX(codigo_despacho) AS CAB
 				               FROM despachos_segundotramo_programacion_detalle
@@ -50955,13 +51147,15 @@ case 'confirmar_ProgramacionLote_AddLote':
 							                       codigo_programacion = '" . mysqli_real_escape_string($enlace, $cab_unica) . "',
 							                       correlativo = " . $corr_unica . "
 							                       WHERE id_programacion = " . $id_programacion . " AND id_planta = " . $id_planta);
+						} else {
+							$is_cabecera_unica = false;
 						}
 					}
 				}
 			}
 
 			$estado = 1;
-			$mensaje = 'Lotes actualizados correctamente.';
+			$mensaje = ($is_cabecera_unica) ? 'Lotes actualizados correctamente.' : 'Lotes actualizados. Ojo: la programacion quedo con mas de un codigo de cabecera. Revise y unifique si corresponde.';
 		} else {
 			// Solo actualizar este lote
 			$q_upd_lote = "UPDATE despachos_segundotramo_programacion_detalle SET
@@ -51019,8 +51213,9 @@ case 'confirmar_ProgramacionLote_AddLote':
 	case 'grabar_ProgramacionDespachos_EditarCodigoDespachoCabecera':
 		$estado = 0;
 		$id_programacion = intval($_POST["id_programacion"]);
-		$codigo_nuevo = strtoupper(trim(mysqli_real_escape_string($enlace, $_POST["codigo_nuevo"])));
+		$codigo_ingresado = strtoupper(trim(mysqli_real_escape_string($enlace, $_POST["codigo_nuevo"])));
 		$actualizar_lotes = intval(isset($_POST["actualizar_lotes"]) ? $_POST["actualizar_lotes"] : 1);
+		$is_confirmado_duplicado = isset($_POST["is_confirmado_duplicado"]) ? intval($_POST["is_confirmado_duplicado"]) : 0;
 		$usuario_registro = $_SESSION["usu_usuario"];
 
 		if ($id_programacion <= 0) {
@@ -51028,7 +51223,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 			break;
 		}
 
-		if (empty($codigo_nuevo)) {
+		if (empty($codigo_ingresado)) {
 			echo json_encode(array('estado' => 0, 'mensaje' => 'El código no puede estar vacío.'));
 			break;
 		}
@@ -51047,19 +51242,26 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$id_planta = intval($row_prog['id_planta']);
 		$codigo_anterior = trim($row_prog['codigo_anterior']);
 
+		// El operador puede escribir lo que quiera: se guarda TAL COMO lo digito
+		// (solo en mayusculas). El correlativo se extrae del texto final; si no
+		// hay digitos queda en 0.
+		$codigo_nuevo = $codigo_ingresado;
 		$correlativo_nuevo = f_ExtraerCorrelativoDeCodigo($codigo_nuevo);
-		if ($correlativo_nuevo <= 0) {
-			echo json_encode(array('estado' => 0, 'mensaje' => 'El código de despacho debe terminar en un correlativo numérico válido (ej. C578).'));
-			break;
-		}
 
-		if ($id_planta == 3 && substr($codigo_nuevo, 0, 1) !== 'C') {
-			echo json_encode(array('estado' => 0, 'mensaje' => 'Para Colibrí el código de despacho debe comenzar con C (ej. C578).'));
-			break;
-		}
-		if ($id_planta == 5 && strpos($codigo_nuevo, 'S') === false) {
-			echo json_encode(array('estado' => 0, 'mensaje' => 'Para Solandra el código de despacho debe contener S (ej. S228 o CP33-S228).'));
-			break;
+		// AVISO DE CODIGO REPETIDO: solo informa y espera confirmacion del
+		// operador, NO bloquea la edicion. Se excluye la propia programacion
+		// porque el despacho que se esta renumerando ya usa ese codigo.
+		if ($is_confirmado_duplicado == 0) {
+			$duplicados = f_GetProgramacionesDuplicadasDespacho($enlace, array($codigo_nuevo), $id_planta, $id_programacion);
+
+			if (count($duplicados['programaciones']) > 0) {
+				echo json_encode(array(
+					'estado' => 20,
+					'mensaje' => 'El Codigo de Despacho ya esta registrado en otra programacion.',
+					'duplicados' => $duplicados
+				));
+				break;
+			}
 		}
 
 		if ($actualizar_lotes == 1) {

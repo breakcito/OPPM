@@ -13,26 +13,13 @@ Archivo backend: \apis\backend.php
 
 ==================================================
 
-Script de impresion: C:\wamp64\www\oppmerp\print_liquidaciontransporte_comercializacion.php
-- A diferencia el modulo C:\wamp64\www\oppmerp\despachos_transporteregistro.php donde en la columa de Código si se ve completo utilizando el case de get_GestionTransporte_ListaUnidades y lo coloca en la segunda columa :
+Módulo de Programación de despachos: C:\wamp64\www\oppmerp\despachossegundotramo_programacion.php
+- Tanto al registrar una programacion de despachos, como al editar el código de despacho de cabecera o de cada lote o en bloque, permite que el usuario pueda escribir/digitar lo que quiera. Es decir, si bien el sistema al generar automaticamente los codigos los hace en funcion a ciertas reglas, permite que el usuario al digitar manualmente pueda colocar lo que quiera.
 
-------------------------------------------
-$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-weight: bold;">';
-					$html .= '    ' . $row_datos["codigo_despacho"];
-
-					if ($row_datos["ID_MODALIDAD_ENVIO"] == 6 || $row_datos["ID_MODALIDAD_ENVIO"] == 3 || $row_datos["ID_MODALIDAD_ENVIO"] == 4 || $row_datos["ID_MODALIDAD_ENVIO"] == 5) {
-						$html .= ' / ' . $row_datos["codigo_despacho_comercializacion"];
-					}
-
-					$html .= '  </td>';
-------------------------------------------
-Sin embargo, aqui C:\wamp64\www\oppmerp\print_liquidaciontransporte_comercializacion.php en el campo de Código de
-despacho no sale completo, solo sale la primera parte y ya
-
-Script de impresion:
-- C:\wamp64\www\oppmerp\print_programaciondistribucion.php
-- C:\wamp64\www\oppmerp\print_programaciondistribucion2.php
-
-Corrige los scripts de impresion, por ejemplo actualmente en el script de print_programaciondistribucion, los cuadros al final se ven mal y el documento se ve roto.
-
-Aqui te comparto evidencias:
+Cases relevantes del modulo a revisar:
+- get_DespachosProgramacion_ListaProgramaciones
+- get_Programacion_CodigosSugeridos
+- get_LotesProgramadosParaDespacho
+- confirmar_ProgramacionLote
+- grabar_ProgramacionDespachos_EditarCodigoDespachoLote
+- grabar_ProgramacionDespachos_EditarCodigoDespachoCabecera

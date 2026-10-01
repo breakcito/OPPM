@@ -2615,6 +2615,57 @@ if (!isset($_SESSION["Id"])) {
 			return (_match === null) ? 0 : parseInt(_match[1], 10);
 		}
 
+		// Devuelve el segmento de empresa de un codigo de detalle, es decir lo que
+		// va despues del ultimo guion. Ej: "CP33-S228-VIII149" -> "VIII149".
+		// Si el codigo no tiene guion, se devuelve completo.
+		function f_GetSegmentoEmpresaCodigo(_codigo) {
+			var _texto = String((_codigo === null || typeof _codigo === 'undefined') ? '' : _codigo).trim().toUpperCase();
+			var _pos = _texto.lastIndexOf('-');
+
+			return (_pos === -1) ? _texto : _texto.substring(_pos + 1);
+		}
+
+		// Devuelve la cabecera de un codigo de detalle, es decir lo que va antes
+		// del ultimo guion. Ej: "CP33-S228-VIII149" -> "CP33-S228".
+		function f_GetCabeceraDeCodigoDetalle(_codigo) {
+			var _texto = String((_codigo === null || typeof _codigo === 'undefined') ? '' : _codigo).trim().toUpperCase();
+			var _pos = _texto.lastIndexOf('-');
+
+			return (_pos <= 0) ? '' : _texto.substring(0, _pos);
+		}
+
+		// Arma el mensaje de aviso cuando un Codigo de Despacho ya esta registrado
+		// en otra programacion. NO bloquea: el operador puede confirmar y dejar.
+		function f_GetMensajeCodigoRepetido(_duplicados) {
+			var _texto = 'El Codigo de Despacho que usted escribio ya esta registrado en otra programacion.\n\n';
+
+			if (_duplicados && _duplicados.codigos && _duplicados.codigos.length > 0) {
+				_texto += 'Codigo(s): ' + _duplicados.codigos.join(', ') + '\n\n';
+			}
+
+			if (_duplicados && _duplicados.programaciones) {
+				for (var _i = 0; _i < _duplicados.programaciones.length; _i++) {
+					var _p = _duplicados.programaciones[_i];
+					var _lotes = (typeof _p.lotes !== 'undefined' && _p.lotes.length > 0) ? _p.lotes.join(', ') : '-';
+
+					_texto += '- Programacion N° ' + _p.id_programacion
+						+ ' | ' + _p.fechahora_registro
+						+ ' | ' + _p.usuario_registro
+						+ ' | ' + (typeof _p.codigos !== 'undefined' ? _p.codigos.join(', ') : '')
+						+ '\n   Lotes: ' + _lotes
+						+ '\n';
+				}
+			}
+
+			_texto += '\nDesea continuar de todos modos y dejar el codigo repetido?';
+
+			return _texto;
+		}
+
+		// Muestra el aviso y devuelve true si el operador decide continuar.
+		function f_ConfirmarCodigoRepetido(_duplicados) {
+			return confirm(f_GetMensajeCodigoRepetido(_duplicados));
+		}
 		function f_GetCodigoCabeceraIngresado() {
 			var _codigo = $("#input_codigodespacho").val();
 
@@ -3913,7 +3964,7 @@ if (!isset($_SESSION["Id"])) {
 
 	<!-- Funciones de Grabación -->
 	<script type="text/javascript">
-		function f_ConfirmarProgramacion() {
+		function f_ConfirmarProgramacion(_is_confirmado_duplicado) {
 			// Recuperando datos hidden
 			var modo = $("#modo_grabarprogramacion").val();
 			var id_programacion = $("#id_programacion").val();
@@ -3929,11 +3980,11 @@ if (!isset($_SESSION["Id"])) {
 			var l = 1;
 			var arr_lotes = '';
 			var arr_codigos_detalle = '';
-			var is_codigo_invalido = false;
 
 			$("#tbl_FiltroLotes tr").each(function() {
 				if ($("#chk_lote_" + l).prop('checked')) {
 					var _cod_lote = $(this).find("td:eq(1)").text().trim();
+					var _modalidad_lote = parseInt($(this).attr('data-modalidad') || 0, 10);
 
 					arr_lotes += _cod_lote + '|';
 
@@ -3944,10 +3995,16 @@ if (!isset($_SESSION["Id"])) {
 						var _codigo_lote = _input_codigo.val();
 						_codigo_lote = (typeof _codigo_lote === 'undefined' || _codigo_lote === null) ? '' : String(_codigo_lote).trim().toUpperCase();
 
-						if (f_GetCorrelativoDeCodigo(_codigo_lote) <= 0) {
-							is_codigo_invalido = true;
+						// El operador puede escribir lo que quiera: se envia tal cual.
+						// Si dejo el campo vacio, se manda el codigo sugerido por el
+						// sistema para que el lote no se registre sin codigo.
+						if (_codigo_lote === '') {
+							var _prefijo_lote = (_modalidad_lote == 5) ? 'VIII' : 'CO';
+							var _sugerido = (CODIGOS_SUGERIDOS.detalle) ? CODIGOS_SUGERIDOS.detalle[String(_modalidad_lote)] : null;
 
-							return false;
+							if (_sugerido) {
+								_codigo_lote = f_ConstruirCodigoDetalleLote(f_GetCorrelativoDeCodigo(_sugerido.codigo), _modalidad_lote);
+							}
 						}
 
 						arr_codigos_detalle += _cod_lote + '|' + _codigo_lote + '|';
@@ -3956,11 +4013,6 @@ if (!isset($_SESSION["Id"])) {
 
 				l++;
 			});
-
-			if (is_codigo_invalido) {
-				alert("Complete el Codigo de Despacho de los Lotes seleccionados (ej. C578-VIII149).");
-				return;
-			}
 
 			if (arr_lotes === '') {
 				alert("Debe seleccionar al menos un Lote.");
@@ -4011,17 +4063,12 @@ if (!isset($_SESSION["Id"])) {
 				}
 			}
 
-			// Validacion: el Codigo de Despacho (cabecera) debe ser valido en las plantas
-			// que lo generan. Viene sugerido por el sistema y puede ser corregido.
+			// El Codigo de Despacho (cabecera) viene sugerido por el sistema y el
+			// operador puede escribir lo que quiera. Se envia tal cual.
 			var codigo_cabecera = '';
 
 			if (CODIGOS_SUGERIDOS && CODIGOS_SUGERIDOS.es_generador == 1) {
 				codigo_cabecera = f_GetCodigoCabeceraIngresado().toUpperCase();
-
-				if (f_GetCorrelativoDeCodigo(codigo_cabecera) <= 0) {
-					alert("Indique un Codigo de Despacho valido (ej. C578).");
-					return;
-				}
 			}
 
 			// Grabando Datos
@@ -4035,9 +4082,22 @@ if (!isset($_SESSION["Id"])) {
 						is_aplica_campana: is_aplica_campana,
 						id_campana: id_campana_sel,
 						codigo_cabecera: codigo_cabecera,
-						arr_codigos_detalle: arr_codigos_detalle
+						arr_codigos_detalle: arr_codigos_detalle,
+						is_confirmado_duplicado: _is_confirmado_duplicado
 					},
 					function(data) {
+						// Aviso de codigo repetido: si el operador confirma, se reenvia
+						// el mismo request dejando constancia de la confirmacion.
+						if (data.estado == 20) {
+							f_LoadingGrabarProgramacion(0);
+
+							if (f_ConfirmarCodigoRepetido(data.duplicados)) {
+								f_ConfirmarProgramacion(1);
+							}
+
+							return;
+						}
+
 						if (data.estado == 1) {
 							f_LoadItemPlanta(itemplanta_Selected, idplanta_Selected);
 
@@ -4062,9 +4122,22 @@ if (!isset($_SESSION["Id"])) {
 						is_aplica_campana: is_aplica_campana,
 						id_campana: id_campana_sel,
 						codigo_cabecera: codigo_cabecera,
-						arr_codigos_detalle: arr_codigos_detalle
+						arr_codigos_detalle: arr_codigos_detalle,
+						is_confirmado_duplicado: _is_confirmado_duplicado
 					},
 					function(data) {
+						// Aviso de codigo repetido: si el operador confirma, se reenvia
+						// el mismo request dejando constancia de la confirmacion.
+						if (data.estado == 20) {
+							f_LoadingGrabarProgramacion(0);
+
+							if (f_ConfirmarCodigoRepetido(data.duplicados)) {
+								f_ConfirmarProgramacion(1);
+							}
+
+							return;
+						}
+
 						if (data.estado == 1) {
 							f_LoadItemPlanta(itemplanta_Selected, idplanta_Selected, 1, $("#item_programacion").val(), $("#id_programacion").val());
 
@@ -4951,10 +5024,12 @@ if (!isset($_SESSION["Id"])) {
 
 			var nombre_empresa = (_id_modalidad == 5) ? 'VIII' : ((_id_modalidad == 6) ? '48 SAC' : 'esta empresa');
 			if (_id_modalidad == 0 || !_id_modalidad) {
-				if (_codigo_comercializacion.indexOf('VIII') !== -1) {
+				var _segmento_actual = f_GetSegmentoEmpresaCodigo(_codigo_comercializacion);
+
+				if (_segmento_actual.indexOf('VIII') === 0) {
 					nombre_empresa = 'VIII';
 					$("#editCodigoLote_idmodalidad").val(5);
-				} else if (_codigo_comercializacion.indexOf('CO') !== -1) {
+				} else if (_segmento_actual.indexOf('CO') === 0) {
 					nombre_empresa = '48 SAC';
 					$("#editCodigoLote_idmodalidad").val(6);
 				}
@@ -4976,53 +5051,41 @@ if (!isset($_SESSION["Id"])) {
 		}
 
 		function f_OnInputCodigoLote(_obj) {
-			var val = $(_obj).val().toUpperCase();
-			if (val.indexOf('CO') !== -1 && val.indexOf('VIII') === -1) {
+			// La empresa se lee del SEGMENTO final del codigo (lo que va despues del
+			// ultimo guion) para no confundirse con la cabecera ni con la campana.
+			var _segmento = f_GetSegmentoEmpresaCodigo($(_obj).val());
+
+			if (_segmento.indexOf('CO') === 0 && _segmento.indexOf('VIII') === -1) {
 				$("#lbl_editCodigoLote_chk").html("Actualizar otros lotes de 48 SAC");
 				$("#lbl_editCodigoLote_empresa").html("48 S.A.C.");
 				$("#editCodigoLote_idmodalidad").val(6);
-			} else if (val.indexOf('VIII') !== -1 && val.indexOf('CO') === -1) {
+			} else if (_segmento.indexOf('VIII') === 0) {
 				$("#lbl_editCodigoLote_chk").html("Actualizar otros lotes de VIII");
 				$("#lbl_editCodigoLote_empresa").html("VIII S.A.C.");
 				$("#editCodigoLote_idmodalidad").val(5);
 			}
 		}
 
-		function f_GuardarEdicionCodigoDespachoLote() {
+		function f_GuardarEdicionCodigoDespachoLote(_is_confirmado_duplicado) {
 			var id_detalle = $("#editCodigoLote_iddetalle").val();
 			var id_programacion = $("#editCodigoLote_idprogramacion").val();
 			var id_modalidad = parseInt($("#editCodigoLote_idmodalidad").val(), 10);
-			var codigo_actual = $("#editCodigoLote_codigoactual").val().trim();
 			var codigo_nuevo = f_CleanInjection($("#input_editCodigoLote_codigo").val().trim().toUpperCase());
 			var actualizar_otros = ($("#chk_editCodigoLote_actualizar_otros").prop('checked')) ? 1 : 0;
 
-			if (!codigo_nuevo || codigo_nuevo.length === 0) {
+			if (codigo_nuevo === '') {
 				alert("Debe ingresar el código de despacho del lote.");
 				return;
 			}
 
-			if (f_GetCorrelativoDeCodigo(codigo_nuevo) <= 0) {
-				alert("El código debe terminar en un correlativo numérico válido (ej. C578-VIII149).");
-				return;
-			}
+			// Si se edita en bloque, la cabecera que quedaria es la que el operador
+			// escribio. Se avisa si difiere de la actual para que no queden dos
+			// cabeceras en el mismo despacho sin querer.
+			var cabecera_nueva = f_GetCabeceraDeCodigoDetalle(codigo_nuevo);
+			var cabecera_actual = f_CleanInjection($("#editCodigoLote_codigodespacho").val().trim().toUpperCase());
 
-			if (idplanta_Selected == 3 && !codigo_nuevo.startsWith('C')) {
-				alert("Para la planta Colibrí el código de despacho debe comenzar con 'C' (ej. C578-VIII149).");
-				return;
-			}
-			if (idplanta_Selected == 5 && codigo_nuevo.indexOf('S') === -1) {
-				alert("Para la planta Solandra el código de despacho debe contener 'S' (ej. S228-VIII149 o CP33-S228-VIII149).");
-				return;
-			}
-
-			if (id_modalidad == 5) {
-				if (codigo_nuevo.indexOf('VIII') === -1 || codigo_nuevo.indexOf('CO') !== -1) {
-					alert("Para lotes de VIII SAC el código debe incluir 'VIII' y no 'CO' (ej. C578-VIII149).");
-					return;
-				}
-			} else if (id_modalidad == 6) {
-				if (codigo_nuevo.indexOf('CO') === -1 || codigo_nuevo.indexOf('VIII') !== -1) {
-					alert("Para lotes de 48 SAC el código debe incluir 'CO' y no 'VIII' (ej. C578-CO150).");
+			if (actualizar_otros == 1 && cabecera_nueva !== '' && cabecera_actual !== '' && cabecera_nueva !== cabecera_actual) {
+				if (!confirm("El código digitado usa la cabecera '" + cabecera_nueva + "' en lugar de '" + cabecera_actual + "'.\n\nAl actualizar los demás lotes, la programación quedará con más de un código de cabecera. ¿Desea continuar?")) {
 					return;
 				}
 			}
@@ -5036,11 +5099,22 @@ if (!isset($_SESSION["Id"])) {
 					id_programacion: id_programacion,
 					id_modalidadenvio: id_modalidad,
 					codigo_nuevo: codigo_nuevo,
-					actualizar_otros: actualizar_otros
+					actualizar_otros: actualizar_otros,
+					is_confirmado_duplicado: _is_confirmado_duplicado
 				},
 				function(data) {
 					$("#wt_EditCodigoDespachoLote").hide();
 					$("#btn_guardar_editcodigolote").prop('disabled', false);
+
+					// Aviso de codigo repetido: si el operador confirma, se reenvia
+					// el mismo request dejando constancia de la confirmacion.
+					if (data.estado == 20) {
+						if (f_ConfirmarCodigoRepetido(data.duplicados)) {
+							f_GuardarEdicionCodigoDespachoLote(1);
+						}
+
+						return;
+					}
 
 					if (data.estado == 1) {
 						f_cerrarModal("modal_EditCodigoDespachoLote");
@@ -5075,28 +5149,13 @@ if (!isset($_SESSION["Id"])) {
 			f_OpenModal('modal_EditCodigoDespachoCabecera');
 		}
 
-		function f_GuardarEdicionCodigoDespachoCabecera() {
+		function f_GuardarEdicionCodigoDespachoCabecera(_is_confirmado_duplicado) {
 			var id_programacion = $("#editCodigoCab_idprogramacion").val();
-			var codigo_actual = $("#editCodigoCab_codigoactual").val().trim();
 			var codigo_nuevo = f_CleanInjection($("#input_editCodigoCab_codigo").val().trim().toUpperCase());
 			var actualizar_lotes = ($("#chk_editCodigoCab_actualizar_lotes").prop('checked')) ? 1 : 0;
 
-			if (!codigo_nuevo || codigo_nuevo.length === 0) {
+			if (codigo_nuevo === '') {
 				alert("Debe ingresar el código de despacho.");
-				return;
-			}
-
-			if (f_GetCorrelativoDeCodigo(codigo_nuevo) <= 0) {
-				alert("El código debe terminar en un correlativo numérico válido (ej. C578).");
-				return;
-			}
-
-			if (idplanta_Selected == 3 && !codigo_nuevo.startsWith('C')) {
-				alert("Para la planta Colibrí el código de despacho debe comenzar con 'C' (ej. C578).");
-				return;
-			}
-			if (idplanta_Selected == 5 && codigo_nuevo.indexOf('S') === -1) {
-				alert("Para la planta Solandra el código de despacho debe contener 'S' (ej. S228 o CP33-S228).");
 				return;
 			}
 
@@ -5107,11 +5166,22 @@ if (!isset($_SESSION["Id"])) {
 					accion: "grabar_ProgramacionDespachos_EditarCodigoDespachoCabecera",
 					id_programacion: id_programacion,
 					codigo_nuevo: codigo_nuevo,
-					actualizar_lotes: actualizar_lotes
+					actualizar_lotes: actualizar_lotes,
+					is_confirmado_duplicado: _is_confirmado_duplicado
 				},
 				function(data) {
 					$("#wt_EditCodigoDespachoCabecera").hide();
 					$("#btn_guardar_editcodigocab").prop('disabled', false);
+
+					// Aviso de codigo repetido: si el operador confirma, se reenvia
+					// el mismo request dejando constancia de la confirmacion.
+					if (data.estado == 20) {
+						if (f_ConfirmarCodigoRepetido(data.duplicados)) {
+							f_GuardarEdicionCodigoDespachoCabecera(1);
+						}
+
+						return;
+					}
 
 					if (data.estado == 1) {
 						f_cerrarModal("modal_EditCodigoDespachoCabecera");
