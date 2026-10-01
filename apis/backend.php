@@ -41834,8 +41834,8 @@ case 'confirmar_ProgramacionLote_AddLote':
 		if (strlen($arr_lotes) > 0) {
 			$q_datos .= "   AND PD.cod_lote IN (" . $arr_lotes . ")";
 		} else {
-			// $q_datos .= "   AND DATE(DL.peso_bruto_fechahoraregistro) BETWEEN '".$fecha_inicio."' AND '".$fecha_fin."'";
-			$q_datos .= "   AND DL.guias_fecha BETWEEN '" . $fecha_inicio . "' AND '" . $fecha_fin . "'";
+			$q_datos .= "   AND DATE(DL.peso_bruto_fechahoraregistro) BETWEEN '".$fecha_inicio."' AND '".$fecha_fin."'";
+			// $q_datos .= "   AND DL.guias_fecha BETWEEN '" . $fecha_inicio . "' AND '" . $fecha_fin . "'";
 		}
 
 		$q_datos .= " ORDER BY PD.cod_lote";
