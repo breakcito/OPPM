@@ -4,6 +4,7 @@
 
 	include('cnx/cnx.php');
 	include('global/variables.php');
+	include('global/impresion_tabla.php');
 
 	require('libs/phpqrcode/qrlib.php');
 	require_once 'dompdf/autoload.inc.php';
@@ -71,10 +72,8 @@ ini_set('display_startuo_errors', 0);
     $ruta_images_qr = substr($ruta_images_x, 0, strpos($ruta_images_x, 'print_programaciondistribucion.php')).'/';
 
 	// 1. Obteniendo datos
-		$x = 1;
 		$d = 1;
 		$t = 0;
-		$id_distribucionunidad = 0;
 		$id_distribucionunidad_x = 0;
 		$codigo_despacho_comercializacion = '';
 		$html = '';
@@ -143,19 +142,39 @@ ini_set('display_startuo_errors', 0);
 										html, body{
 											font-family: Arial;
 											margin: 0;
-											padding: -5;
-											margin-bottom: -15px;
+											padding: 0;
 											font-size: 14px;
 										}
 
 										@page{
 											margin: 0;
-											pading: 0;
+											padding: 0;
 										}
 
 										.page-break{
 											page-break-before: always;
 											break-before: page;
+										}
+
+										/* Celdas y tablas: el contenido nunca debe desbordar la
+										   pagina ni partir una fila a la mitad. */
+										table{
+											border-spacing: 0;
+											word-wrap: break-word;
+										}
+
+										td{
+											word-wrap: break-word;
+										}
+
+										/* El encabezado se repite cuando la tabla pasa de pagina */
+										thead{
+											display: table-header-group;
+										}
+
+										tr{
+											page-break-inside: avoid;
+											page-break-after: auto;
 										}
 									</style>
 								</head>
@@ -163,9 +182,6 @@ ini_set('display_startuo_errors', 0);
 								<body style="margin-left: 10px; margin-right: 10px;">';
 
 	// 2. Arma la estructura de Detalle (agrupada por proveedor minero)
-		$x = 1;
-		$id_distribucionunidad = 0;
-
 		// Estructura para acumular filas por empresita
 		$detalles_por_empresita = array();
 		$orden_empresitas = array();
@@ -229,10 +245,6 @@ ini_set('display_startuo_errors', 0);
 							         		FROM catalogolotes L
 							         	 WHERE L.ccod_Lote = DL.cod_lote
 							         	LIMIT 1) AS IS_LOTEAUM,
-
-							         (SELECT COUNT(DL_x.Id)
-							        	 FROM despachos_segundotramo_distribucion_lotes DL_x
-							           WHERE DL_x.id_distribucionunidad = DU.Id) AS TOTAL_LOTES,
 
 							         /*
 							         (SELECT COUNT(DISTINCT VD_x.lote_id_proveedorminero, VD_x.despacho_id_modalidadenvio)
@@ -326,58 +338,59 @@ WHERE MD5(DU.id_programacion) = '".$id_programacion."'
 											</div>';
 
 		$encabezado_tabla_html = '	<div class="row" style="margin-top: 20px;">
-																<table style="width: 100%; border-spacing: -1px;">
-																	<tr style="font-size: 16px; font-family: AgencyFBb;">
-																		<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
-																			LOTE COLIBRI
-																		</td>
+																<table style="width: 100%;">
+																	<thead>
+																		<tr style="font-size: 16px; font-family: AgencyFBb;">
+																			<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
+																				LOTE COLIBRI
+																			</td>
 
-																		<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
-																			__ETIQUETA_LOTE__
-																		</td>
+																			<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
+																				__ETIQUETA_LOTE__
+																			</td>
 
-																		<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
-																			PLACA
-																		</td>
+																			<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
+																				PLACA
+																			</td>
 
-																		<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
-																			PESO
-																		</td>
+																			<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
+																				PESO
+																			</td>
 
-																		<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
-																			PRESENTACIÓN
-																		</td>
+																			<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
+																				PRESENTACIÓN
+																			</td>
 
-																		<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
-																			PROVEEDOR
-																		</td>
+																			<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
+																				PROVEEDOR
+																			</td>
 
-																		<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
-																			RUC
-																		</td>
+																			<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
+																				RUC
+																			</td>
 
-																		<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
-																			GRR
-																		</td>
+																			<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
+																				GRR
+																			</td>
 
-																		<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
-																			GRT
-																		</td>
+																			<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
+																				GRT
+																			</td>
 
-																		<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
-																			N° CARRO
-																		</td>
+																			<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
+																				N° CARRO
+																			</td>
 
-																		<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
-																			N° GUIAS
-																		</td>
-																	</tr>
-																</thead>
+																			<td style="text-align: center; border: solid; border-width: 1px; background-color: #FFC000; vertical-align: middle;">
+																				N° GUIAS
+																			</td>
+																		</tr>
+																	</thead>
 
 																<tbody>';
 
-		// Contador global de unidades (no se reinicia por empresita)
-		$x = 1;
+		// Numeracion global de unidades (no se reinicia entre empresitas)
+		$indice_unidades = array();
 
 		foreach ($orden_empresitas as $idx_emp => $empresita_key) {
 			// Page-break entre empresitas (no antes de la primera)
@@ -397,111 +410,93 @@ WHERE MD5(DU.id_programacion) = '".$id_programacion."'
 			// Apertura de tabla con encabezado dinámico
 			$html .= str_replace('__ETIQUETA_LOTE__', $etiqueta_lote, $encabezado_tabla_html);
 
-			// Reset del ID por empresita (control de rowspan dentro del grupo)
-			$id_distribucionunidad = 0;
+			// Las filas se agrupan en bloques consecutivos por unidad y el rowspan se
+			// toma del tamano real de cada bloque. Antes se usaba un COUNT de SQL
+			// (TOTAL_LOTES) que no coincidia con las filas realmente impresas, y eso
+			// desarmaba la grilla: dompdf corrria las celdas de columna y pintaba
+			// el excedente fuera de la tabla.
+			$bloques = impresion_agrupar_bloques($detalles_por_empresita[$empresita_key], $indice_unidades);
 
-			foreach ($detalles_por_empresita[$empresita_key] as $row_datos) {
-				$codigo_planta = $row_datos["codigo_planta"];
-				$num_parte = $row_datos["num_parte"];
-				$cod_lote = $row_datos["cod_lote"];
-				$placa1 = $row_datos["cplaca"].((strlen($row_datos["PLACA2"]) == 0) ? '' : ' / '.$row_datos["PLACA2"]);
-				$peso_neto = $row_datos["PESO_NETO"];
-				$num_bigbag = $row_datos["num_bigbag"];
-				$tipo_carga = ((strlen($num_bigbag) > 0) ? $num_bigbag.' ' : '').$row_datos["TIPO_CARGA"];
-				$proveedorminero_ruc = $row_datos["PROVEEDORMINERO_RUC"];
-				$proveedorminero_razonsocial = $row_datos["PROVEEDORMINERO_RAZONSOCIAL"];
-				$guia_remitente = $row_datos["guiaremitente_serie"].' '.$row_datos["guiaremitente_numero"];
-				$guia_transportista = $row_datos["guiatransportista_serie"].' '.$row_datos["guiatransportista_numero"];
-				$id_modalidadenvio = $row_datos["guias_idmodalidadenvio"];
-				$id_planta_row = $row_datos["ID_PLANTA"];
-				$empresita_ruc = $row_datos["empresita_ruc"];
-				$empresita_razon_social = $row_datos["empresita_razon_social"];
+			foreach ($bloques as $bloque) {
 
-				// Para Colibri (id_planta == 3) PROVEEDOR/RUC = empresita;
-				// para Solandra u otros = datos reales del proveedor.
-				$campo_proveedor = ($id_planta_row == 3) ? $empresita_razon_social : $proveedorminero_razonsocial;
-				$campo_ruc = ($id_planta_row == 3) ? $empresita_ruc : $proveedorminero_ruc;
+				$rowspan = $bloque['total_filas'];
+				$indice_unidad = $bloque['indice_unidad'];
 
-				$total_guias = $row_datos["TOTAL_GUIAS"];
+				foreach ($bloque['filas'] as $pos_fila => $row_datos) {
+					$primera_fila_del_bloque = ($pos_fila == 0);
 
-				$html .= '					<tr style="font-size: 14px; font-family: AgencyFB;">';
-				$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
-				$html .= '							'.$codigo_planta.((strlen($num_parte) == 0) ? '' : "<br>PARTE ".$num_parte);
-				$html .= '						</td>';
+					$codigo_planta = $row_datos["codigo_planta"];
+					$num_parte = $row_datos["num_parte"];
+					$cod_lote = $row_datos["cod_lote"];
+					$placa1 = $row_datos["cplaca"].((strlen($row_datos["PLACA2"]) == 0) ? '' : ' / '.$row_datos["PLACA2"]);
+					$peso_neto = $row_datos["PESO_NETO"];
+					$num_bigbag = $row_datos["num_bigbag"];
+					$tipo_carga = ((strlen($num_bigbag) > 0) ? $num_bigbag.' ' : '').$row_datos["TIPO_CARGA"];
+					$proveedorminero_ruc = $row_datos["PROVEEDORMINERO_RUC"];
+					$proveedorminero_razonsocial = $row_datos["PROVEEDORMINERO_RAZONSOCIAL"];
+					$guia_remitente = $row_datos["guiaremitente_serie"].' '.$row_datos["guiaremitente_numero"];
+					$guia_transportista = $row_datos["guiatransportista_serie"].' '.$row_datos["guiatransportista_numero"];
+					$id_modalidadenvio = $row_datos["guias_idmodalidadenvio"];
+					$id_planta_row = $row_datos["ID_PLANTA"];
+					$empresita_ruc = $row_datos["empresita_ruc"];
+					$empresita_razon_social = $row_datos["empresita_razon_social"];
 
-				$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
-				$html .= '							'.$cod_lote.((strlen($num_parte) == 0) ? '' : "<br>PARTE ".$num_parte);
-				$html .= '						</td>';
+					// Para Colibri (id_planta == 3) PROVEEDOR/RUC = empresita;
+					// para Solandra u otros = datos reales del proveedor.
+					$campo_proveedor = ($id_planta_row == 3) ? $empresita_razon_social : $proveedorminero_razonsocial;
+					$campo_ruc = ($id_planta_row == 3) ? $empresita_ruc : $proveedorminero_ruc;
 
-				if ($id_distribucionunidad != $row_datos["ID_DISTRIBUCIONUNIDAD"]){
-					$html .= '						<td rowspan="'.$row_datos["TOTAL_LOTES"].'" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
-					$html .= '							'.$placa1;
+					$html .= '					<tr style="font-size: 14px; font-family: AgencyFB;">';
+					$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
+					$html .= '							'.$codigo_planta.((strlen($num_parte) == 0) ? '' : "<br>PARTE ".$num_parte);
 					$html .= '						</td>';
 
-					// Obteniendo total de guías
-					$total_guias = 0;
+					$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
+					$html .= '							'.$cod_lote.((strlen($num_parte) == 0) ? '' : "<br>PARTE ".$num_parte);
+					$html .= '						</td>';
 
-					if ($id_modalidadenvio == 1 || $id_modalidadenvio == 2){
-						$q_totalguias = "SELECT COUNT(DISTINCT VD.lote_id_proveedorminero) AS TOTAL_GUIAS
-														   FROM despachos_segundotramo_distribucion_lotes DL
-														   			LEFT JOIN despachos_primertramo_validaciondatos VD ON DL.cod_lote = VD.lote_cod_lote
-														  WHERE id_distribucionunidad = ".$row_datos["ID_DISTRIBUCIONUNIDAD"];
-					}
-					else{
-						$q_totalguias = "SELECT COUNT(DISTINCT guias_idmodalidadenvio) AS TOTAL_GUIAS
-														   FROM despachos_segundotramo_distribucion_lotes
-														  WHERE id_distribucionunidad = ".$row_datos["ID_DISTRIBUCIONUNIDAD"];
+					if ($primera_fila_del_bloque){
+						$html .= '						<td rowspan="'.$rowspan.'" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
+						$html .= '							'.$placa1;
+						$html .= '						</td>';
 					}
 
-					if ($res_totalguias = mysqli_query($enlace, $q_totalguias)){
-						if (mysqli_num_rows($res_totalguias) > 0) {
-							while($row_totalguias = mysqli_fetch_array($res_totalguias)){
-								$total_guias = $row_totalguias["TOTAL_GUIAS"];
-							}
-						}
+					$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
+					$html .= '							'.number_format($peso_neto, 2, '.', '');
+					$html .= '						</td>';
+
+					$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
+					$html .= '							'.$tipo_carga;
+					$html .= '						</td>';
+
+					$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
+					$html .= '							'.$campo_proveedor;
+					$html .= '						</td>';
+
+					$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
+					$html .= '							'.$campo_ruc;
+					$html .= '						</td>';
+
+					$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
+					$html .= '							'.((strlen(trim($guia_remitente)) > 0) ? $guia_remitente : '<i style="font-size: 12px; color: #F23030;">Pendiente</i>');
+					$html .= '						</td>';
+
+					$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
+					$html .= '							'.((strlen(trim($guia_transportista)) > 0) ? $guia_transportista : '<i style="font-size: 12px; color: #F23030;">Pendiente</i>');
+					$html .= '						</td>';
+
+					if ($primera_fila_del_bloque){
+						$html .= '						<td rowspan="'.$rowspan.'" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
+						$html .= '							UNIDAD '.$indice_unidad;
+						$html .= '						</td>';
+
+						$html .= '						<td rowspan="'.$rowspan.'" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
+						$html .= '							' . 1;
+						$html .= '						</td>';
 					}
+
+					$html .= '					</tr>';
 				}
-
-				$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
-				$html .= '							'.number_format($peso_neto, 2, '.', '');
-				$html .= '						</td>';
-
-				$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
-				$html .= '							'.$tipo_carga;
-				$html .= '						</td>';
-
-				$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
-				$html .= '							'.$campo_proveedor;
-				$html .= '						</td>';
-
-				$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
-				$html .= '							'.$campo_ruc;
-				$html .= '						</td>';
-
-				$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
-				$html .= '							'.((strlen(trim($guia_remitente)) > 0) ? $guia_remitente : '<i style="font-size: 12px; color: #F23030;">Pendiente</i>');
-				$html .= '						</td>';
-
-				$html .= '						<td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
-				$html .= '							'.((strlen(trim($guia_transportista)) > 0) ? $guia_transportista : '<i style="font-size: 12px; color: #F23030;">Pendiente</i>');
-				$html .= '						</td>';
-
-				if ($id_distribucionunidad != $row_datos["ID_DISTRIBUCIONUNIDAD"]){
-					$html .= '						<td rowspan="'.$row_datos["TOTAL_LOTES"].'" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
-					$html .= '							UNIDAD '.$x;
-					$html .= '						</td>';
-
-					$html .= '						<td rowspan="'.$row_datos["TOTAL_LOTES"].'" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
-					//$html .= '							'.$total_guias;
-					$html .= '							' . 1;
-					$html .= '						</td>';
-
-					$x ++;
-				}
-
-				$id_distribucionunidad = $row_datos["ID_DISTRIBUCIONUNIDAD"];
-
-				$html .= '					</tr>';
 			}
 
 			// Cierre de tabla
