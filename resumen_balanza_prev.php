@@ -1519,27 +1519,28 @@
 
 		<!-- Modal: Ver Historial de Cambios (Timeline) -->
 		<div class="modal fade" id="modal_verLogCambios" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="modal_verLogCambiosLabel" aria-hidden="true">
-		  <div class="modal-dialog modal-dialog-centered modal-lg">
-		    <div class="modal-content" style="border-radius: 12px; border: none; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);">
-		      <div class="modal-header" style="background: linear-gradient(135deg, #f8da62, #f5c400); color: #212529; border-top-left-radius: 12px; border-top-right-radius: 12px; border-bottom: none;">
-		        <h5 class="modal-title font-weight-bold" id="modal_verLogCambiosLabel" style="font-weight: 700; font-size: 1.15rem; margin: 0;">
+		  <div class="modal-dialog modal-dialog-centered" style="max-width: 560px;">
+		    <div class="modal-content" style="border-radius: 10px; border: none; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18); overflow: hidden;">
+		      <div class="modal-header py-2 px-3" style="background: linear-gradient(135deg, #f8da62, #f5c400); color: #212529; border: none;">
+		        <h6 class="modal-title mb-0" id="modal_verLogCambiosLabel" style="font-weight: 700; font-size: 1.2rem;">
 		          <i class="bi bi-clock-history"></i> Historial de Modificaciones
-		        </h5>
-		        <button type="button" class="btn-close btn-close-dark" data-bs-dismiss="modal" aria-label="Close"></button>
+		          <span class="badge text-bg-dark ms-2" id="log_cambios_count" style="font-size: 1rem; font-weight: 600; vertical-align: middle;"></span>
+		        </h6>
+		        <button type="button" class="btn-close btn-close-dark" data-bs-dismiss="modal" aria-label="Close" style="font-size: 1rem;"></button>
 		      </div>
-		      <div class="modal-body" style="background-color: #fcfcfc; padding: 25px 30px; max-height: 60vh; overflow-y: auto;">
+		      <div class="modal-body p-2 px-3" style="background-color: #fcfcfc; max-height: 62vh; overflow-y: auto;">
 		        <!-- Contenedor del Timeline -->
-		        <div id="timeline_container" style="position: relative; padding-left: 30px; margin-top: 10px; margin-bottom: 10px;">
+		        <div id="timeline_container" style="position: relative; padding-left: 22px;">
 		          <!-- Línea vertical del timeline -->
-		          <div style="position: absolute; left: 9px; top: 5px; bottom: 5px; width: 3px; background-color: #e9ecef; border-radius: 2px;"></div>
+		          <div style="position: absolute; left: 6px; top: 10px; bottom: 10px; width: 2px; background-color: #e9ecef; border-radius: 2px;"></div>
 		          
 		          <div id="timeline_items_list">
 		            <!-- Los elementos del timeline se cargarán dinámicamente aquí -->
 		          </div>
 		        </div>
 		      </div>
-		      <div class="modal-footer" style="background-color: #f8f9fa; border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-top: 1px solid #dee2e6;">
-		        <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal" style="font-size: 14px; font-weight: 600; border-radius: 8px;">Cerrar</button>
+		      <div class="modal-footer py-2 px-3" style="background-color: #f8f9fa; border-top: 1px solid #dee2e6;">
+		        <button type="button" class="btn btn-sm btn-light px-3" data-bs-dismiss="modal" style="font-weight: 600; font-size: 1rem; border: 1px solid #dee2e6; border-radius: 6px;">Cerrar</button>
 		      </div>
 		    </div>
 		  </div>
@@ -1581,6 +1582,9 @@
 
 		<!-- ECharts -->
 		<script src="https://cdn.jsdelivr.net/npm/echarts@5.3.3/dist/echarts.min.js"></script>
+
+		<!-- SweetAlert2 -->
+		<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.10.1/dist/sweetalert2.all.min.js"></script>
 
 		<!-- Referenciando auxiliares -->
 		<?php include('global/auxiliares_js.php'); ?>
@@ -1867,6 +1871,18 @@
 			}, "json");
 		}
 
+		function f_EscapeHtml(_texto){
+			if (_texto === null || typeof _texto === 'undefined'){
+				return '';
+			}
+
+			return String(_texto).replace(/&/g, '&amp;')
+							   .replace(/</g, '&lt;')
+							   .replace(/>/g, '&gt;')
+							   .replace(/"/g, '&quot;')
+							   .replace(/'/g, '&#39;');
+		}
+
 		function f_VerLogCambios(elem) {
 			var rawLogs = $(elem).attr('data-logs');
 			if (!rawLogs) return;
@@ -1879,40 +1895,35 @@
 				for (var i = logs.length - 1; i >= 0; i--) {
 					var log = logs[i];
 					
-					var valAnterior = log.valor_anterior || '(Vacío)';
-					var valResultante = log.valor_resultante || '(Vacío)';
-					var usuario = log.usuario || 'Desconocido';
-					var motivo = log.motivo || 'No especificado';
-					var descripcion = log.descripcion || 'Modificación';
-					
-					html += '<div style="position: relative; margin-bottom: 25px;">';
-					html += '  <div style="position: absolute; left: -26px; top: 3px; width: 15px; height: 15px; border-radius: 50%; background-color: #ffc107; border: 3px solid #fff; box-shadow: 0 0 0 3px #ffc107;"></div>';
-					html += '  <div style="background-color: #fff; padding: 15px; border-radius: 10px; border: 1px solid #e9ecef; box-shadow: 0 2px 8px rgba(0,0,0,0.02);">';
-					html += '    <div class="d-flex justify-content-between align-items-center mb-2" style="border-bottom: 1px dashed #f0f0f0; padding-bottom: 6px;">';
-					html += '      <span style="font-weight: 700; color: #495057; font-size: 0.95rem;">' + descripcion + '</span>';
-					html += '      <span class="badge bg-light text-dark" style="font-size: 0.75rem; border: 1px solid #dee2e6;"><i class="bi bi-person-fill text-muted"></i> ' + usuario + '</span>';
+					// Los valores del cambios_log son texto libre tipeado por el usuario (p.ej. el motivo
+					// de la limpieza de pesos o de la corrección de una fecha), por eso se escapan
+					// antes de inyectarlos como HTML.
+					var valAnterior = f_EscapeHtml(log.valor_anterior) || '(Vacío)';
+					var valResultante = f_EscapeHtml(log.valor_resultante) || '(Vacío)';
+					var usuario = f_EscapeHtml(log.usuario) || 'Desconocido';
+					var motivo = f_EscapeHtml(log.motivo) || 'No especificado';
+var descripcion = f_EscapeHtml(log.descripcion) || 'Modificación';
+ 					
+					html += '<div style="position: relative;' + ((i === 0) ? '' : ' margin-bottom: 10px;') + '">';
+					html += '  <span style="position: absolute; left: -20px; top: 11px; width: 9px; height: 9px; border-radius: 50%; background-color: #ffc107; border: 2px solid #fff; box-shadow: 0 0 0 2px #ffc107;"></span>';
+					html += '  <div style="background-color: #fff; padding: 7px 10px; border-radius: 6px; border: 1px solid #eceff1; border-left: 3px solid #ffc107;">';
+					html += '    <div class="d-flex justify-content-between align-items-center gap-2">';
+					html += '      <span style="font-weight: 600; color: #495057; font-size: 16px; line-height: 1.2;">' + descripcion + '</span>';
+					html += '      <span class="badge bg-light text-dark text-truncate" style="font-size: 11px; font-weight: 600; border: 1px solid #dee2e6; max-width: 140px;" title="' + usuario + '"><i class="bi bi-person-fill text-muted"></i> ' + usuario + '</span>';
 					html += '    </div>';
-					html += '    <div class="row g-2 mb-2 align-items-center text-center" style="font-size: 0.85rem; background-color: #fafafa; border-radius: 6px; padding: 8px 4px; margin: 0;">';
-					html += '      <div class="col-5 text-truncate" title="' + valAnterior + '" style="color: #6c757d;">';
-					html += '        <small style="display:block; font-size:0.7rem; text-transform:uppercase; color:#b0b0b0;">Valor Anterior</small>';
-					html += '        <strong>' + valAnterior + '</strong>';
-					html += '      </div>';
-					html += '      <div class="col-2 text-muted">';
-					html += '        <i class="bi bi-arrow-right-short" style="font-size: 1.2rem; vertical-align: middle;"></i>';
-					html += '      </div>';
-					html += '      <div class="col-5 text-truncate" title="' + valResultante + '" style="color: #198754;">';
-					html += '        <small style="display:block; font-size:0.7rem; text-transform:uppercase; color:#b0b0b0;">Valor Resultante</small>';
-					html += '        <strong>' + valResultante + '</strong>';
-					html += '      </div>';
+					html += '    <div class="d-flex align-items-center gap-1 mt-1" style="font-size: 16px; background-color: #f8f9fa; border-radius: 4px; padding: 3px 6px;">';
+					html += '      <span style="color: #868e96; text-decoration: line-through; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 38%;" title="' + valAnterior + '">' + valAnterior + '</span>';
+					html += '      <i class="bi bi-arrow-right" style="font-size: 16px; color: #adb5bd; flex: 0 0 auto;"></i>';
+					html += '      <span style="color: #198754; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 42%;" title="' + valResultante + '">' + valResultante + '</span>';
 					html += '    </div>';
-					html += '    <div style="font-size: 0.85rem; color: #495057; padding-left: 4px;">';
-					html += '      <span style="font-weight: 600; color: #6c757d; font-size: 0.8rem;"><i class="bi bi-chat-left-text-fill text-muted me-1"></i> Motivo:</span>';
-					html += '      <p class="mb-0 text-muted" style="font-style: italic; white-space: pre-wrap; margin-top: 2px;">' + motivo + '</p>';
+					html += '    <div class="mt-1" style="font-size: 16px; color: #6c757d; line-height: 1.3;">';
+					html += '      <i class="bi bi-chat-left-text-fill text-muted" style="font-size: 16px;"></i> <span style="font-style: italic; white-space: pre-wrap; word-break: break-word;">' + motivo + '</span>';
 					html += '    </div>';
 					html += '  </div>';
 					html += '</div>';
 				}
-				
+			
+				$("#log_cambios_count").text(logs.length + (logs.length == 1 ? ' cambio' : ' cambios'));
 				$("#timeline_items_list").html(html);
 				f_OpenModal('modal_verLogCambios');
 				
@@ -3992,11 +4003,40 @@
 			function f_LimpiarPesosLote(_elem, _id_registro){
 				// _elem        - botón que dispara la acción, se usa para ubicar la fila del lote.
 				// _id_registro - Id de despachos_segundotramo_distribucion_lotes
-					if (!confirm("¿Está seguro de limpiar los pesos (Tara y Bruto) del lote?\n\nEsta acción no se puede deshacer.")){
+				//
+				// El motivo es obligatorio: se muestra antes de confirmar y queda guardado en el
+				// cambios_log del lote (descripción "Pesos del Lote"), junto con el usuario y la fecha.
+				Swal.fire({
+					title: '¿Está seguro de limpiar los pesos?',
+					html: 'Se pondrán en vacío el peso de Tara y el peso Bruto del lote, junto con sus fechas de registro.<br><b>Esta acción no se puede deshacer.</b>',
+					icon: 'warning',
+					input: 'textarea',
+					inputId: 'swal_limpiarpesos_motivo',
+					inputPlaceholder: 'Indique el motivo por el que se limpian los pesos...',
+					inputAttributes: {
+						rows: 4
+					},
+					inputValidator: function (value) {
+						if (!value || value.trim().length === 0) {
+							return 'Debe indicar el motivo de la limpieza.';
+						}
+
+						return null;
+					},
+					showCancelButton: true,
+					confirmButtonText: 'Confirmar',
+					cancelButtonText: 'Cancelar',
+					reverseButtons: true,
+					focusConfirm: false,
+					focusCancel: true
+				}).then(function (result) {
+					if (!result.isConfirmed) {
 						return;
 					}
 
-					$.post( "apis/backend.php", { accion: "grabar_LimpiarPesosLote", id_registro: _id_registro },
+					var _motivo = String(result.value == null ? '' : result.value).trim();
+
+					$.post( "apis/backend.php", { accion: "grabar_LimpiarPesosLote", id_registro: _id_registro, motivo: _motivo },
 					function( data ) {
 						if (data.estado == 1){
 							// Una vez limpiados los pesos, el lote sale del resumen de balanza porque
@@ -4012,12 +4052,25 @@
 							// vuelva a aplicar el filtro de Empresitas.
 							$(_elem).closest('tr').attr('data-limpio_pesos', '1').hide();
 
+							Swal.fire({
+								title: 'Pesos limpiados',
+								html: 'Motivo de la limpieza:<br><b>' + f_EscapeHtml(_motivo) + '</b><br><br>El motivo quedó registrado en el historial de cambios del lote.',
+								icon: 'success',
+								confirmButtonText: 'Entendido'
+							});
+
 							return;
 						}
 
-						alert((typeof data.mensaje == 'undefined' || data.mensaje == '') ? "Ocurrió un error al momento de limpiar los pesos." : data.mensaje);
+						Swal.fire({
+							title: 'No se pudo limpiar los pesos',
+							text: (typeof data.mensaje == 'undefined' || data.mensaje == '') ? "Ocurrió un error al momento de limpiar los pesos." : data.mensaje,
+							icon: 'error',
+							confirmButtonText: 'Entendido'
+						});
 					}, "json");
-				}
+				});
+			}
 
 			function f_UpdateDatos(_item, _orden_campo) {
 				// Obtiene Id

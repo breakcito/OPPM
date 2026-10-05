@@ -3252,6 +3252,7 @@ switch ($_POST["accion"]) {
 														U.modo_auditoria,
 														U.eliminar_unidadesingreso,
 														U.registromanual_humedad,
+														U.puede_limpiar_pesos,
 														U.estado
 											 FROM tb_usuario AS U
 														INNER JOIN tb_empleados E ON U.id_empleado = E.Id
@@ -3284,6 +3285,7 @@ switch ($_POST["accion"]) {
 					$_SESSION["is_admincontrolinterno"] = $row_login["is_admincontrolinterno"];
 					$_SESSION["eliminar_unidadesingreso"] = $row_login["eliminar_unidadesingreso"];
 					$_SESSION["registromanual_humedad"] = $row_login["registromanual_humedad"];
+					$_SESSION["puede_limpiar_pesos"] = $row_login["puede_limpiar_pesos"];
 				}
 			}
 		}
@@ -22906,13 +22908,15 @@ switch ($_POST["accion"]) {
 							$html .= '    ' . $row_balanza["ccod_Lote"];
 						}
 
-						// Botón "Limpiar pesos": solo para Despacho de Mineral (id_tipoingresounidad = 2)
-						// y solo si el lote todavía tiene peso_tara o peso_bruto registrados.
+						// Botón "Limpiar pesos": solo para Despacho de Mineral (id_tipoingresounidad = 2),
+						// solo si el lote todavía tiene peso_tara o peso_bruto registrados y solo para los
+						// usuarios con el permiso "puede_limpiar_pesos" (tb_usuario.puede_limpiar_pesos,
+						// cargado en la sesión dentro del case 'Log_In').
 						// Se pasa "this" para que el front ubique la fila y la oculte sin recargar la lista.
 						// El id_registro que se envía es el Id de despachos_segundotramo_distribucion_lotes.
-						if ($row_balanza["id_tipoingresounidad"] == 2 && intval($row_balanza["TIENE_PESOS_DESPACHO"]) == 1) {
-							// $html .= '    <br>';
-							// $html .= '    <button type="button" class="btn btn-sm btn-warning text-nowrap" style="font-size: 12px; font-weight: 700; padding: 2px 5px; margin-top: 4px; white-space: nowrap;" title="Limpiar los pesos de Tara y Bruto de este lote" onclick="f_LimpiarPesosLote(this, ' . intval($row_balanza["id_CatalogoLotes"]) . ')">Limpiar pesos</button>';
+						if ($row_balanza["id_tipoingresounidad"] == 2 && intval($row_balanza["TIENE_PESOS_DESPACHO"]) == 1 && intval($_SESSION["puede_limpiar_pesos"]) == 1) {
+							$html .= '    <br>';
+							$html .= '    <button type="button" class="btn btn-sm btn-warning text-nowrap" style="font-size: 12px; font-weight: 700; padding: 2px 5px; margin-top: 4px; white-space: nowrap;" title="Limpiar los pesos de Tara y Bruto de este lote" onclick="f_LimpiarPesosLote(this, ' . intval($row_balanza["id_CatalogoLotes"]) . ')">Limpiar pesos</button>';
 						}
 
 						$html .= '  </td>';
@@ -28345,13 +28349,21 @@ case 'confirmar_ProgramacionLote_AddLote':
 		// El id_registro recibido es el Id de despachos_segundotramo_distribucion_lotes.
 		// Pone en NULL los 7 campos de peso del lote y re-sincroniza el Ticket Contable
 		// (consolidado_lotes_cierrecontable) para que no quede desfasado con la información nueva.
+		// El motivo es obligatorio: queda registrado en el cambios_log del lote junto con el usuario.
 		$estado = 0;
 		$mensaje = '';
 		$id_registro = intval($_POST["id_registro"]);
+		$motivo = mysqli_real_escape_string($enlace, trim($_POST["motivo"]));
 		$usuario_registro = $_SESSION["usu_usuario"];
 
-		if ($id_registro <= 0) {
+		// Validación del permiso: el botón en el front solo se pinta cuando la sesión tiene
+		// puede_limpiar_pesos = 1, pero se revalida acá para que la operación no dependa del front.
+		if (intval($_SESSION["puede_limpiar_pesos"]) != 1) {
+			$mensaje = 'Ud. no tiene permiso para limpiar los pesos de los lotes.';
+		} elseif ($id_registro <= 0) {
 			$mensaje = 'El registro indicado no es válido.';
+		} elseif (strlen($motivo) == 0) {
+			$mensaje = 'Debe indicar el motivo por el que se limpian los pesos del lote.';
 		} else {
 			// Obtiene los pesos actuales: sirven para validar la operación y para dejar
 			// registro de lo que se anuló en el cambios_log del lote.
@@ -28383,7 +28395,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 											. ' | Bruto: ' . (($row_pesos["peso_bruto"] === null) ? '(vacío)' : $row_pesos["peso_bruto"]),
 					"valor_resultante" => 'Tara: (vacío) | Bruto: (vacío)',
 					"usuario"          => $usuario_registro,
-					"motivo"           => 'Limpieza de pesos desde Resumen de Balanza'
+					"motivo"           => $motivo
 				);
 
 				$json_log = mysqli_real_escape_string($enlace, json_encode($cambios_log, JSON_UNESCAPED_UNICODE));
