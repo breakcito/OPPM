@@ -13,13 +13,20 @@ Archivo backend: \apis\backend.php
 
 ==================================================
 
-Módulo de Programación de despachos: C:\wamp64\www\oppmerp\despachossegundotramo_programacion.php
-- Tanto al registrar una programacion de despachos, como al editar el código de despacho de cabecera o de cada lote o en bloque, permite que el usuario pueda escribir/digitar lo que quiera. Es decir, si bien el sistema al generar automaticamente los codigos los hace en funcion a ciertas reglas, permite que el usuario al digitar manualmente pueda colocar lo que quiera.
+Modulo de Resumen de Balanza: C:\wamp64\www\oppmerp\resumen_balanza_prev.php
 
-Cases relevantes del modulo a revisar:
-- get_DespachosProgramacion_ListaProgramaciones
-- get_Programacion_CodigosSugeridos
-- get_LotesProgramadosParaDespacho
-- confirmar_ProgramacionLote
-- grabar_ProgramacionDespachos_EditarCodigoDespachoLote
-- grabar_ProgramacionDespachos_EditarCodigoDespachoCabecera
+Para aquellos registros cuyo tipo de ingreso es para DESPACHO DE MINERAL que provienen de la tabla de despachos_segundotramo_distribucion_lotes, si es que tiene el campo de peso_tara o peso_bruto llenos, entonces en el grupo de la tabla 'tbl_detalle' en el grupo de 'Información de Lotes' en la subcolumna de 'Cód. Lote' muestra un boton abajo del codigo que diga 'Limpiar pesos' que lo que haga sea colocar los siguientes campos de ese registro de la tabla mencionada en null:
+
+    peso_tara
+    peso_tara_fechahoraregistro
+    peso_tara_usuarioregistro
+    peso_bruto
+    peso_bruto_fechahoraregistro
+    peso_bruto_usuarioregistro
+    peso_neto
+
+Recuerda sincronizar los datos del ticket contable para que esta informacion no vaya a ser herrada o diferente.
+
+Cases relevantes usados del backend:
+- get_ListaResumenBalanza -> usado para listar registros de diferentes estapas, entre ellas, los registros de despacho
+- grabar_EditBalanza -> usado para editar la info de lotes. 

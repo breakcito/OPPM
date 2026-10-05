@@ -3195,9 +3195,10 @@
 	    	var _id_emp = $("#filtro_empresitas").val();
 	    	var _id_emp_int = parseInt(_id_emp, 10);
 
-	    	// Si no hay filtro, mostrar todas las filas
+	    	// Mostrar todas las filas
 	    	if (isNaN(_id_emp_int) || _id_emp_int <= 0){
 	    		$("#tbl_detalle tr").show();
+	    		f_OcultarFilasPesosLimpiados();
 	    		return;
 	    	}
 
@@ -3219,6 +3220,15 @@
 	    			_row.hide();
 	    		}
 	    	});
+
+	    	// Los lotes cuyos pesos ya fueron limpiados deben seguir ocultos, aunque su
+	    	// Empresita coincida con el filtro seleccionado.
+	    	f_OcultarFilasPesosLimpiados();
+	    }
+
+	    // Mantiene ocultas las filas de los lotes a los que se les limpió los pesos.
+	    function f_OcultarFilasPesosLimpiados(){
+	    	$("#tbl_detalle tr[data-limpio_pesos='1']").hide();
 	    }
 
       function f_SelectListaEncargadosMuestra(_id_encargadomuestra){
@@ -3978,6 +3988,36 @@
 
           }, "json");
 			}
+
+			function f_LimpiarPesosLote(_elem, _id_registro){
+				// _elem        - botón que dispara la acción, se usa para ubicar la fila del lote.
+				// _id_registro - Id de despachos_segundotramo_distribucion_lotes
+					if (!confirm("¿Está seguro de limpiar los pesos (Tara y Bruto) del lote?\n\nEsta acción no se puede deshacer.")){
+						return;
+					}
+
+					$.post( "apis/backend.php", { accion: "grabar_LimpiarPesosLote", id_registro: _id_registro },
+					function( data ) {
+						if (data.estado == 1){
+							// Una vez limpiados los pesos, el lote sale del resumen de balanza porque
+							// el backend lo filtra por la fecha de pesaje (peso_tara_fechahoraregistro).
+							// Por eso la fila se oculta directamente, sin recargar toda la lista.
+							//
+							// NO se usa remove()/detach(): las filas de esta tabla se identifican con
+							// ids posicionales (chk_isdescargado_1_<n>, id_trlote_<n>, etc.) que
+							// f_ConfirmarDescarga recorre con un contador correlativo al orden de las
+							// filas. Si se eliminara una fila del medio, ese contador dejaría de
+							// coincidir con los ids y el último lote marcado no se cerraría.
+							// La fila se marca con data-limpio_pesos para que siga oculta aunque se
+							// vuelva a aplicar el filtro de Empresitas.
+							$(_elem).closest('tr').attr('data-limpio_pesos', '1').hide();
+
+							return;
+						}
+
+						alert((typeof data.mensaje == 'undefined' || data.mensaje == '') ? "Ocurrió un error al momento de limpiar los pesos." : data.mensaje);
+					}, "json");
+				}
 
 			function f_UpdateDatos(_item, _orden_campo) {
 				// Obtiene Id

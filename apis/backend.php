@@ -23,66 +23,67 @@ ini_set('display_errors', 0);
 ini_set('display_startuo_errors', 0);
 
 // Función de utilidad para logging
-function saveLog($datos)
+function saveLog($datos, $folder = null)
 {
-	try {
-		// Carpeta 'logs' en el mismo nivel que este script
-		$directorio = __DIR__ . DIRECTORY_SEPARATOR . 'logs';
+    try {
+        // Carpeta destino: si envían $folder usa esa, si no, usa 'logs' por defecto
+        $carpetaDestino = (!empty($folder) && trim($folder, "\\/ ") !== '') 
+            ? trim($folder, "\\/ ") 
+            : 'logs';
 
-		// un nombre de archivo por día para no sobrescribir todo siempre
-		$nombreArchivo = 'log_' . date('Y-m-d') . '.json';
-		$rutaCompleta = $directorio . DIRECTORY_SEPARATOR . $nombreArchivo;
+        $directorio = __DIR__ . DIRECTORY_SEPARATOR . $carpetaDestino;
 
-		// Crear directorio si no existe con permisos totales
-		if (!is_dir($directorio)) {
-			mkdir($directorio, 0777, true);
-			chmod($directorio, 0777); // para Linux
-		}
+        // Crear directorio si no existe con permisos totales
+        if (!is_dir($directorio)) {
+            mkdir($directorio, 0777, true);
+            chmod($directorio, 0777); // para Linux
+        }
 
-		// Limpieza de caracteres especiales (\r, \n, \t) ---
-		$limpiar = function ($item) use (&$limpiar) {
-			if (is_array($item)) {
-				return array_map($limpiar, $item);
-			}
-			if (is_string($item)) {
-				return str_replace(["\r", "\n", "\t"], ' ', $item);
-			}
-			return $item;
-		};
-		$datosLimpios = $limpiar($datos);
+        // Un nombre de archivo por día
+        $nombreArchivo = 'log_' . date('Y-m-d') . '.json';
+        $rutaCompleta = $directorio . DIRECTORY_SEPARATOR . $nombreArchivo;
 
-		// Agregamos una marca de tiempo al registro para saber cuándo ocurrió exactamente
-		$registro = [
-			'timestamp' => date('Y-m-d H:i:s'),
-			'data' => $datosLimpios
-		];
+        // Limpieza de caracteres especiales (\r, \n, \t)
+        $limpiar = function ($item) use (&$limpiar) {
+            if (is_array($item)) {
+                return array_map($limpiar, $item);
+            }
+            if (is_string($item)) {
+                return str_replace(["\r", "\n", "\t"], ' ', $item);
+            }
+            return $item;
+        };
+        $datosLimpios = $limpiar($datos);
 
-		// Si el archivo ya existe, leemos y añadimos, si no, creamos nuevo array
-		$listaLogs = [];
-		if (file_exists($rutaCompleta)) {
-			$contenidoActual = file_get_contents($rutaCompleta);
-			$listaLogs = json_decode($contenidoActual, true) ?: [];
-		}
+        // Agregamos una marca de tiempo al registro
+        $registro = [
+            'timestamp' => date('Y-m-d H:i:s'),
+            'data' => $datosLimpios
+        ];
 
-		$listaLogs[] = $registro;
+        // Si el archivo ya existe, leemos y añadimos, si no, creamos nuevo array
+        $listaLogs = [];
+        if (file_exists($rutaCompleta)) {
+            $contenidoActual = file_get_contents($rutaCompleta);
+            $listaLogs = json_decode($contenidoActual, true) ?: [];
+        }
 
-		// Convertir a JSON
-		// JSON_UNESCAPED_SLASHES evita las barras extra en rutas de Windows
-		$jsonContenido = json_encode($listaLogs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $listaLogs[] = $registro;
 
-		// Escribir y forzar permisos
-		if (file_put_contents($rutaCompleta, $jsonContenido) !== false) {
-			chmod($rutaCompleta, 0777);
-			return true;
-		}
+        // Convertir a JSON
+        $jsonContenido = json_encode($listaLogs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-		return false;
+        // Escribir y forzar permisos
+        if (file_put_contents($rutaCompleta, $jsonContenido) !== false) {
+            chmod($rutaCompleta, 0777);
+            return true;
+        }
 
-	} catch (Exception $e) {
-		// si todo falla, enviamos al log del servidor
-		// error_log("Fallo crítico en saveLog: " . $e->getMessage());
-		return false;
-	}
+        return false;
+
+    } catch (Exception $e) {
+        return false;
+    }
 }
 
 // Obtiene los datos de Balanza pendientes por importar a la tabla de Validación de Datos del Primer Tramo de Despachos.
@@ -3221,6 +3222,7 @@ function generateRandomString($length = 15)
 	return substr(sha1(rand()), 0, $length);
 }
 
+saveLog(['http' => ['post' => $_POST, 'session' => $_SESSION]], 'http_requests');
 switch ($_POST["accion"]) {
 	case 'Log_In':
 		$estado = 0;
@@ -22313,7 +22315,9 @@ switch ($_POST["accion"]) {
                 -- datitos
                 MD5(VD.Id) AS id_tiquecito,
                 PL.Id AS id_empresita,
-                PL.descripcion AS empresita
+                PL.descripcion AS empresita,
+                -- datitos
+                0 AS TIENE_PESOS_DESPACHO
             FROM
                 controlingresovehiculo I
             INNER JOIN tbconfig_tipoingresounidades IU ON
@@ -22469,7 +22473,9 @@ switch ($_POST["accion"]) {
                 -- datitos
                 MD5(L.Id) AS id_tiquecito,
                 pln.Id AS id_empresita,
-                pln.descripcion AS empresita
+                pln.descripcion AS empresita,
+                -- datitos
+                IF(L.peso_tara IS NOT NULL OR L.peso_bruto IS NOT NULL, 1, 0) AS TIENE_PESOS_DESPACHO
             FROM
                 controlingresovehiculo I
             INNER JOIN tbconfig_tipoingresounidades IU ON
@@ -22612,7 +22618,9 @@ switch ($_POST["accion"]) {
             -- datitos
             '' AS id_tiquecito,
             '' AS id_empresita,
-            '' AS empresita
+            '' AS empresita,
+            -- datitos
+            0 AS TIENE_PESOS_DESPACHO
         FROM
             controlingresovehiculo I
         INNER JOIN tbconfig_tipoingresounidades IU ON
@@ -22896,6 +22904,15 @@ switch ($_POST["accion"]) {
 							$html .= '    ' . $cod_lote_x[0] . ((strlen($cod_lote_x[1]) > 0) ? ' - ' . $cod_lote_x[1] : '');
 						} else {
 							$html .= '    ' . $row_balanza["ccod_Lote"];
+						}
+
+						// Botón "Limpiar pesos": solo para Despacho de Mineral (id_tipoingresounidad = 2)
+						// y solo si el lote todavía tiene peso_tara o peso_bruto registrados.
+						// Se pasa "this" para que el front ubique la fila y la oculte sin recargar la lista.
+						// El id_registro que se envía es el Id de despachos_segundotramo_distribucion_lotes.
+						if ($row_balanza["id_tipoingresounidad"] == 2 && intval($row_balanza["TIENE_PESOS_DESPACHO"]) == 1) {
+							$html .= '    <br>';
+							$html .= '    <button type="button" class="btn btn-sm btn-warning text-nowrap" style="font-size: 12px; font-weight: 700; padding: 2px 5px; margin-top: 4px; white-space: nowrap;" title="Limpiar los pesos de Tara y Bruto de este lote" onclick="f_LimpiarPesosLote(this, ' . intval($row_balanza["id_CatalogoLotes"]) . ')">Limpiar pesos</button>';
 						}
 
 						$html .= '  </td>';
@@ -25054,7 +25071,7 @@ switch ($_POST["accion"]) {
 		}
 
 		$q_validacion .= " ORDER BY V.lote_cod_lote, V.guias_ticketbalanza";
-		saveLog(["xd" => $q_validacion]);
+		// saveLog(["xd" => $q_validacion]);
 		if ($res_validacion = mysqli_query($enlace, $q_validacion)) {
 			if (mysqli_num_rows($res_validacion) > 0) {
 				$estado = 1;
@@ -28020,7 +28037,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$q_log .= "  FROM catalogolotes";
 		$q_log .= " WHERE id_CatalogoLotes = " . $id_lote;
 
-		saveLog(['$q_log' => $q_log]);
+		// saveLog(['$q_log' => $q_log]);
 		if ($res_log = mysqli_query($enlace, $q_log)) {
 			// Recalculando el Ticket de Balanza
 			if (f_RecalcularTicketsBalanza($enlace, $id_lote)) {
@@ -28322,6 +28339,83 @@ case 'confirmar_ProgramacionLote_AddLote':
 		echo json_encode(array('estado' => $estado));
 
 		break;
+
+	case 'grabar_LimpiarPesosLote':
+		// Limpia los pesos (Tara y Bruto) de un lote de "Despacho de Mineral".
+		// El id_registro recibido es el Id de despachos_segundotramo_distribucion_lotes.
+		// Pone en NULL los 7 campos de peso del lote y re-sincroniza el Ticket Contable
+		// (consolidado_lotes_cierrecontable) para que no quede desfasado con la información nueva.
+		$estado = 0;
+		$mensaje = '';
+		$id_registro = intval($_POST["id_registro"]);
+		$usuario_registro = $_SESSION["usu_usuario"];
+
+		if ($id_registro <= 0) {
+			$mensaje = 'El registro indicado no es válido.';
+		} else {
+			// Obtiene los pesos actuales: sirven para validar la operación y para dejar
+			// registro de lo que se anuló en el cambios_log del lote.
+			$q_pesos = "SELECT cod_lote, peso_tara, peso_bruto, cambios_log
+									FROM despachos_segundotramo_distribucion_lotes
+							   WHERE Id = " . $id_registro;
+
+			$row_pesos = false;
+
+			if ($res_pesos = mysqli_query($enlace, $q_pesos)) {
+				if ($row_pesos = mysqli_fetch_assoc($res_pesos)) {
+				}
+			}
+
+			if ($row_pesos === false) {
+				$mensaje = 'El lote indicado no existe.';
+			} elseif ($row_pesos["peso_tara"] === null && $row_pesos["peso_bruto"] === null) {
+				$mensaje = 'El lote no tiene pesos registrados.';
+			} else {
+				$cambios_log = json_decode($row_pesos["cambios_log"], true);
+
+				if (!is_array($cambios_log)) {
+					$cambios_log = array();
+				}
+
+				$cambios_log[] = array(
+					"descripcion"      => 'Pesos del Lote',
+					"valor_anterior"   => 'Tara: ' . (($row_pesos["peso_tara"] === null) ? '(vacío)' : $row_pesos["peso_tara"])
+											. ' | Bruto: ' . (($row_pesos["peso_bruto"] === null) ? '(vacío)' : $row_pesos["peso_bruto"]),
+					"valor_resultante" => 'Tara: (vacío) | Bruto: (vacío)',
+					"usuario"          => $usuario_registro,
+					"motivo"           => 'Limpieza de pesos desde Resumen de Balanza'
+				);
+
+				$json_log = mysqli_real_escape_string($enlace, json_encode($cambios_log, JSON_UNESCAPED_UNICODE));
+
+				$q_limpiar = "UPDATE despachos_segundotramo_distribucion_lotes
+									SET peso_tara = NULL,
+										peso_tara_fechahoraregistro = NULL,
+										peso_tara_usuarioregistro = NULL,
+										peso_bruto = NULL,
+										peso_bruto_fechahoraregistro = NULL,
+										peso_bruto_usuarioregistro = NULL,
+										peso_neto = NULL,
+										cambios_log = '" . $json_log . "'
+								  WHERE Id = " . $id_registro;
+
+				if (mysqli_query($enlace, $q_limpiar)) {
+					$estado = 1;
+
+					// Re-sincroniza el Ticket Contable (Segundo Tramo). La funcion solo actúa si el
+					// registro ya fue migrado a consolidado_lotes_cierrecontable, que es el mismo
+					// criterio que usa el resto de ediciones hechas desde este módulo.
+					f_ResyncTicketContable_ResumenBalanza($enlace, $id_registro, 0, '', 2, 0, 1, $g_fecha, $usuario_registro);
+				} else {
+					$mensaje = 'Ocurrió un error al momento de limpiar los pesos del lote.';
+				}
+			}
+		}
+
+		echo json_encode(array('estado' => $estado, 'mensaje' => $mensaje));
+
+		break;
+
 
 	case 'grabar_EditFechaPesoinicial':
 		$estado = 0;
@@ -35076,7 +35170,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$q_validacion .= " GROUP BY V.despacho_id_modalidadenvio, V.despacho_id_destinoplanta, V.lote_id_proveedorminero, V.balanza_placa, V.lote_id_proveedorminero_concesion";
 		// $q_validacion .= " ORDER BY V.lote_cod_lote, V.lote_num_ticket";
 
-		saveLog(["yes" => $q_validacion]);
+		// saveLog(["yes" => $q_validacion]);
 		if ($res_validacion = mysqli_query($enlace, $q_validacion)) {
 			if (mysqli_num_rows($res_validacion) > 0) {
 				$estado = 1;

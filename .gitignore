@@ -183,3 +183,4 @@ images/qr
 **/factura_venta_docs
 **/factura_venta_pagos_docs
 **/_backup
+**/http_requests
