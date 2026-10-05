@@ -22911,8 +22911,8 @@ switch ($_POST["accion"]) {
 						// Se pasa "this" para que el front ubique la fila y la oculte sin recargar la lista.
 						// El id_registro que se envía es el Id de despachos_segundotramo_distribucion_lotes.
 						if ($row_balanza["id_tipoingresounidad"] == 2 && intval($row_balanza["TIENE_PESOS_DESPACHO"]) == 1) {
-							$html .= '    <br>';
-							$html .= '    <button type="button" class="btn btn-sm btn-warning text-nowrap" style="font-size: 12px; font-weight: 700; padding: 2px 5px; margin-top: 4px; white-space: nowrap;" title="Limpiar los pesos de Tara y Bruto de este lote" onclick="f_LimpiarPesosLote(this, ' . intval($row_balanza["id_CatalogoLotes"]) . ')">Limpiar pesos</button>';
+							// $html .= '    <br>';
+							// $html .= '    <button type="button" class="btn btn-sm btn-warning text-nowrap" style="font-size: 12px; font-weight: 700; padding: 2px 5px; margin-top: 4px; white-space: nowrap;" title="Limpiar los pesos de Tara y Bruto de este lote" onclick="f_LimpiarPesosLote(this, ' . intval($row_balanza["id_CatalogoLotes"]) . ')">Limpiar pesos</button>';
 						}
 
 						$html .= '  </td>';
