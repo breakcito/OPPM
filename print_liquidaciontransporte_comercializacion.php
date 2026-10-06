@@ -281,11 +281,11 @@ if ($res_datos = mysqli_query($enlace, $q_datos)) {
 				$codigo_despacho_comercializacion = $row_datos["codigo_despacho_comercializacion"];
 
 				// Código de despacho completo para la impresión: código de despacho + código de comercialización
-				$codigo_despacho_impresion = (strlen(trim($codigo_despacho)) > 0) ? trim($codigo_despacho) : trim($codigo_despacho_comercializacion);
+				$codigo_despacho_impresion = (strlen(trim($codigo_despacho_comercializacion)) > 0) ? trim($codigo_despacho_comercializacion) : '-';
 
-				if (strlen(trim($codigo_despacho_comercializacion)) > 0 && trim($codigo_despacho_comercializacion) != trim($codigo_despacho)) {
-					$codigo_despacho_impresion .= ' / ' . trim($codigo_despacho_comercializacion);
-				}
+				// if (strlen(trim($codigo_despacho_comercializacion)) > 0 && trim($codigo_despacho_comercializacion) != trim($codigo_despacho)) {
+				// 	$codigo_despacho_impresion .= ' / ' . trim($codigo_despacho_comercializacion);
+				// }
 				$transportista_ruc = $row_datos["TRANSPORTISTA_RUC"];
 				$transportista_razonsocial = $row_datos["TRANSPORTISTA_RAZONSOCIAL"];
 				$placa1 = $row_datos["PLACA1"];
