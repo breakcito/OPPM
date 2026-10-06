@@ -33,6 +33,8 @@ Eso ya esta. Para guardar esa informacion de quien hace esa limpieza, la tabla d
 
 Nota: SweetAlert2 se cargo por CDN en el head de resumen_balanza_prev.php porque el proyecto no lo tenia antes. El motivo (y el resto de campos del cambios_log) se escapan con f_EscapeHtml antes de inyectarse en el modal f_VerLogCambios.
 
+El permiso 'puede_limpiar_pesos' es configurable desde el modulo de usuarios (admin_usuarios.php): checkbox 'Puede limpiar pesos de lotes' dentro del modal de Alta/Edicion de usuario, columna 'Limpiar Pesos' (Si/No) en el listado, y se graba por el case 'grabar_usuario'. Como el permiso se cambia en caliente, get_ListaResumenBalanza refresca el valor de la sesion desde la base de datos en cada carga de la lista, y grabar_LimpiarPesosLote revalida contra la tabla (no solo contra la sesion). Asi el permiso surte efecto sin exigir cerrar la sesion.
+
 Cases relevantes usados del backend:
 - get_ListaResumenBalanza -> usado para listar registros de diferentes estapas, entre ellas, los registros de despacho
 - grabar_EditBalanza -> usado para editar la info de lotes. 

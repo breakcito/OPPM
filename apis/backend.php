@@ -4437,8 +4437,9 @@ switch ($_POST["accion"]) {
 															U.id_empleado,
 															E.nombres,
 															E.apellido_paterno,
-															CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
-															U.estado
+CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
+														IFNULL(U.puede_limpiar_pesos, 0) AS puede_limpiar_pesos,
+														U.estado
 												 FROM tb_usuario U
 															INNER JOIN tb_empleados E ON U.id_empleado = E.Id
 															INNER JOIN tb_rol R ON U.cod_rol = R.Id
@@ -4515,6 +4516,10 @@ switch ($_POST["accion"]) {
 		$usu_clave = mysqli_real_escape_string($enlace, $_POST["usu_clave"]);
 		$usu_empleado = mysqli_real_escape_string($enlace, $_POST["usu_empleado"]);
 
+		// Permiso para limpiar los pesos (Tara/Bruto) de los lotes de Despacho de Mineral
+		// desde el Resumen de Balanza. Se administra en admin_usuarios.php.
+		$puede_limpiar_pesos = intval($_POST["puede_limpiar_pesos"]) == 1 ? 1 : 0;
+
 		// Valida que el DNI / RUC ingresado no haya sido ingresado antes
 		$q_exists = "SELECT  COUNT(Id) AS _COUNT
 											 FROM  tb_usuario
@@ -4536,8 +4541,8 @@ switch ($_POST["accion"]) {
 			}
 
 			// Guardando datos
-			$q_save = "INSERT INTO tb_usuario (cod_rol, cod_sucursal, usu_usuario, pas_usuario, id_empleado)
-											VALUES ($usu_rol, $usu_sucursal, '$usu_usuario', MD5('$usu_clave'), '$usu_empleado')";
+			$q_save = "INSERT INTO tb_usuario (cod_rol, cod_sucursal, usu_usuario, pas_usuario, id_empleado, puede_limpiar_pesos)
+											VALUES ($usu_rol, $usu_sucursal, '$usu_usuario', MD5('$usu_clave'), '$usu_empleado', $puede_limpiar_pesos)";
 		} else {
 			// Valida que el Usuario ingresado no haya sido ingresado antes
 			$q_exists .= "   AND Id <> $id_usuario";
@@ -4560,7 +4565,8 @@ switch ($_POST["accion"]) {
 			$q_save .= " cod_rol = $usu_rol, ";
 			$q_save .= " cod_sucursal = $usu_sucursal, ";
 			$q_save .= " usu_usuario = '$usu_usuario', ";
-			$q_save .= " id_empleado = $usu_empleado";
+			$q_save .= " id_empleado = $usu_empleado, ";
+			$q_save .= " puede_limpiar_pesos = $puede_limpiar_pesos";
 			$q_save .= " WHERE Id = $id_usuario";
 		}
 
@@ -22208,6 +22214,21 @@ switch ($_POST["accion"]) {
 		$res = array();
 		$estado = 0;
 
+		// Refresca el permiso "puede_limpiar_pesos" desde la base de datos. Ese permiso se
+		// administra en admin_usuarios.php, así que de esta forma un permiso dado o quitado
+		// surte efecto en la siguiente carga de la lista, sin exigir cerrar la sesión.
+		if (isset($_SESSION["usu_usuario"]) && strlen($_SESSION["usu_usuario"]) > 0) {
+			$q_permiso = "SELECT IFNULL(puede_limpiar_pesos, 0) AS _PERMISO
+										FROM tb_usuario
+								   WHERE usu_usuario = '" . mysqli_real_escape_string($enlace, $_SESSION["usu_usuario"]) . "'";
+
+			if ($res_permiso = mysqli_query($enlace, $q_permiso)) {
+				if ($row_permiso = mysqli_fetch_assoc($res_permiso)) {
+					$_SESSION["puede_limpiar_pesos"] = $row_permiso["_PERMISO"];
+				}
+			}
+		}
+
 		// Recupera parámetros
 		$fecha_inicio = mysqli_real_escape_string($enlace, $_POST['fecha_inicio']);
 		$fecha_fin = mysqli_real_escape_string($enlace, $_POST['fecha_fin']);
@@ -28357,8 +28378,23 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$usuario_registro = $_SESSION["usu_usuario"];
 
 		// Validación del permiso: el botón en el front solo se pinta cuando la sesión tiene
-		// puede_limpiar_pesos = 1, pero se revalida acá para que la operación no dependa del front.
-		if (intval($_SESSION["puede_limpiar_pesos"]) != 1) {
+		// puede_limpiar_pesos = 1, pero se revalida contra la base de datos (fuente real) para
+		// que quitar el permiso en admin_usuarios.php surta efecto de inmediato.
+		$puede_limpiar_pesos = 0;
+		$q_permiso = "SELECT IFNULL(puede_limpiar_pesos, 0) AS _PERMISO
+									FROM tb_usuario
+							   WHERE usu_usuario = '" . mysqli_real_escape_string($enlace, $usuario_registro) . "'";
+
+		if ($res_permiso = mysqli_query($enlace, $q_permiso)) {
+			if ($row_permiso = mysqli_fetch_assoc($res_permiso)) {
+				$puede_limpiar_pesos = intval($row_permiso["_PERMISO"]);
+			}
+		}
+
+		// Se deja la sesión al día para que el front no muestre el botón tras un cambio.
+		$_SESSION["puede_limpiar_pesos"] = $puede_limpiar_pesos;
+
+		if ($puede_limpiar_pesos != 1) {
 			$mensaje = 'Ud. no tiene permiso para limpiar los pesos de los lotes.';
 		} elseif ($id_registro <= 0) {
 			$mensaje = 'El registro indicado no es válido.';

@@ -100,6 +100,10 @@
 					        				Estado
 					        			</th>
 
+					        			<th style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle;">
+					        				Limpiar Pesos
+					        			</th>
+
 					        			<th style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle; border-top-right-radius: 15px;">
 					        				Acción
 					        			</th>
@@ -215,6 +219,24 @@
 
 							<div class="col-md-8 col-sm-8 col-xs-8">
 								<input id="usu_usuario" type="text" class="form-control col-md-12 col-xs-12" style="text-align: center;">
+							</div>
+						</div>
+
+						<div class="d-flex" style="padding: 5px;">
+							<div class="col-md-4 col-sm-4 col-xs-4" style="padding: 5px;">
+								Permisos:
+							</div>
+
+							<div class="col-md-8 col-sm-8 col-xs-8" style="padding: 8px 5px;">
+								<div class="form-check">
+									<input id="usu_puede_limpiar_pesos" class="form-check-input" type="checkbox" style="transform: scale(1.4); margin-top: 0.35em;">
+									<label class="form-check-label" for="usu_puede_limpiar_pesos" style="font-size: 14px; line-height: 1.2;">
+										Puede limpiar pesos de lotes
+										<span style="display: block; font-size: 12px; color: #6c757d; font-weight: 400; margin-top: 2px;">
+											Muestra el botón "Limpiar pesos" en el Resumen de Balanza (Despacho de Mineral). Al usarlo se pide un motivo y queda registrado en el historial del lote.
+										</span>
+									</label>
+								</div>
 							</div>
 						</div>
 
@@ -346,10 +368,22 @@
                   _html += '      ' + ((val.estado == 'A') ? 'Activo' : 'Inactivo');
                   _html += '  </td>';
 
+                // Permiso de limpieza de pesos (Resumen de Balanza)
+                  if (parseInt(val.puede_limpiar_pesos, 10) == 1){
+                    _html += '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
+                    _html += '      <span title="Puede limpiar los pesos de los lotes" style="display: inline-block; background-color: #44803F; color: #ffffff; border-radius: 4px; padding: 2px 10px; font-size: 12px; font-weight: 600;">Sí</span>';
+                    _html += '  </td>';
+                  }
+                  else{
+                    _html += '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
+                    _html += '      <span title="No puede limpiar los pesos de los lotes" style="font-size: 12px; color: #adb5bd;">No</span>';
+                    _html += '  </td>';
+                  }
+
                 // Agregando acciones
                   _html += '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: left;">';
 
-                  _html += '      <a class="success" href="javascript: f_AdminUsuario(' + d + ', ' + val.Id + ', ' + val.cod_rol	+ ', ' + val.cod_sucursal + ", '" + val.usu_usuario + "', " + val.id_empleado + ')"><i class="bi bi-pencil-square"></i>';
+                  _html += '      <a class="success" href="javascript: f_AdminUsuario(' + d + ', ' + val.Id + ', ' + val.cod_rol	+ ', ' + val.cod_sucursal + ", '" + val.usu_usuario + "', " + val.id_empleado + ', ' + ((parseInt(val.puede_limpiar_pesos, 10) == 1) ? '1' : '0') + ')"><i class="bi bi-pencil-square"></i>';
                   _html += '          <font style="color: #337ab7;"> Editar</font>';
                   _html += '      </a>';
 
@@ -387,7 +421,7 @@
           }, "json");
     	};
 
-    	function f_AdminUsuario(_item, _id_usuario, _cod_rol, _cod_sucursal, _usu_usuario, _id_empleado){
+    	function f_AdminUsuario(_item, _id_usuario, _cod_rol, _cod_sucursal, _usu_usuario, _id_empleado, _puede_limpiar_pesos){
     		// Definiendo título de ventana e Inicilizando controles de tipo texto
           if (_item != 'x'){
             tipo = "E";
@@ -414,20 +448,22 @@
             $("#usu_usuario").val(f_CleanInjection(_usu_usuario));
             $("#usu_clave1").val('******');
             $("#usu_clave2").val('******');
-		        $("#usu_empleado").val(_id_empleado);
-		        $("#usu_empleado").trigger('change');
+$("#usu_empleado").val(_id_empleado);
+	        $("#usu_empleado").trigger('change');
+	        $("#usu_puede_limpiar_pesos").prop('checked', (parseInt(_puede_limpiar_pesos, 10) == 1));
 
-	          $("#usu_clave1").prop('disabled', true);
-	          $("#usu_clave2").prop('disabled', true);
-			    }
-			    else{
-			    	$("#hd_idusuario").val(0);
-		        $("#usu_rol").val('');
-		        $("#usu_sucursal").val('');
-		        $("#usu_usuario").val('');
-		        $("#usu_clave1").val('');
-		        $("#usu_clave2").val('');
-		        $("#usu_empleado").val('');
+          $("#usu_clave1").prop('disabled', true);
+          $("#usu_clave2").prop('disabled', true);
+		    }
+		    else{
+		    	$("#hd_idusuario").val(0);
+	        $("#usu_rol").val('');
+	        $("#usu_sucursal").val('');
+	        $("#usu_usuario").val('');
+	        $("#usu_clave1").val('');
+	        $("#usu_clave2").val('');
+	        $("#usu_empleado").val('');
+	        $("#usu_puede_limpiar_pesos").prop('checked', false);
 
 		        $("#usu_clave1").prop('disabled', false);
 		        $("#usu_clave2").prop('disabled', false);
@@ -496,6 +532,7 @@
             var usu_clave1 = f_CleanInjection($("#usu_clave1").val());
             var usu_clave2 = f_CleanInjection($("#usu_clave2").val());
             var usu_empleado = f_CleanInjection($("#usu_empleado").val());
+            var usu_puede_limpiar_pesos = $("#usu_puede_limpiar_pesos").is(':checked') ? 1 : 0;
 
           // Validando datos
               if (usu_rol == null){
@@ -587,7 +624,7 @@
               }
 
           // Grabando Datos
-            $.post( "apis/backend.php", { accion: "grabar_usuario", id_usuario: id_usuario, modo_grabar: modo_grabar, usu_rol: usu_rol, usu_sucursal: usu_sucursal, usu_usuario: usu_usuario, usu_clave: usu_clave1, usu_empleado: usu_empleado },
+            $.post( "apis/backend.php", { accion: "grabar_usuario", id_usuario: id_usuario, modo_grabar: modo_grabar, usu_rol: usu_rol, usu_sucursal: usu_sucursal, usu_usuario: usu_usuario, usu_clave: usu_clave1, usu_empleado: usu_empleado, puede_limpiar_pesos: usu_puede_limpiar_pesos },
               function( data ) {
                 if (data.estado == 2){
                   alert("El Usuario ingresado ya fue registrado anteriormente, por favor verificar");
