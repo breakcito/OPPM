@@ -429,7 +429,12 @@ LEFT JOIN tbconfig_producto PR ON V.lote_id_producto = PR.Id
 LEFT JOIN tbconfig_tipomineral TM ON V.lote_id_tipomineral = TM.Id
 LEFT JOIN consolidado_lotes_cierrecontable CL ON DL.Id = CL.id_registro AND CL.id_tipoingreso = 2
 
-LEFT JOIN tb_usuario usu ON usu.usu_usuario = DL.peso_tara_usuarioregistro
+LEFT JOIN tb_usuario usu ON 
+	usu.usu_usuario = DL.peso_tara_usuarioregistro OR 
+    usu.usu_usuario = DL.peso_bruto_usuarioregistro OR 
+    usu.Id = CL.fechahora_usuario OR 
+    usu.usu_usuario = CL.fechahora_usuario
+    
 LEFT JOIN tb_empleados emp ON emp.Id = usu.id_empleado 
 
 WHERE MD5(DL.Id) = '" . $id_md5 . "'";
