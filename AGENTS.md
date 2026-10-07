@@ -15,26 +15,12 @@ Archivo backend: \apis\backend.php
 
 Modulo de Resumen de Balanza: C:\wamp64\www\oppmerp\resumen_balanza_prev.php
 
-Para aquellos registros cuyo tipo de ingreso es para DESPACHO DE MINERAL que provienen de la tabla de despachos_segundotramo_distribucion_lotes, si es que tiene el campo de peso_tara o peso_bruto llenos, entonces en el grupo de la tabla 'tbl_detalle' en el grupo de 'Información de Lotes' en la subcolumna de 'Cód. Lote' muestra un boton abajo del codigo que diga 'Limpiar pesos' que lo que hace es colocar los siguientes campos de ese registro de la tabla mencionada en null:
+Para aquellos registros cuyo tipo de ingreso es RECEPCION DE MINERAL, necesito que al igual que en el modulo de Validacion y Distribucion 'C:\wamp64\www\oppmerp\primertramo_distribucion.php' cuando se modifica la informacion de cada lote utilizando el case de 'update_PrimerTramo_DistribucionDatos' y realiza el proceso de cierre del lote nuevamente para que los datos se actualicen correctamente. Sin embargo, el modulo de validacion y distribucion aunque permite editar y actualiza los datos contables, NO ACTUALIZA LA TABLA DE catalogolotes para que sean equivalentes.
 
-    peso_tara
-    peso_tara_fechahoraregistro
-    peso_tara_usuarioregistro
-    peso_bruto
-    peso_bruto_fechahoraregistro
-    peso_bruto_usuarioregistro
-    peso_neto
-
-Eso ya esta. Para guardar esa informacion de quien hace esa limpieza, la tabla de despachos_segundotramo_distribucion_lotes tiene un campo llamado cambios_log similar a como lo hace el case de grabar_EditFechaPesoinicial o grabar_LimpiarPesosLote. Permite ver el historial de cambios en un modal tal cual ya sucede en las fechas.
-
-- Agregar campo de ‘puede_limpiar_pesos’ como tinynt en la tabla de usuarios y solo darle 1 a las cuentas de cmedina, arojash y la de israel huertas, esto ya está. Guardar esta informacion en la sesion de php en el login en este case Log_In. Esto ya esta: tb_usuario.puede_limpiar_pesos + script en cambios.sql, y el case 'Log_In' lo carga en $_SESSION["puede_limpiar_pesos"]
-- En el resumen de balanza solo mostrar el boton de ‘Limpiar pesos’ donde el usuario cuya sesion indique que puede limpiar estos pesos. Esto ya esta: el case 'grabar_LimpiarPesosLote' revalida el permiso en el backend
-- Si el usuario intenta Limpiar los pesos, mostrar un sweetalert done el usuario deba indicar el motivo de esta decision y darle click al boton de confirmar. Esta informacion de por que lo edito, cuando y quien, se guardara en la columna de cambios log. Esto ya esta: f_LimpiarPesosLote en el front pide el motivo con Swal.fire (input textarea + inputValidator) y lo envia a grabar_LimpiarPesosLote, que lo graba en cambios_log
-
-Nota: SweetAlert2 se cargo por CDN en el head de resumen_balanza_prev.php porque el proyecto no lo tenia antes. El motivo (y el resto de campos del cambios_log) se escapan con f_EscapeHtml antes de inyectarse en el modal f_VerLogCambios.
-
-El permiso 'puede_limpiar_pesos' es configurable desde el modulo de usuarios (admin_usuarios.php): checkbox 'Puede limpiar pesos de lotes' dentro del modal de Alta/Edicion de usuario, columna 'Limpiar Pesos' (Si/No) en el listado, y se graba por el case 'grabar_usuario'. Como el permiso se cambia en caliente, get_ListaResumenBalanza refresca el valor de la sesion desde la base de datos en cada carga de la lista, y grabar_LimpiarPesosLote revalida contra la tabla (no solo contra la sesion). Asi el permiso surte efecto sin exigir cerrar la sesion.
+Eso provoca que en el modulo de resumen de balanza, ademas de que no permite modificar el peso NETO cuando en realidad si deberia, no refleja los pesos que realmente deben salir y que son los que si salen en el ticket contable C:\wamp64\www\oppmerp\print_ticketbalanza.php
 
 Cases relevantes usados del backend:
-- get_ListaResumenBalanza -> usado para listar registros de diferentes estapas, entre ellas, los registros de despacho
+- get_ListaResumenBalanza -> usado para listar registros de diferentes estapas, entre ellas, los registros de recepciones
 - grabar_EditBalanza -> usado para editar la info de lotes. 
+
+C:\wamp64\www\oppmerp\global\funciones_cierrecontable.php

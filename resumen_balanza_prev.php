@@ -2967,6 +2967,13 @@ var descripcion = f_EscapeHtml(log.descripcion) || 'Modificación';
 	    			tipo_objeto = 1;
 	    		}
 
+	    		if (_item == 19){
+	    			_etiqueta = 'Peso Neto';
+
+	    			show_inputnumber = 1;
+	    			tipo_objeto = 3;
+	    		}
+
     		// Setea variables ocultas
     			$("#hd_idbalanza").val(_id_registro);
     			$("#hd_edititem").val(_item);
@@ -3847,6 +3854,12 @@ var descripcion = f_EscapeHtml(log.descripcion) || 'Modificación';
 	    			_text = _valor;
 	    		}
 
+	    		if (item == 19){
+	    			_valor = $("#edit_InputNumber").val().trim();
+
+	    			_text = _valor;
+	    		}
+
     		// Validando datos
 	    		if (tipo_objecto == 1){
 		    		// if (_valor == null){
@@ -3877,7 +3890,19 @@ var descripcion = f_EscapeHtml(log.descripcion) || 'Modificación';
 	    		$.post( "apis/backend.php", { accion: "grabar_EditBalanza", id_registro: id_registro, item: item, valor: _valor, condicion_ingreso: condicion_ingreso, tipo_condicion: tipo_condicion },
             function( data ) {
               if(data.estado == 1){
-              	// Actualizando el valor
+               	// El item 19 (Peso Neto) no tiene celda propia: el backend recalcula el BRUTO a partir
+               	// de la TARA y del nuevo neto, asi que quedan modificadas las celdas de Bruto, Tara y
+               	// Neto. Se repinta la fila completa desde la base de datos para que ningun valor
+               	// derivado, ni el onclick de los lapices, quede desactualizado en pantalla.
+              	if (item == 19){
+              		f_cerrarModal("modal_editinfo");
+
+              		f_LoadResultados();
+
+              		return;
+              	}
+
+               	// Actualizando el valor
             			$("#lbl_text_" + item + '_' + id_registro).html(_text);
 
           			// Actualizando el evento Click
@@ -3927,7 +3952,7 @@ var descripcion = f_EscapeHtml(log.descripcion) || 'Modificación';
             			}
               }
               else{
-                alert("Ocurrió un error al momento de grabar los datos.");
+                alert((typeof data.mensaje === 'string' && data.mensaje.length > 0) ? data.mensaje : "Ocurrió un error al momento de grabar los datos.");
               }
 
               f_cerrarModal("modal_editinfo");

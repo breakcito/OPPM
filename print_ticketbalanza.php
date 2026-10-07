@@ -486,6 +486,19 @@ if ($res_balanza = mysqli_query($enlace, $q_balanza)) {
 			$pesofinal_fechahora = $row_balanza["lote_pesofinal_fechahoraregistro"];
 			// $pesofinal_observacion = $row_balanza["pesofinal_observacion"];
 
+			// El PESO NETO se imprime tal como viene registrado en
+			// despachos_primertramo_validaciondatos.lote_peso_neto (o, si ese campo no existiera, en
+			// catalogolotes.nPesoNetoBalanza), que es exactamente lo que devuelve el SELECT de la linea
+			// 401. Antes se imprimia bruto - tara, lo que hacia que el ticket mostrara un neto distinto
+			// del guardado en las tablas y del que muestra el modulo de Resumen de Balanza.
+			// Solo si ambos campos vinieran vacios se recurre a la diferencia, para no imprimir un
+			// comprobante en blanco en lotes que aun no tienen peso neto.
+			$peso_neto = $row_balanza["lote_peso_neto"];
+
+			if ($peso_neto === null || $peso_neto === '') {
+				$peso_neto = abs(floatval($peso_inicial) - floatval($peso_final));
+			}
+
 			// Genera el Código QR
 			$url = $url_lims . 'print_ticketbalanza.php?x=' . $id_md5;
 
@@ -747,7 +760,7 @@ $html .= '			<div class="row" style="margin-top: -5px; margin-left: 10px; text-a
 													</td>
 
 													<td style="width: 50%; text-align: right; font-family: AgencyFBb;">
-														<label>' . number_format((abs($peso_inicial - $peso_final)), 0, '.', ',') . ' Kg</label>
+														<label>' . number_format(floatval($peso_neto), 0, '.', ',') . ' Kg</label>
 													</td>
 												</tr>
 											</table>

@@ -2427,6 +2427,171 @@ function f_GetFechaHoraDespachoReal($enlace, $lote)
 // cierre de lotes sin tener que invocar a este endpoint mediante un POST.
 
 // ----------------------------------------------------------------------------------------------------------
+// Replica en catalogolotes los datos de peso y de fecha de pesaje de un lote del Primer Tramo que se
+// acabou de corregir en despachos_primertramo_validaciondatos.
+//
+// Motivo: el módulo "Validación y Distribución" (primertramo_distribucion.php) edita esos datos a traves
+// del case 'update_PrimerTramo_DistribucionDatos', pero historicamente no escribia de vuelta en
+// catalogolotes. Como el módulo "Resumen de Balanza" arma su grilla desde catalogolotes, terminaba
+// mostrando pesos y fechas viejos, distintos de los que realmente salen en el ticket contable
+// (print_ticketbalanza.php, que se alimenta de despachos_primertramo_validaciondatos).
+//
+// Solo aplica a los lotes del Primer Tramo (Recepción de Mineral): los del Segundo Tramo viven en
+// despachos_segundotramo_distribucion_lotes y no tienen contraparte en catalogolotes.
+//
+// Reglas de cada bloque:
+//   PESOS  - El NETO se COPIA del dato contable (V.lote_peso_neto) para que catalogolotes y
+//            despachos_primertramo_validaciondatos guarden exactamente el mismo valor, que es el que
+//            imprime el ticket contable. Si el contable aun no tiene neto, se deriva como bruto - tara.
+//            Solo escribe si el lote tiene BRUTO y TARA informados: si falta alguno de los dos todavía
+//            no hay un peso neto válido y forzarlos dejaría el lote en un estado incoherente.
+//   FECHAS - catalogolotes las guarda partida (tFechaInicialBalanza/tHoraInicialBalanza y
+//            dFechaFinalBalanza/tHoraFinalBalanza), así que se separan con el mismo criterio que usa
+//            el case 'grabar_EditFechaPesoinicial' del propio "Resumen de Balanza". Los lotes que aún
+//            no pasaron por balanza traen '0000-00-00 00:00:00': en ese caso no se toca nada.
+//
+// La funcion es idempotente: volver a ejecutarla con los mismos valores no altera nada.
+//
+// Parámetros:
+//   $enlace               - conexion mysqli
+//   $id_validaciondatos   - Id de despachos_primertramo_validaciondatos (la fila contable del lote)
+//   $sincronizar_pesos    - true/false, si se deben copiar bruto / tara / neto
+//   $sincronizar_fechas   - true/false, si se deben copiar las fechas/horas de pesaje
+//
+// Devuelve true si catalogolotes quedó actualizado, false en cualquier otro caso.
+// ----------------------------------------------------------------------------------------------------------
+function f_SyncCatalogoLotes_DesdeValidacionDatos($enlace, $id_validaciondatos, $sincronizar_pesos = true, $sincronizar_fechas = false)
+{
+	$id_validaciondatos = intval($id_validaciondatos);
+
+	if ($id_validaciondatos <= 0) {
+		return false;
+	}
+
+	// 1. Localiza el lote de catalogolotes y los datos contables del mismo.
+	//    lote_id_lote es el id_CatalogoLotes; se resuelve tambien por codigo de lote como respaldo
+	//    para los registros antiguos que lo tengan vacio.
+	$q_datos = "SELECT V.lote_id_lote,
+						V.lote_cod_lote,
+						V.lote_peso_inicial,
+						V.lote_peso_final,
+						V.lote_peso_neto,
+						V.lote_pesoinicial_fechahoraregistro,
+						V.lote_pesofinal_fechahoraregistro
+					FROM despachos_primertramo_validaciondatos V
+					WHERE V.Id = " . $id_validaciondatos . "
+					LIMIT 1";
+
+	$id_catalogo_lotes = 0;
+	$cod_lote = '';
+	$peso_inicial = null;
+	$peso_final = null;
+	$peso_neto_contable = null;
+	$fechahora_inicial = '';
+	$fechahora_final = '';
+
+	if ($res_datos = mysqli_query($enlace, $q_datos)) {
+		if ($row_datos = mysqli_fetch_assoc($res_datos)) {
+			$id_catalogo_lotes = intval($row_datos["lote_id_lote"]);
+			$cod_lote = trim((string) $row_datos["lote_cod_lote"]);
+			$peso_inicial = $row_datos["lote_peso_inicial"];
+			$peso_final = $row_datos["lote_peso_final"];
+			$peso_neto_contable = $row_datos["lote_peso_neto"];
+			$fechahora_inicial = trim((string) $row_datos["lote_pesoinicial_fechahoraregistro"]);
+			$fechahora_final = trim((string) $row_datos["lote_pesofinal_fechahoraregistro"]);
+		}
+	}
+
+	if ($id_catalogo_lotes <= 0) {
+		if (strlen($cod_lote) == 0) {
+			return false;
+		}
+
+		$q_lote = "SELECT id_CatalogoLotes
+					  FROM catalogolotes
+					 WHERE ccod_Lote = '" . mysqli_real_escape_string($enlace, $cod_lote) . "'
+					LIMIT 1";
+
+		if ($res_lote = mysqli_query($enlace, $q_lote)) {
+			if ($row_lote = mysqli_fetch_assoc($res_lote)) {
+				$id_catalogo_lotes = intval($row_lote["id_CatalogoLotes"]);
+			}
+		}
+
+		if ($id_catalogo_lotes <= 0) {
+			return false;
+		}
+	}
+
+	// 2. Arma la sentencia con los bloques que corresponden.
+	$set = array();
+	$escritos = 0;
+
+	if ($sincronizar_pesos == 1) {
+		// Sin BRUTO o sin TARA todavia no hay un neto valido que propagar.
+		if ($peso_inicial !== null && $peso_final !== null) {
+			// El NETO se copia del dato contable (V.lote_peso_neto), que es el que se imprime en el
+			// ticket contable, y no se vuelve a derivar como bruto - tara: asi catalogolotes queda
+			// exactamente igual que despachos_primertramo_validaciondatos. Si el contable todavia no
+			// tiene neto, se deriva de la diferencia, que es como se calcula en el momento del pesaje.
+			if ($peso_neto_contable === null) {
+				$peso_neto = floatval($peso_inicial) - floatval($peso_final);
+			} else {
+				$peso_neto = floatval($peso_neto_contable);
+			}
+
+			$set[] = "nPeso_InicialBalanza = " . floatval($peso_inicial);
+			$set[] = "nPeso_FinalBalanza   = " . floatval($peso_final);
+			$set[] = "nPesoBrutoBalanza    = " . floatval($peso_inicial);
+			$set[] = "nPesoTaraBalanza     = " . floatval($peso_final);
+			$set[] = "nPesoHumedad         = " . $peso_neto;
+			$set[] = "nPesoSeco            = " . $peso_neto;
+			$set[] = "nPesoPendienteEnvio  = " . $peso_neto;
+			$set[] = "nPesoNetoBalanza     = " . $peso_neto;
+
+			$escritos++;
+		}
+	}
+
+	if ($sincronizar_fechas == 1) {
+		// Las fechas de los lotes que aun no pasaron por balanza llegan como '0000-00-00 00:00:00'.
+		// Con ese valor no hay nada que copiar, y escribirlo solo volveria a ensuciar catalogolotes.
+		if (preg_match('/^(\d{4}-\d{2}-\d{2})[ T]+(\d{2}:\d{2})/', $fechahora_inicial, $m_ini)) {
+			if (checkdate(intval(substr($m_ini[1], 5, 2)), intval(substr($m_ini[1], 8, 2)), intval(substr($m_ini[1], 0, 4)))) {
+				$set[] = "tFechaInicialBalanza = '" . $m_ini[1] . "'";
+				$set[] = "tHoraInicialBalanza  = '" . $m_ini[2] . "'";
+
+				$escritos++;
+			}
+		}
+
+		if (preg_match('/^(\d{4}-\d{2}-\d{2})[ T]+(\d{2}:\d{2})/', $fechahora_final, $m_fin)) {
+			if (checkdate(intval(substr($m_fin[1], 5, 2)), intval(substr($m_fin[1], 8, 2)), intval(substr($m_fin[1], 0, 4)))) {
+				$set[] = "dFechaFinalBalanza = '" . $m_fin[1] . "'";
+				$set[] = "tHoraFinalBalanza  = '" . $m_fin[2] . "'";
+
+				$escritos++;
+			}
+		}
+	}
+
+	if ($escritos == 0) {
+		return false;
+	}
+
+	// 3. Escribe de una sola vez, para que bruto, tara y neto nunca queden desalineados entre si.
+	$q_sync = "UPDATE catalogolotes
+				  SET " . implode(", ", $set) . "
+				WHERE id_CatalogoLotes = " . $id_catalogo_lotes;
+
+	if (!mysqli_query($enlace, $q_sync)) {
+		return false;
+	}
+
+	return true;
+}
+
+// ----------------------------------------------------------------------------------------------------------
 // Re-sincroniza el Ticket Contable (consolidado_lotes_cierrecontable) cuando se edita un valor
 // desde el módulo "Resumen de Balanza" (case 'grabar_EditBalanza'). Esta función se encarga de:
 //   1. Para Recepción de Mineral (tipo_condicion == 1):
@@ -2493,8 +2658,11 @@ function f_ResyncTicketContable_ResumenBalanza($enlace, $id_registro, $item, $va
 
 		// 3. Propagar el cambio al campo correspondiente de despachos_primertramo_validaciondatos
 		//    según el item que se está editando.
+		//    $vd_sync_pesos marca los items que, además de su campo propio, obligan a re-bajar el juego
+		//    completo de pesos desde catalogolotes (paso 4): el NETO no es un campo de V, se deriva.
 		$vd_campo = '';
 		$vd_valor_sql = '';
+		$vd_sync_pesos = false;
 
 		switch (intval($item)) {
 			case 2:
@@ -2534,13 +2702,21 @@ function f_ResyncTicketContable_ResumenBalanza($enlace, $id_registro, $item, $va
 				// ya viene dividido por 1000).
 				$vd_campo = 'lote_peso_inicial';
 				$vd_valor_sql = floatval($valor_original);
+				$vd_sync_pesos = true;
 				break;
 			case 14:
 				$vd_campo = 'lote_peso_final';
 				$vd_valor_sql = floatval($valor_original);
+				$vd_sync_pesos = true;
 				break;
 			case 15:
 				$vd_campo = 'despacho_observacion';
+				break;
+			case 19:
+				// Peso Neto: no existe como campo en V (tampoco en catalogolotes), porque siempre es
+				// la diferencia entre bruto y tara. Lo que se resincroniza aqui es el juego completo
+				// de pesos, ya recalculado por el case 'grabar_EditBalanza' sobre catalogolotes.
+				$vd_sync_pesos = true;
 				break;
 			default:
 				// Items 1, 4, 18 no tienen contraparte directa en despachos_primertramo_validaciondatos
@@ -2548,29 +2724,31 @@ function f_ResyncTicketContable_ResumenBalanza($enlace, $id_registro, $item, $va
 				break;
 		}
 
-		if (strlen($vd_campo) == 0) {
+		if (strlen($vd_campo) == 0 && $vd_sync_pesos == false) {
 			return;
 		}
 
-		if (strlen($vd_valor_sql) == 0) {
-			if (strlen(trim($valor_original)) == 0) {
-				$vd_valor_sql = 'NULL';
-			} else {
-				$vd_valor_sql = "'" . mysqli_real_escape_string($enlace, $valor_original) . "'";
+		if (strlen($vd_campo) > 0) {
+			if (strlen($vd_valor_sql) == 0) {
+				if (strlen(trim($valor_original)) == 0) {
+					$vd_valor_sql = 'NULL';
+				} else {
+					$vd_valor_sql = "'" . mysqli_real_escape_string($enlace, $valor_original) . "'";
+				}
+			}
+
+			$q_vd_update = "UPDATE despachos_primertramo_validaciondatos";
+			$q_vd_update .= "   SET " . $vd_campo . " = " . $vd_valor_sql;
+			$q_vd_update .= " WHERE Id = " . $id_vd;
+
+			if (!mysqli_query($enlace, $q_vd_update)) {
+				return;
 			}
 		}
 
-		$q_vd_update = "UPDATE despachos_primertramo_validaciondatos";
-		$q_vd_update .= "   SET " . $vd_campo . " = " . $vd_valor_sql;
-		$q_vd_update .= " WHERE Id = " . $id_vd;
-
-		if (!mysqli_query($enlace, $q_vd_update)) {
-			return;
-		}
-
-		// 4. Si se actualizó un peso (item 13 = bruto, item 14 = tara), re-sincronizar TODOS
-		//    los campos de peso de despachos_primertramo_validaciondatos desde catalogolotes.
-		//    Esto es necesario porque:
+		// 4. Si se actualizó un peso (item 13 = bruto, item 14 = tara, item 19 = neto),
+		//    re-sincronizar TODOS los campos de peso de despachos_primertramo_validaciondatos
+		//    desde catalogolotes. Esto es necesario porque:
 		//      a) En resumen_balanza el input llega en KG sin divisor de 1000 (a diferencia de
 		//         update_PrimerTramo_DistribucionDatos).
 		//      b) q_save + q_save2 ya actualizaron catalogolotes correctamente (nPeso_InicialBalanza,
@@ -2579,7 +2757,7 @@ function f_ResyncTicketContable_ResumenBalanza($enlace, $id_registro, $item, $va
 		//         corrupto por la regla anterior que recalculaba en base a lote_peso_neto viejo).
 		//         Sincronizar desde catalogolotes es la unica forma de garantizar que el ticket
 		//         muestre los valores correctos sin arrastrar incoherencias entre bruto, tara y neto.
-		if (intval($item) == 13 || intval($item) == 14) {
+		if ($vd_sync_pesos == true) {
 			$q_sync = "UPDATE despachos_primertramo_validaciondatos V
 									INNER JOIN catalogolotes L ON V.lote_id_lote = L.id_CatalogoLotes
 									   SET V.lote_peso_inicial = L.nPeso_InicialBalanza,
@@ -22340,7 +22518,17 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
                 PL.Id AS id_empresita,
                 PL.descripcion AS empresita,
                 -- datitos
-                0 AS TIENE_PESOS_DESPACHO
+                0 AS TIENE_PESOS_DESPACHO,
+                -- Peso Neto tal como esta registrado, no derivado de bruto - tara.
+                -- Se expone el valor guardado porque es el que usan el ticket contable y el resto de
+                -- los modulos; derivarlo aqui podia mostrar un neto distinto al que realmente sale.
+                -- SePrioriza catalogolotes (maestro de la grilla) y, si viniera vacio o en cero,
+                -- se cae al dato contable del lote. El ultimo recurso es bruto - tara.
+                COALESCE(
+                    NULLIF(L.nPesoNetoBalanza, 0),
+                    NULLIF(VD.lote_peso_neto, 0),
+                    L.nPeso_InicialBalanza - L.nPeso_FinalBalanza
+                ) AS NETO_BALANZA
             FROM
                 controlingresovehiculo I
             INNER JOIN tbconfig_tipoingresounidades IU ON
@@ -22498,7 +22686,14 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
                 pln.Id AS id_empresita,
                 pln.descripcion AS empresita,
                 -- datitos
-                IF(L.peso_tara IS NOT NULL OR L.peso_bruto IS NOT NULL, 1, 0) AS TIENE_PESOS_DESPACHO
+                IF(L.peso_tara IS NOT NULL OR L.peso_bruto IS NOT NULL, 1, 0) AS TIENE_PESOS_DESPACHO,
+                -- Peso Neto tal como esta registrado en el lote del segundo tramo, no derivado de
+                -- bruto - tara. Este peso se guarda en toneladas, asi que ya se convierte a Kg para
+                -- que la grilla lo muestre en la misma unidad que las columnas Inicial / Final.
+                COALESCE(
+                    NULLIF(L.peso_neto, 0),
+                    L.peso_bruto - L.peso_tara
+                ) * 1000 AS NETO_BALANZA
             FROM
                 controlingresovehiculo I
             INNER JOIN tbconfig_tipoingresounidades IU ON
@@ -22643,7 +22838,12 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
             '' AS id_empresita,
             '' AS empresita,
             -- datitos
-            0 AS TIENE_PESOS_DESPACHO
+            0 AS TIENE_PESOS_DESPACHO,
+            -- Peso Neto registrado en catalogolotes; si viniera vacio o en cero se deriva de bruto - tara.
+            COALESCE(
+                NULLIF(L.nPesoNetoBalanza, 0),
+                L.nPeso_InicialBalanza - L.nPeso_FinalBalanza
+            ) AS NETO_BALANZA
         FROM
             controlingresovehiculo I
         INNER JOIN tbconfig_tipoingresounidades IU ON
@@ -23051,12 +23251,26 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
 
 						$html .= '  </td>';
 
-						$html .= '  <td id="td_neto_' . $row_balanza["id_CatalogoLotes"] . '" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-weight: bold; background-color: #f0efe8">';
+$html .= '  <td id="td_neto_' . $row_balanza["id_CatalogoLotes"] . '" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-weight: bold; background-color: #f0efe8">';
 
-						if ($row_balanza["id_tipoingresounidad"] == 2) {
-							$html .= '    ' . number_format(abs($row_balanza["nPeso_FinalBalanza"] - $row_balanza["nPeso_InicialBalanza"]) * 1000, 0, '.', ',');
-						} else {
-							$html .= '    ' . number_format($row_balanza["nPeso_InicialBalanza"] - $row_balanza["nPeso_FinalBalanza"], 0, '.', ',');
+						// El Peso Neto se muestra tal como viene registrado (columna NETO_BALANZA del
+						// SELECT), y no como bruto - tara: asi la grilla muestra exactamente el mismo
+						// neto que sale en el ticket contable (print_ticketbalanza.php) y que guardan
+						// catalogolotes / despachos_primertramo_validaciondatos. El SELECT ya lo deja en
+						// la unidad de la columna (Kg) y con el recurso de blanco si no hay dato.
+						$peso_neto_actual = $row_balanza["NETO_BALANZA"];
+
+						$html .= '    ' . (($peso_neto_actual === null) ? '' : number_format($peso_neto_actual, 0, '.', ','));
+
+						// El Peso Neto es editable en las filas de Recepción de Mineral (item 19). El guardado
+						// recalcula el BRUTO a partir de la TARA (BRUTO = TARA + NETO), que es la misma regla
+						// que aplica el módulo de Validación y Distribución. Solo se ofrece cuando el lote ya
+						// tiene BRUTO y TARA registrados, porque sin la TARA ese cálculo no es posible.
+						if ($row_balanza["TIPO_CONDICION"] == 1
+								&& $row_balanza["nPeso_InicialBalanza"] !== null
+									&& $row_balanza["nPeso_FinalBalanza"] !== null
+										&& $peso_neto_actual !== null) {
+							$html .= '    <i id="event_click_19_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer; margin-left: 4px;" title="Editar Peso Neto" onclick="f_Edit(' . $row_balanza["id_CatalogoLotes"] . ', 19, ' . "'" . $peso_neto_actual . "', " . $row_balanza["TIPO_CONDICION"] . ')"></i>';
 						}
 
 						$html .= '  </td>';
@@ -28143,6 +28357,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 		// Seteando campos
 		$is_tablalotes = 0;
 		$is_tabladistribucionlotes = 0;
+		$is_peso_neto = 0;
 		$campo = '';
 
 		if ($item == 1) {
@@ -28233,6 +28448,92 @@ case 'confirmar_ProgramacionLote_AddLote':
 			$campo = 'L.balanza_id_planta';
 
 			$is_tablalotes = 1;
+		}
+
+		// Item 19: Peso Neto de un lote de Recepción de Mineral.
+		// catalogolotes no tiene un campo de entrada para el neto (siempre se deriva), por eso este item
+		// no encaja en el UPDATE genérico de abajo: se resuelve aparte recalculando el BRUTO a partir
+		// de la TARA que ya tiene el lote. Es la misma regla que aplica
+		// update_PrimerTramo_DistribucionDatos cuando edita el neto (orden_campo == 11):
+		// BRUTO = TARA + NETO. El valor llega en KG, igual que los items 13 y 14.
+		if ($item == 19) {
+			$is_tablalotes = 1;
+			$is_peso_neto = 1;
+		}
+
+		if ($is_peso_neto == 1) {
+			$mensaje = '';
+
+			$valor_neto = trim($valor);
+			$peso_neto = floatval($valor_neto);
+
+			if ($tipo_condicion != 1) {
+				$mensaje = 'El peso neto solo se puede editar en registros de Recepción de Mineral.';
+			} elseif (strlen($valor_neto) == 0) {
+				// Un neto vacío se interpretaría como 0 y dejaría el lote con BRUTO = TARA, es decir
+				// sin mineral. Es un error de captura, no una anulación intencionada, así que se rechaza.
+				$mensaje = 'Debe ingresar el peso neto.';
+			} elseif ($peso_neto < 0) {
+				$mensaje = 'El peso neto no puede ser negativo.';
+			} else {
+				// La TARA es la base del recalculo: sin ella no hay forma de reconstruir el bruto.
+				$q_tara = "SELECT L.nPeso_FinalBalanza
+							   FROM catalogolotes L
+							  WHERE L.id_CatalogoLotes = " . intval($id_registro);
+
+				$tara = null;
+				$lote_existe = false;
+
+				if ($res_tara = mysqli_query($enlace, $q_tara)) {
+					if ($row_tara = mysqli_fetch_assoc($res_tara)) {
+						$tara = $row_tara["nPeso_FinalBalanza"];
+						$lote_existe = true;
+					}
+				}
+
+				if (!$lote_existe) {
+					$mensaje = 'El lote indicado no existe.';
+				} elseif ($tara === null) {
+					$mensaje = 'El lote no tiene TARA registrada. Registre primero el peso de Tara para poder calcular el Peso Bruto.';
+				} else {
+					$bruto_nuevo = floatval($tara) + $peso_neto;
+
+					$q_save = "UPDATE catalogolotes L";
+					$q_save .= "   SET L.nPeso_InicialBalanza = " . $bruto_nuevo . ",";
+					$q_save .= "		  L.nPesoBrutoBalanza    = " . $bruto_nuevo . ",";
+					$q_save .= "		  L.nPesoHumedad         = " . $peso_neto . ",";
+					$q_save .= "		  L.nPesoSeco            = " . $peso_neto . ",";
+					$q_save .= "		  L.nPesoPendienteEnvio = " . $peso_neto . ",";
+					$q_save .= "		  L.nPesoNetoBalanza     = " . $peso_neto;
+					$q_save .= " WHERE L.id_CatalogoLotes = " . intval($id_registro);
+
+					if (mysqli_query($enlace, $q_save)) {
+						$estado = 1;
+
+						// Re-sincroniza el Ticket Contable (Primer Tramo): el neto no es un campo de
+						// despachos_primertramo_validaciondatos, así que la función baja el juego completo
+						// de pesos (bruto/tara/neto) desde catalogolotes.
+						f_ResyncTicketContable_ResumenBalanza($enlace, $id_registro_original, $item, $valor_original, $tipo_condicion, $is_tablalotes, $is_tabladistribucionlotes, $g_fecha, $usuario_registro);
+
+						echo json_encode(array(
+							'estado'     => $estado,
+							'peso'       => number_format($bruto_nuevo, 0, '.', ','),
+							'peso_bruto' => number_format($bruto_nuevo, 0, '.', ','),
+							'peso_tara'  => number_format($tara, 0, '.', ','),
+							'peso_neto'  => number_format($peso_neto, 0, '.', ','),
+							'mensaje'    => ''
+						));
+
+						break;
+					} else {
+						$mensaje = 'Ocurrió un error al momento de grabar los datos.';
+					}
+				}
+			}
+
+			echo json_encode(array('estado' => 0, 'mensaje' => $mensaje));
+
+			break;
 		}
 
 		if ($item == 16 || $item == 17) {
@@ -34617,6 +34918,20 @@ case 'confirmar_ProgramacionLote_AddLote':
 
 				if ($res_update = mysqli_query($enlace, $q_update)) {
 				}
+			}
+
+			// Refleja en catalogolotes los datos corregidos del lote.
+			// catalogolotes es el maestro con el que el módulo "Resumen de Balanza" arma su grilla, así que
+			// sin esta copia la corrección hecha aquí solo llegaba al ticket contable y el resumen seguía
+			// mostrando los pesos y las fechas viejas.
+			// Se ejecuta recien después de las reglas de consistencia de arriba para copiar el
+			// bruto/tara/neto ya recalculados.
+			if ($orden_campo == 9 || $orden_campo == 10 || $orden_campo == 11) {
+				f_SyncCatalogoLotes_DesdeValidacionDatos($enlace, $id_registro, true, false);
+			}
+
+			if ($orden_campo == 7 || $orden_campo == 8) {
+				f_SyncCatalogoLotes_DesdeValidacionDatos($enlace, $id_registro, false, true);
 			}
 
 			// Valida Información de Unidades

@@ -250,9 +250,12 @@
 																	       UPPER(L.balanza_observacion) AS LOTE_OBSERVACION,
 																	       HC.cierre_prom,
 																	       HC.Id AS ID_CABECERAHUMEDAD,
-																	       1 AS TIPO_CONDICION,
-																	       0 AS ID_PLANTA
-																	  FROM controlingresovehiculo I
+1 AS TIPO_CONDICION,
+       0 AS ID_PLANTA,
+       -- Peso Neto tal como esta registrado (catalogolotes y, si este viniera vacio, el dato contable),
+       -- en vez de derivarlo como bruto - tara. COALESCE por ser un UNION con la rama de Despacho.
+       COALESCE(NULLIF(L.nPesoNetoBalanza, 0), NULLIF(VD.lote_peso_neto, 0), L.nPeso_InicialBalanza - L.nPeso_FinalBalanza) AS NETO_BALANZA
+  FROM controlingresovehiculo I
 																				 INNER JOIN tbconfig_tipoingresounidades IU ON I.id_tipoingresounidad = IU.Id
 																	       LEFT JOIN tb_clientes T ON I.id_transportista = T.Id
 																	       LEFT JOIN tbconfig_tipovehiculo TV ON I.id_tipovehiculo = TV.Id
@@ -343,9 +346,11 @@
 																	        L.observacion AS LOTE_OBSERVACION,
 																					HC.cierre_prom,
 																					HC.Id AS ID_CABECERAHUMEDAD,
-																	        2 AS TIPO_CONDICION,
-																	        P.id_planta AS ID_PLANTA
-																		 FROM controlingresovehiculo I
+2 AS TIPO_CONDICION,
+        P.id_planta AS ID_PLANTA,
+        -- Peso Neto registrado en el lote del segundo tramo (se guarda en toneladas, se lleva a Kg).
+        COALESCE(NULLIF(L.peso_neto, 0), L.peso_bruto - L.peso_tara) * 1000 AS NETO_BALANZA
+ FROM controlingresovehiculo I
 																					INNER JOIN tbconfig_tipoingresounidades IU ON I.id_tipoingresounidad = IU.Id
 																					INNER JOIN despachos_segundotramo_distribucion_unidades U ON DATE(I.dFechaIngreso) >= DATE(U.fecha_ingresoplanta)
 																					INNER JOIN despachos_segundotramo_programacion P ON U.id_programacion = P.Id
@@ -710,12 +715,9 @@
 
 													$html .= '  <td id="td_neto_'.$row_balanza["id_CatalogoLotes"].'" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-weight: bold; background-color: #f0efe8">';
 
-													if ($row_balanza["id_tipoingresounidad"] == 2){
-														$html .= '    '.number_format(($row_balanza["nPeso_FinalBalanza"] - $row_balanza["nPeso_InicialBalanza"]) * 1000, 0, '.', ',');
-													}
-													else{
-														$html .= '    '.number_format($row_balanza["nPeso_InicialBalanza"] - $row_balanza["nPeso_FinalBalanza"], 0, '.', ',');
-													}
+													// Se imprime el Peso Neto registrado (NETO_BALANZA del SELECT), igual que
+													// en la grilla del módulo, y no bruto - tara.
+													$html .= '    ' . (($row_balanza["NETO_BALANZA"] === null) ? '' : number_format($row_balanza["NETO_BALANZA"], 0, '.', ','));
 
 													$html .= '  </td>';
 												}
