@@ -15,12 +15,14 @@ Archivo backend: \apis\backend.php
 
 Modulo de Resumen de Balanza: C:\wamp64\www\oppmerp\resumen_balanza_prev.php
 
-Para aquellos registros cuyo tipo de ingreso es RECEPCION DE MINERAL, necesito que al igual que en el modulo de Validacion y Distribucion 'C:\wamp64\www\oppmerp\primertramo_distribucion.php' cuando se modifica la informacion de cada lote utilizando el case de 'update_PrimerTramo_DistribucionDatos' y realiza el proceso de cierre del lote nuevamente para que los datos se actualicen correctamente. Sin embargo, el modulo de validacion y distribucion aunque permite editar y actualiza los datos contables, NO ACTUALIZA LA TABLA DE catalogolotes para que sean equivalentes.
-
-Eso provoca que en el modulo de resumen de balanza, ademas de que no permite modificar el peso NETO cuando en realidad si deberia, no refleja los pesos que realmente deben salir y que son los que si salen en el ticket contable C:\wamp64\www\oppmerp\print_ticketbalanza.php
+Para aquellos registros cuyo tipo de ingreso es DESPACHO DE MINERAL o RECPECION DE MINERAL, necesito que al igual que cuando se modifica la informacion de las fechas de pesaje de cada lote y te pide una justificacion y lo guarda en cambios_log de cada tabla correspondiente y automaticamente realiza el proceso de cierre del lote nuevamente para que los datos se actualicen correctamente. 
 
 Cases relevantes usados del backend:
-- get_ListaResumenBalanza -> usado para listar registros de diferentes estapas, entre ellas, los registros de recepciones
+- get_ListaResumenBalanza -> usado para listar registros de diferentes estapas en el modulo de resumen de balanza, entre ellas, los registros de recepciones y despacho de mineral
 - grabar_EditBalanza -> usado para editar la info de lotes. 
 
+Funciones relevantes:
 C:\wamp64\www\oppmerp\global\funciones_cierrecontable.php
+
+Objetivo:
+- Permitir editar las fechas de pesaje, peso bruto, tara y neto de los registros de recepción de mineral y de despacho de mineral, pidiendo siempre una justificacion/motivo de forma obligatoria, guardando esa edicion en la columna de 'cambios_log' que se guarda en la tabla de despachos_primertramo_validaciondatos para los lotes de recepcion de mineral y de despachos_segundotramo_distribucion_lotes para lo lotes de despacho de mineral. Haciendo que al actualizar estos campos, se vuelva hacer el cierre contable para que los datos del ticket contable tambien se vean actualizados y flejen los datos actualizados

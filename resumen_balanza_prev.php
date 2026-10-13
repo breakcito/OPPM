@@ -1471,6 +1471,13 @@
 								<input id="edit_InputNumber" type="number" class="form-control col-md-12 col-xs-12" style="text-align: center;">
 							</div>
 						</div>
+
+						<div id="div_edit_motivo" class="row" style="padding: 5px; margin-left: 40px; margin-right: 40px; display: none;">
+							<div class="flex-fill">
+								<label style="font-weight: bold; margin-bottom: 5px;">Motivo de la modificación: <span style="color: #dc3545;">*</span></label>
+								<textarea id="edit_motivo" class="form-control col-md-12 col-xs-12" rows="2" placeholder="Indique el motivo del cambio obligatoriamente..."></textarea>
+							</div>
+						</div>
 		      </div>
 
 		      <input id="hd_idbalanza" type="hidden">
@@ -1833,6 +1840,21 @@
 			f_OpenModal('modal_editFechaBalanza');
 		}
 
+		function f_ActualizarBotonLogCambios(id_registro, cambios_log_str) {
+			if (!cambios_log_str || cambios_log_str.length === 0) return;
+			var $btn = $("#btn_logcambios_" + id_registro);
+			if ($btn.length > 0) {
+				$btn.attr("data-logs", cambios_log_str).show();
+			} else {
+				var $tdLote = $("#td_lote_" + id_registro);
+				if ($tdLote.length > 0) {
+					var $newBtn = $('<i id="btn_logcambios_' + id_registro + '" class="bi bi-clock-history text-dark bg-light rounded" style="padding: 4px; cursor: pointer; margin-left: 6px; -webkit-text-stroke: 0.5px currentColor; display: inline-flex; align-items: center; justify-content: center;" onclick="f_VerLogCambios(this)" title="Ver Historial de Cambios"></i>');
+					$newBtn.attr("data-logs", cambios_log_str);
+					$tdLote.append($newBtn);
+				}
+			}
+		}
+
 		function f_GrabarFechaBalanza() {
 			var id_registro    = $("#ef_id_registro").val();
 			var tipo_condicion = $("#ef_tipo_condicion").val();
@@ -1864,9 +1886,23 @@
 			}, function(data) {
 				if (data.estado == 1) {
 					f_cerrarModal('modal_editFechaBalanza');
-					f_LoadResultados();
+
+					var fechahora_mostrar = data.fechahora || valor;
+
+					if (campo === 'inicial') {
+						$("#lbl_fechainicial_" + id_registro).text(fechahora_mostrar).css("color", "");
+						$("#btn_editfechainicial_" + id_registro).attr("onclick", "f_EditFechaBalanza(" + id_registro + ", " + tipo_condicion + ", 'inicial', '" + fechahora_mostrar + "')");
+					} else {
+						$("#lbl_fechafinal_" + id_registro).text(fechahora_mostrar).css("color", "");
+						$("#btn_editfechafinal_" + id_registro).attr("onclick", "f_EditFechaBalanza(" + id_registro + ", " + tipo_condicion + ", 'final', '" + fechahora_mostrar + "')");
+					}
+
+					// Actualizar el botón de log de cambios si se devolvió
+					if (data.cambios_log && data.cambios_log.length > 0) {
+						f_ActualizarBotonLogCambios(id_registro, data.cambios_log);
+					}
 				} else {
-					alert("Ocurrió un error al guardar los datos.");
+					alert((typeof data.mensaje === 'string' && data.mensaje.length > 0) ? data.mensaje : "Ocurrió un error al guardar los datos.");
 				}
 			}, "json");
 		}
@@ -2984,6 +3020,12 @@ var descripcion = f_EscapeHtml(log.descripcion) || 'Modificación';
 					$("#div_lista").hide();
 					$("#edit_InputText").hide();
 					$("#edit_InputNumber").hide();
+					$("#edit_motivo").val('');
+					$("#div_edit_motivo").hide();
+
+					if (_item == 13 || _item == 14 || _item == 16 || _item == 17 || _item == 19){
+						$("#div_edit_motivo").show();
+					}
 
 	    		if (show_select == 1){
 	    			$("#div_lista").show();
@@ -3886,23 +3928,88 @@ var descripcion = f_EscapeHtml(log.descripcion) || 'Modificación';
 	          // }
 	        }
 
+    		// Validar motivo obligatorio para campos de peso
+    		var motivo = $("#edit_motivo").val().trim();
+    		if (item == 13 || item == 14 || item == 16 || item == 17 || item == 19){
+    			if (motivo.length === 0){
+    				alert("Debe indicar el motivo de la modificación.");
+    				$("#edit_motivo").focus();
+    				return;
+    			}
+    		}
+
     		// Grabando datos
-	    		$.post( "apis/backend.php", { accion: "grabar_EditBalanza", id_registro: id_registro, item: item, valor: _valor, condicion_ingreso: condicion_ingreso, tipo_condicion: tipo_condicion },
+	    		$.post( "apis/backend.php", { accion: "grabar_EditBalanza", id_registro: id_registro, item: item, valor: _valor, condicion_ingreso: condicion_ingreso, tipo_condicion: tipo_condicion, motivo: motivo },
             function( data ) {
               if(data.estado == 1){
-               	// El item 19 (Peso Neto) no tiene celda propia: el backend recalcula el BRUTO a partir
-               	// de la TARA y del nuevo neto, asi que quedan modificadas las celdas de Bruto, Tara y
-               	// Neto. Se repinta la fila completa desde la base de datos para que ningun valor
-               	// derivado, ni el onclick de los lapices, quede desactualizado en pantalla.
-              	if (item == 19){
+              	// Si es edición de campos de peso (13, 14, 16, 17, 19)
+              	if (item == 13 || item == 14 || item == 16 || item == 17 || item == 19){
+              		// 1. Actualizar Peso Bruto (lbl_text_13_ID)
+              		if (data.peso_bruto !== undefined){
+              			$("#lbl_text_13_" + id_registro).html(data.peso_bruto);
+              		}
+
+              		// 2. Actualizar Peso Tara (lbl_text_14_ID)
+              		if (data.peso_tara !== undefined){
+              			$("#lbl_text_14_" + id_registro).html(data.peso_tara);
+              		}
+
+              		// 3. Actualizar Peso Neto (lbl_text_neto_ID o td_neto_ID)
+              		if (data.peso_neto !== undefined){
+              			if ($("#lbl_text_neto_" + id_registro).length > 0){
+              				$("#lbl_text_neto_" + id_registro).html(data.peso_neto);
+              			} else {
+              				$("#td_neto_" + id_registro).html('<span id="lbl_text_neto_' + id_registro + '">' + data.peso_neto + '</span>');
+              			}
+              		}
+
+              		// 4. Actualizar Pesaje Inicial y Final según la condición
+              		if (tipo_condicion == 1){
+              			// Recepción: Inicial = Bruto, Final = Tara
+              			if (data.peso_bruto !== undefined) $("#lbl_pesoinicial_" + id_registro).html(data.peso_bruto);
+              			if (data.peso_tara !== undefined)  $("#lbl_pesofinal_" + id_registro).html(data.peso_tara);
+
+              			// Actualizar eventos onclick
+              			if (data.peso_bruto_raw !== undefined){
+              				$("#event_click_13_" + id_registro).attr('onclick', 'f_Edit(' + id_registro + ', 13, \'' + data.peso_bruto_raw + '\', ' + tipo_condicion + ')');
+              			}
+              			if (data.peso_tara_raw !== undefined){
+              				$("#event_click_14_" + id_registro).attr('onclick', 'f_Edit(' + id_registro + ', 14, \'' + data.peso_tara_raw + '\', ' + tipo_condicion + ')');
+              			}
+              		} else if (tipo_condicion == 2){
+              			// Despacho: Inicial = Tara, Final = Bruto
+              			if (data.peso_tara !== undefined)  $("#lbl_pesoinicial_" + id_registro).html(data.peso_tara);
+              			if (data.peso_bruto !== undefined) $("#lbl_pesofinal_" + id_registro).html(data.peso_bruto);
+
+              			// Actualizar eventos onclick
+              			if (data.peso_bruto_raw !== undefined){
+              				$("#event_click_16_" + id_registro).attr('onclick', 'f_Edit(' + id_registro + ', 16, \'' + data.peso_bruto_raw + '\', ' + tipo_condicion + ')');
+              			}
+              			if (data.peso_tara_raw !== undefined){
+              				$("#event_click_17_" + id_registro).attr('onclick', 'f_Edit(' + id_registro + ', 17, \'' + data.peso_tara_raw + '\', ' + tipo_condicion + ')');
+              			}
+              		}
+
+              		// 5. Actualizar onclick del Peso Neto (item 19)
+              		if (data.peso_neto_raw !== undefined){
+              			if ($("#event_click_19_" + id_registro).length > 0){
+              				$("#event_click_19_" + id_registro).attr('onclick', 'f_Edit(' + id_registro + ', 19, \'' + data.peso_neto_raw + '\', ' + tipo_condicion + ')');
+              			} else {
+              				var $btn19 = $('<i id="event_click_19_' + id_registro + '" class="bi bi-pencil-square" style="cursor: pointer; margin-left: 4px;" title="Editar Peso Neto" onclick="f_Edit(' + id_registro + ', 19, \'' + data.peso_neto_raw + '\', ' + tipo_condicion + ')"></i>');
+              				$("#td_neto_" + id_registro).append($btn19);
+              			}
+              		}
+
+              		// 6. Actualizar botón de Historial de Cambios si vino en la respuesta
+              		if (data.cambios_log && data.cambios_log.length > 0){
+              			f_ActualizarBotonLogCambios(id_registro, data.cambios_log);
+              		}
+
               		f_cerrarModal("modal_editinfo");
-
-              		f_LoadResultados();
-
               		return;
               	}
 
-               	// Actualizando el valor
+               	// Actualizando otros valores que no son pesos
             			$("#lbl_text_" + item + '_' + id_registro).html(_text);
 
           			// Actualizando el evento Click
@@ -3918,30 +4025,6 @@ var descripcion = f_EscapeHtml(log.descripcion) || 'Modificación';
 
             				$("#lbl_text_" + item + '_' + id_registro).html(dato_1);
             				$("#td_text_" + item + '_' + id_registro).html(dato_2);
-            			}
-
-            			if (item == 13 || item == 14){
-            				$("#lbl_text_" + item + '_' + id_registro).html(data.peso);
-            				$("#td_neto_" + id_registro).html(data.peso_neto);
-
-            				if (item == 13){
-            					$("#lbl_pesoinicial_" + id_registro).html(data.peso);
-            				}
-            				else{
-            					$("#lbl_pesofinal_" + id_registro).html(data.peso);
-            				}
-            			}
-
-            			if (item == 16){
-            				$("#lbl_text_13_" + id_registro).html(data.peso);
-            				$("#td_neto_" + id_registro).html(data.peso_neto);
-            				$("#lbl_pesofinal_" + id_registro).html(data.peso);
-            			}
-
-            			if (item == 17){
-            				$("#lbl_text_14_" + id_registro).html(data.peso);
-            				$("#td_neto_" + id_registro).html(data.peso_neto);
-            				$("#lbl_pesoinicial_" + id_registro).html(data.peso);
             			}
 
             			if (item == 15){
