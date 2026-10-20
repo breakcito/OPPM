@@ -3,6 +3,121 @@
 	session_start();
 
 	include('global/variables.php');
+	include('cnx/cnx.php');
+
+	// ------------------------------------------------------------------
+	// Si el usuario llega al login pero la sesión todavía conserva su Id
+	// (por ejemplo, porque cerró el navegador sin Cerrar Sesión, o porque
+	// reabre la pestaña), se recarga toda la información del usuario desde
+	// la base de datos (mismo criterio que el case Log_In) y se le envía al
+	// Home como si recién hubiera iniciado sesión.
+	// ------------------------------------------------------------------
+	if (isset($_SESSION["Id"]) && $_SESSION["Id"] !== '' && $_SESSION["Id"] !== null) {
+
+		$_idx_id_usuario = (int) $_SESSION["Id"];
+		$_idx_destino    = null;
+
+		if ($_idx_id_usuario > 0) {
+
+			$_idx_q = "SELECT U.Id,
+										U.cod_rol,
+										R.nom_rol,
+										U.cod_sucursal,
+										S.des_sucursal,
+										U.usu_usuario,
+										U.pas_usuario,
+										U.id_empleado,
+										E.nombres,
+										E.apellido_paterno,
+										E.is_masculino,
+										U.is_gestionmuestras_operaciones,
+										U.is_gestionmuestras_vigilancia,
+										U.is_gestionmuestras_apoyointerno,
+										U.is_gestionmuestras_acopiador,
+										U.is_gestioncomercial_admin,
+										U.is_admincontrolinterno,
+										U.modo_auditoria,
+										U.eliminar_unidadesingreso,
+										U.registromanual_humedad,
+										U.puede_limpiar_pesos,
+										U.estado
+								   FROM tb_usuario AS U
+										INNER JOIN tb_empleados E ON U.id_empleado = E.Id
+										INNER JOIN tb_rol AS R ON U.cod_rol = R.Id
+										INNER JOIN tb_sucursal S ON U.cod_sucursal = S.Id
+								   WHERE U.estado = 'A'
+									   AND U.Id = " . $_idx_id_usuario . "
+								   LIMIT 1";
+
+			$_idx_ok = false;
+
+			if ($_idx_res = mysqli_query($enlace, $_idx_q)) {
+				if (mysqli_num_rows($_idx_res) > 0) {
+
+					$_idx_row = mysqli_fetch_array($_idx_res);
+
+					$_SESSION["Id"]                                     = $_idx_row["Id"];
+					$_SESSION["cod_rol"]                                = $_idx_row["cod_rol"];
+					$_SESSION["nom_rol"]                                = $_idx_row["nom_rol"];
+					$_SESSION["cod_sucursal"]                           = $_idx_row["cod_sucursal"];
+					$_SESSION["des_sucursal"]                           = $_idx_row["des_sucursal"];
+					$_SESSION["usu_usuario"]                            = $_idx_row["usu_usuario"];
+					$_SESSION["id_empleado"]                            = $_idx_row["id_empleado"];
+					$_SESSION["nom_usuario"]                            = $_idx_row["nombres"] . " " . $_idx_row["apellido_paterno"];
+					$_SESSION["sexo_usuario"]                           = $_idx_row["is_masculino"];
+					$_SESSION["gestionmuestras_operaciones"]            = $_idx_row["is_gestionmuestras_operaciones"];
+					$_SESSION["gestionmuestras_vigilancia"]              = $_idx_row["is_gestionmuestras_vigilancia"];
+					$_SESSION["gestionmuestras_apoyointerno"]            = $_idx_row["is_gestionmuestras_apoyointerno"];
+					$_SESSION["gestionmuestras_acopiador"]               = $_idx_row["is_gestionmuestras_acopiador"];
+					$_SESSION["gestioncomercial_admin"]                 = $_idx_row["is_gestioncomercial_admin"];
+					$_SESSION["modo_auditoria"]                         = $_idx_row["modo_auditoria"];
+					$_SESSION["is_admincontrolinterno"]                 = $_idx_row["is_admincontrolinterno"];
+					$_SESSION["eliminar_unidadesingreso"]               = $_idx_row["eliminar_unidadesingreso"];
+					$_SESSION["registromanual_humedad"]                 = $_idx_row["registromanual_humedad"];
+					$_SESSION["puede_limpiar_pesos"]                    = $_idx_row["puede_limpiar_pesos"];
+
+					// Refresca también el flag global de Modo Auditoría
+					$_idx_q_aud = "SELECT is_on
+											 FROM modo_auditoria
+										 ORDER BY Id DESC
+											 LIMIT 1";
+
+					if ($_idx_res_aud = mysqli_query($enlace, $_idx_q_aud)) {
+						if (mysqli_num_rows($_idx_res_aud) > 0) {
+							$_idx_row_aud = mysqli_fetch_array($_idx_res_aud);
+							$_SESSION["modo_auditoria_ison"] = $_idx_row_aud["is_on"];
+						}
+					}
+
+					$_idx_ok = true;
+				}
+			}
+
+			if ($_idx_ok) {
+				// Misma regla que usa el JS del login para elegir destino
+				$_idx_cod_rol = (int) $_SESSION["cod_rol"];
+				if ($_idx_cod_rol === 19 || $_idx_cod_rol === 20 || $_idx_cod_rol === 21 || $_idx_cod_rol === 22) {
+					$_idx_destino = 'operaciones_workflowplanta_operador.php';
+				} else {
+					$_idx_destino = 'inicio.php';
+				}
+			} else {
+				// El usuario ya no existe o está inactivo: descartamos la sesión
+				$_SESSION = [];
+				@session_destroy();
+			}
+		} else {
+			// Id inválido en sesión: limpiamos
+			$_SESSION = [];
+			@session_destroy();
+		}
+
+		if ($_idx_destino !== null) {
+			header('Location: ' . $_idx_destino);
+			exit;
+		}
+	}
+
 	include('global/auxiliares.php');
 
 ?>

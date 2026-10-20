@@ -4,6 +4,80 @@ error_reporting(0);
 ini_set('display_errors', 0);
 ini_set('display_startuo_errors', 0);
 
+// Garantiza que la sesión esté iniciada (los módulos normalmente ya llaman a session_start(),
+// pero si alguien incluye este archivo antes, lo abrimos nosotros).
+if (session_status() === PHP_SESSION_NONE) {
+	@session_start();
+}
+
+// Determina si estamos en la pantalla de login para no exigir una sesión válida en ella.
+$_aux_script_actual = isset($_SERVER['PHP_SELF']) ? basename($_SERVER['PHP_SELF']) : '';
+$_aux_es_login      = ($_aux_script_actual === 'index.php');
+
+/**
+ * Devuelve true únicamente si la sesión contiene los datos mínimos de un usuario logueado.
+ * Se exige que existan y que no estén vacíos: Id, cod_rol, usu_usuario, id_empleado, nom_usuario.
+ */
+function _aux_sesion_tiene_usuario(){
+	if (!isset($_SESSION) || !is_array($_SESSION)){
+		return false;
+	}
+
+	$_aux_campos_requeridos = ['Id', 'cod_rol', 'usu_usuario', 'id_empleado', 'nom_usuario'];
+
+	foreach ($_aux_campos_requeridos as $_aux_campo){
+		if (!array_key_exists($_aux_campo, $_SESSION)){
+			return false;
+		}
+
+		$_aux_valor = $_SESSION[$_aux_campo];
+
+		if (is_null($_aux_valor)){
+			return false;
+		}
+
+		if (is_string($_aux_valor) && trim($_aux_valor) === ''){
+			return false;
+		}
+	}
+
+	return true;
+}
+
+/**
+ * Limpia completamente la sesión (incluyendo cookie) y redirige al login.
+ * Se usa cuando se detecta que la sesión está corrupta, manipulada o expirada.
+ */
+function _aux_destruir_sesion_y_redirigir(){
+	$_SESSION = [];
+
+	if (ini_get('session.use_cookies')){
+		$_aux_params = session_get_cookie_params();
+		setcookie(
+			session_name(),
+			'',
+			time() - 42000,
+			$_aux_params['path'],
+			$_aux_params['domain'],
+			$_aux_params['secure'],
+			$_aux_params['httponly']
+		);
+	}
+
+	@session_destroy();
+
+	header('Location: index.php');
+	exit;
+}
+
+// En todos los módulos distintos al propio login se exige una sesión válida con los
+// datos mínimos del usuario. Si falta cualquiera de ellos, se descarta la sesión y
+// se obliga a pasar nuevamente por la pantalla de login.
+if (!$_aux_es_login && !_aux_sesion_tiene_usuario()){
+	_aux_destruir_sesion_y_redirigir();
+}
+
+// Datos usados por el navbar y el modal de cierre de clientes a crédito.
 if (!isset($_SESSION["nom_usuario"]) || !isset($_SESSION["des_sucursal"]) || !isset($_SESSION["modo_auditoria"])) {
 	return;
 }
