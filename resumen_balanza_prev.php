@@ -361,6 +361,10 @@
 					        				Información de Pesos (Kg)
 					        			</th>
 
+					        			<th rowspan="2" style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle; min-width: 120px;">
+					        				Operador<br>Balanza
+					        			</th>
+
 					        			<th rowspan="2" style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle; <?php echo (($_SESSION["registromanual_humedad"] == 1) ? '' : 'display: none') ?>; min-width: 100px;">
 					        				% Humedad<br>(Registro Manual)
 					        			</th>
@@ -1524,6 +1528,37 @@
 		  </div>
 		</div>
 
+		<!-- Modal: Editar Operador de Balanza -->
+		<div class="modal fade" id="modal_editOperadorBalanza" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="modal_editOperadorBalanzaLabel" aria-hidden="true">
+		  <div class="modal-dialog">
+		    <div class="modal-content" style="margin-top: 180px;">
+		      <div class="modal-header" style="background-color: #f8da62;">
+		        <h1 class="modal-title fs-5" id="modal_editOperadorBalanzaLabel">Editar: <b>Operador de Balanza</b></h1>
+		        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+		      </div>
+		      <div class="modal-body">
+		        <div class="row" style="padding: 10px;">
+		        	<label style="font-weight: bold; margin-bottom: 5px;">Operador:</label>
+		        	<select id="eo_operador" class="form-select"></select>
+		        </div>
+		        <div class="row" style="padding: 10px;">
+		        	<label style="font-weight: bold; margin-bottom: 5px;">Motivo de la modificación: <span style="color: #dc3545;">*</span></label>
+		        	<textarea id="eo_motivo" class="form-control" rows="3" placeholder="Indique el motivo del cambio..."></textarea>
+		        </div>
+		      </div>
+
+		      <input id="eo_id_registro" type="hidden">
+		      <input id="eo_tipo_condicion" type="hidden">
+		      <input id="eo_usuario_actual" type="hidden">
+
+		      <div class="modal-footer">
+		        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+		        <button type="button" class="btn btn-primary" onclick="f_GrabarOperadorBalanza();">Grabar</button>
+		      </div>
+		    </div>
+		  </div>
+		</div>
+
 		<!-- Modal: Ver Historial de Cambios (Timeline) -->
 		<div class="modal fade" id="modal_verLogCambios" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="modal_verLogCambiosLabel" aria-hidden="true">
 		  <div class="modal-dialog modal-dialog-centered" style="max-width: 560px;">
@@ -1855,6 +1890,81 @@
 			}
 		}
 
+		// ---------------------------------------------------------------------------------------
+		// Operador de Balanza
+		//
+		// Abre el modal para cambiar el operador de balanza de un lote de Recepcion o Despacho de
+		// Mineral. La lista de operadores la carga el backend (get_ResumenBalanza_ListaOperadores) y
+		// el motivo es obligatorio.
+		// ---------------------------------------------------------------------------------------
+		function f_EditOperadorBalanza(id_registro, tipo_condicion, usuario_actual){
+			$("#eo_id_registro").val(id_registro);
+			$("#eo_tipo_condicion").val(tipo_condicion);
+			$("#eo_usuario_actual").val(usuario_actual || '');
+			$("#eo_motivo").val('');
+			$("#eo_operador").html('<option value="">Cargando...</option>');
+
+			f_OpenModal('modal_editOperadorBalanza');
+
+			$.post("apis/backend.php", { accion: "get_ResumenBalanza_ListaOperadores", usuario_actual: usuario_actual || '' }, function(data){
+				if (data.estado == 1){
+					$("#eo_operador").html(data.html);
+				} else {
+					$("#eo_operador").html('<option value="">No hay operadores disponibles</option>');
+					alert("No se pudo cargar la lista de operadores de balanza.");
+				}
+			}, "json");
+		}
+
+		function f_GrabarOperadorBalanza(){
+			var id_registro    = $("#eo_id_registro").val();
+			var tipo_condicion = $("#eo_tipo_condicion").val();
+			var operador       = $("#eo_operador").val();
+			var motivo         = $("#eo_motivo").val().trim();
+
+			if (!operador || operador.trim().length === 0){
+				alert("Debe seleccionar el operador de balanza.");
+				$("#eo_operador").focus();
+
+				return;
+			}
+
+			if (motivo.length === 0){
+				alert("Debe indicar el motivo de la modificación.");
+				$("#eo_motivo").focus();
+
+				return;
+			}
+
+			$.post("apis/backend.php", {
+				accion: "grabar_EditOperadorBalanza",
+				id_registro: id_registro,
+				tipo_condicion: tipo_condicion,
+				operador: operador,
+				motivo: motivo
+			}, function(data){
+				if (data.estado == 1){
+					f_cerrarModal('modal_editOperadorBalanza');
+
+					// Actualiza el nombre del operador en la grilla
+					if (data.operador_nombre && data.operador_nombre.length > 0){
+						$("#lbl_operador_" + id_registro).text(data.operador_nombre);
+					}
+
+					// Actualiza el botón de Historial de Cambios con el log devuelto
+					if (data.cambios_log && data.cambios_log.length > 0){
+						f_ActualizarBotonLogCambios(id_registro, data.cambios_log);
+					}
+
+					if (data.mensaje && data.mensaje.length > 0){
+						alert(data.mensaje);
+					}
+				} else {
+					alert((typeof data.mensaje === 'string' && data.mensaje.length > 0) ? data.mensaje : "Ocurrió un error al guardar los datos.");
+				}
+			}, "json");
+		}
+
 		function f_GrabarFechaBalanza() {
 			var id_registro    = $("#ef_id_registro").val();
 			var tipo_condicion = $("#ef_tipo_condicion").val();
@@ -1900,6 +2010,12 @@
 					// Actualizar el botón de log de cambios si se devolvió
 					if (data.cambios_log && data.cambios_log.length > 0) {
 						f_ActualizarBotonLogCambios(id_registro, data.cambios_log);
+					}
+
+					// El backend avisa cuando la fecha y hora ingresada es igual a la que ya tenia el
+					// lote: en ese caso no se registro nada en el historial de cambios.
+					if (data.mensaje && data.mensaje.length > 0) {
+						alert(data.mensaje);
 					}
 				} else {
 					alert((typeof data.mensaje === 'string' && data.mensaje.length > 0) ? data.mensaje : "Ocurrió un error al guardar los datos.");
@@ -4006,6 +4122,13 @@ var descripcion = f_EscapeHtml(log.descripcion) || 'Modificación';
               		}
 
               		f_cerrarModal("modal_editinfo");
+
+              		// El backend avisa cuando el valor ingresado es igual al que ya tenia el lote:
+              		// en ese caso no se registro nada en el historial de cambios.
+              		if (data.mensaje && data.mensaje.length > 0){
+              			alert(data.mensaje);
+              		}
+
               		return;
               	}
 

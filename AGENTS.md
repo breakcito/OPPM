@@ -15,14 +15,61 @@ Archivo backend: \apis\backend.php
 
 Modulo de Resumen de Balanza: C:\wamp64\www\oppmerp\resumen_balanza_prev.php
 
-Para aquellos registros cuyo tipo de ingreso es DESPACHO DE MINERAL o RECPECION DE MINERAL, necesito que al igual que cuando se modifica la informacion de las fechas de pesaje de cada lote y te pide una justificacion y lo guarda en cambios_log de cada tabla correspondiente y automaticamente realiza el proceso de cierre del lote nuevamente para que los datos se actualicen correctamente. 
+Para aquellos registros cuyo tipo de ingreso es DESPACHO DE MINERAL o RECPECION DE MINERAL, se permite modificar la informacion de las fechas de pesaje y pesos de cada lote y te pide una justificacion y lo guarda en cambios_log de cada tabla correspondiente y automaticamente realiza el proceso de cierre del lote nuevamente para que los datos se actualicen correctamente. Pero cuando se intenta visualizar ese log de cambios aparentemente no hay ningun cambio entre el valor anterior con el nuevo, verfica que se este guardando y detectand correctamente ese cambio
+
+Ademas, necesito que permitas editar el operador de balanza. Para ello, al intentar hacerlo, listar aquellos empleados con esta consulta:
+
+SELECT
+    usu.Id AS id_usuario,
+    usu.usu_usuario AS usuario,
+    CONCAT_WS(
+        ' ',
+        NULLIF(TRIM(emp.nombres),
+        ''),
+        NULLIF(TRIM(emp.apellido_paterno),
+        ''),
+        NULLIF(TRIM(emp.apellido_materno),
+        '')
+    ) AS empleado
+FROM
+    tb_usuario usu
+INNER JOIN tb_empleados emp ON
+    emp.Id = usu.id_empleado
+WHERE
+    emp.estado = 'A' AND usu.estado = 'A' AND usu.usu_usuario IN ('neuribe', 'rpizarro')
+ORDER BY
+    emp.nombres ASC;
+
+En el caso de los registros del primer tramo lo puedes editar la tablas de:
+- correlativo_ticketsbalanza: en las columna de usuario_registro
+para el segundo tramo:
+- despachos_segundotramo_distribucion_lotes: en las columas de peso_tara_usuarioregistro, peso_bruto_usuarioregistro
+- consolidado_lotes_cierrecontable: en las columnas de fechahora_usuario
+
+Al 'actualizar' toma el campo de 'usuario' de la lista y guardalo en las columnas anteriormente mencionadas. Esto es con la finalidad de que al final estos pueda hacer que se visualice este campo en los tickets contables:
+
+C:\wamp64\www\oppmerp\print_ticketbalanza.php
+C:\wamp64\www\oppmerp\print_ticketbalanza_segundotramo.php
 
 Cases relevantes usados del backend:
 - get_ListaResumenBalanza -> usado para listar registros de diferentes estapas en el modulo de resumen de balanza, entre ellas, los registros de recepciones y despacho de mineral
 - grabar_EditBalanza -> usado para editar la info de lotes. 
 
-Funciones relevantes:
-C:\wamp64\www\oppmerp\global\funciones_cierrecontable.php
 
 Objetivo:
-- Permitir editar las fechas de pesaje, peso bruto, tara y neto de los registros de recepción de mineral y de despacho de mineral, pidiendo siempre una justificacion/motivo de forma obligatoria, guardando esa edicion en la columna de 'cambios_log' que se guarda en la tabla de despachos_primertramo_validaciondatos para los lotes de recepcion de mineral y de despachos_segundotramo_distribucion_lotes para lo lotes de despacho de mineral. Haciendo que al actualizar estos campos, se vuelva hacer el cierre contable para que los datos del ticket contable tambien se vean actualizados y flejen los datos actualizados
+- Permitir editar el operador de balanza, las fechas de pesaje, peso bruto, tara y neto de los registros de recepción de mineral y de despacho de mineral, pidiendo siempre una justificacion/motivo de forma obligatoria, GUARDANDO esa edicion en la columna de 'cambios_log' que se guarda en la tabla de despachos_primertramo_validaciondatos para los lotes de recepcion de mineral y de despachos_segundotramo_distribucion_lotes para lo lotes de despacho de mineral. Haciendo que al actualizar estos campos, se vuelva hacer el cierre contable para que los datos del ticket contable tambien se vean actualizados y flejen los datos actualizados
+
+==============
+
+Modulo de balanza - recepcion de mineral: C:\wamp64\www\oppmerp\pesos_primertramo.php
+
+Actualmente al eliminar un lote, el backend no se preocupa de revertir/eliminar los registros de las otras tablas/procesos, lo que provoca que todo se descuadre ya que luego se crea un nuevo lote y toma este mismo codigo. Corrige ello
+
+Cases del backend relevantes:
+- grabar_GestionLotes : usado para registrar los pesos inicial/final que es donde se dispara el cierre contable
+- eliminar_Lote : usado para eliminar un lote, pero que no se preocupa por borrar los registros en la tabla de despachos_primertramo_validaciondatos, correlativo_ticketsbalanza y consolidado_lotes_cierrecontable
+
+===================
+
+Funciones relevantes para ambos casos:
+C:\wamp64\www\oppmerp\global\funciones_cierrecontable.php

@@ -3349,7 +3349,11 @@
       }
 
       function f_DeleteLote(_id_lote){
-        if (!confirm("¿Está seguro de eliminar el Lote selecionado?")){
+        // Al eliminar el lote tambien se borran los registros derivados (validacion de datos del
+        // primer tramo, correlativo del ticket de balanza y cierre contable). Si no se borraran,
+        // al crear un lote nuevo con el mismo codigo esos registros "fantasma" se mezclarian con
+        // los del lote nuevo y todo quedaria descuadrado.
+        if (!confirm("¿Está seguro de eliminar el Lote selecionado?\n\nSe eliminarán también sus registros de validación de datos, ticket de balanza y cierre contable.")){
           return;
         }
 

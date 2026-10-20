@@ -3,9 +3,11 @@ session_start();
 
 header('Content-Type: application/json');
 
-include('../cnx/cnx.php');
-include('../global/variables.php');
-include('../global/funciones_cierrecontable.php');
+// Se usan require_once porque varios modulos (por ejemplo print_ticketbalanza_segundotramo.php)
+// cargan estos mismos archivos: si se cargaran dos veces, PHP abortaria con "Cannot redeclare".
+require_once('../cnx/cnx.php');
+require_once('../global/variables.php');
+require_once('../global/funciones_cierrecontable.php');
 
 ini_set('memory_limit', '1024M');
 
@@ -22528,7 +22530,17 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
                     NULLIF(L.nPesoNetoBalanza, 0),
                     NULLIF(VD.lote_peso_neto, 0),
                     L.nPeso_InicialBalanza - L.nPeso_FinalBalanza
-                ) AS NETO_BALANZA
+                ) AS NETO_BALANZA,
+                -- Operador de Balanza (Recepcion de Mineral): el usuario que registro el ticket
+                -- de balanza del primer tramo (correlativo_ticketsbalanza).
+                (
+                    SELECT TK_OP.usuario_registro
+                      FROM correlativo_ticketsbalanza TK_OP
+                     WHERE TK_OP.id_lote = L.id_CatalogoLotes
+                       AND TK_OP.is_primertramo = 1
+                     ORDER BY TK_OP.Id DESC
+                     LIMIT 1
+                ) AS OPERADOR_USUARIO
             FROM
                 controlingresovehiculo I
             INNER JOIN tbconfig_tipoingresounidades IU ON
@@ -22585,6 +22597,7 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
 				// }
 			}
 
+			// saveLog(["get_ListaResumenBalanza-RECEPCION" => $q_balanza]);
 			$q_balanza .= " UNION ";
 		}
 
@@ -22635,7 +22648,7 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
                 SUBSTRING(
                     L.peso_tara_fechahoraregistro,
                     12,
-                    5
+                    8
                 ) AS tHoraInicialBalanza,
                 '' AS pesoinicial_observacion,
                 L.peso_tara_usuarioregistro AS USUARIO_INICIO,
@@ -22648,7 +22661,7 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
                 SUBSTRING(
                     L.peso_bruto_fechahoraregistro,
                     12,
-                    5
+                    8
                 ) AS tHoraFinalBalanza,
                 '' AS pesofinal_observacion,
                 '' AS id_UsuarioModificacion,
@@ -22693,7 +22706,10 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
                 COALESCE(
                     NULLIF(L.peso_neto, 0),
                     L.peso_bruto - L.peso_tara
-                ) * 1000 AS NETO_BALANZA
+                ) * 1000 AS NETO_BALANZA,
+                -- Operador de Balanza (Despacho de Mineral): el usuario que registro el peso de
+                -- Tara / Bruto del lote en el segundo tramo.
+                COALESCE(L.peso_bruto_usuarioregistro, L.peso_tara_usuarioregistro) AS OPERADOR_USUARIO
             FROM
                 controlingresovehiculo I
             INNER JOIN tbconfig_tipoingresounidades IU ON
@@ -22843,7 +22859,9 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
             COALESCE(
                 NULLIF(L.nPesoNetoBalanza, 0),
                 L.nPeso_InicialBalanza - L.nPeso_FinalBalanza
-            ) AS NETO_BALANZA
+            ) AS NETO_BALANZA,
+            -- El Operador de Balanza solo aplica a Recepcion (1) y Despacho (2) de Mineral.
+            '' AS OPERADOR_USUARIO
         FROM
             controlingresovehiculo I
         INNER JOIN tbconfig_tipoingresounidades IU ON
@@ -22899,6 +22917,26 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
 
 		// Acumula la lista única de Empresitas (Despacho de Mineral)
 		$arr_empresitas_unique = array();
+
+		// Mapa de usuarios de sistema -> nombre completo, para mostrar el Operador de Balanza
+		// (el nombre se resuelve en PHP para no repetir la misma consulta por cada fila de la grilla).
+		$arr_nombres_operador = array();
+
+		$q_operadores = "SELECT usu.usu_usuario,
+							   CONCAT_WS(
+									' ',
+									NULLIF(TRIM(emp.nombres), ''),
+									NULLIF(TRIM(emp.apellido_paterno), ''),
+									NULLIF(TRIM(emp.apellido_materno), '')
+							   ) AS empleado
+							FROM tb_usuario usu
+							LEFT JOIN tb_empleados emp ON emp.Id = usu.id_empleado";
+
+		if ($res_operadores = mysqli_query($enlace, $q_operadores)) {
+			while ($row_operador = mysqli_fetch_assoc($res_operadores)) {
+				$arr_nombres_operador[$row_operador["usu_usuario"]] = trim((string) $row_operador["empleado"]);
+			}
+		}
 
 		if ($res_balanza = mysqli_query($enlace, $q_balanza)) {
 			if (mysqli_num_rows($res_balanza) > 0) {
@@ -23272,6 +23310,24 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
 
 						$html .= '  </td>';
 					}
+
+					// Operador de Balanza: se puede editar en los registros de Recepcion (1) y Despacho (2)
+					// de Mineral. El cambio queda registrado en el historial de cambios del lote y
+					// vuelve a hacer el cierre contable para que el ticket muestre al nuevo operador.
+					$html .= '  <td id="td_operador_' . $row_balanza["id_CatalogoLotes"] . '" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-weight: bold;">';
+
+					$operador_usuario = trim((string) $row_balanza["OPERADOR_USUARIO"]);
+					$operador_nombre = (isset($arr_nombres_operador[$operador_usuario]) && strlen($arr_nombres_operador[$operador_usuario]) > 0)
+										? $arr_nombres_operador[$operador_usuario]
+										: $operador_usuario;
+
+					$html .= '    <label id="lbl_operador_' . $row_balanza["id_CatalogoLotes"] . '">' . ((strlen($operador_nombre) == 0) ? '---' : htmlspecialchars($operador_nombre, ENT_QUOTES, 'UTF-8')) . '</label>';
+
+					if ($row_balanza["TIPO_CONDICION"] == 1 || $row_balanza["TIPO_CONDICION"] == 2) {
+						$html .= '    <i id="event_click_operador_' . $row_balanza["id_CatalogoLotes"] . '" class="bi bi-pencil-square" style="cursor: pointer;" title="Editar Operador de Balanza" onclick="f_EditOperadorBalanza(' . $row_balanza["id_CatalogoLotes"] . ', ' . $row_balanza["TIPO_CONDICION"] . ', \'' . htmlspecialchars($operador_usuario, ENT_QUOTES, 'UTF-8') . '\')"></i>';
+					}
+
+					$html .= '  </td>';
 
 					// Seteando Registro Manual de Humedad
 					if ($_SESSION['registromanual_humedad'] == 1) {
@@ -28277,6 +28333,16 @@ case 'confirmar_ProgramacionLote_AddLote':
 		if ($res_log = mysqli_query($enlace, $q_log)) {
 			// Recalculando el Ticket de Balanza
 			if (f_RecalcularTicketsBalanza($enlace, $id_lote)) {
+				// Elimina los registros derivados del lote en los procesos posteriores.
+				//
+				// Antes solo se borraba el lote de catalogolotes y quedaban "huecos" en:
+				//   - despachos_primertramo_validaciondatos (validacion de datos del primer tramo)
+				//   - correlativo_ticketsbalanza (correlativo del ticket de balanza)
+				//   - consolidado_lotes_cierrecontable (cierre contable / ticket contable)
+				// Como luego se crea un lote nuevo que toma el mismo codigo, esos registros se
+				// mezclaban con los del lote nuevo y todo quedaba descuadrado.
+				$detalle_eliminados = f_EliminarLotePrimerTramo_EnCascada($enlace, $id_lote);
+
 				// Elimina el registro
 				$q_delete = "DELETE FROM catalogolotes";
 				$q_delete .= " WHERE id_CatalogoLotes = " . $id_lote;
@@ -28284,13 +28350,6 @@ case 'confirmar_ProgramacionLote_AddLote':
 				if ($res_delete = mysqli_query($enlace, $q_delete)) {
 					$estado = 1;
 				}
-
-				// // Elimina Ticket de Balanza
-				// 	$q_delete = "DELETE FROM correlativo_ticketsbalanza";
-				// 	$q_delete .= " WHERE id_lote = ".$id_lote;
-
-				// 	if ($res_delete = mysqli_query($enlace, $q_delete)){
-				// 	}
 
 				// Elimina Correlativo de Lote
 				$q_delete = "DELETE FROM correlativo_lotes";
@@ -28301,7 +28360,11 @@ case 'confirmar_ProgramacionLote_AddLote':
 			}
 		}
 
-		echo json_encode(array('estado' => $estado, 'id_zonaorigen' => $id_zonaorigen));
+		echo json_encode(array(
+			'estado' => $estado,
+			'id_zonaorigen' => $id_zonaorigen,
+			'eliminados' => (isset($detalle_eliminados) ? $detalle_eliminados : array())
+		));
 
 		break;
 
@@ -28344,7 +28407,10 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$valor = $_POST["valor"];
 		$condicion_ingreso = $_POST["condicion_ingreso"];
 		$tipo_condicion = intval($_POST["tipo_condicion"]);
-		$motivo = isset($_POST["motivo"]) ? mysqli_real_escape_string($enlace, trim($_POST["motivo"])) : '';
+		// El motivo se guarda SIN escapar: el escape lo hace f_AgregarCambioLog al armar el JSON del
+		// historial de cambios. Si se escapara aqui, el motivo terminaria con barras invertidas de mas
+		// y el JSON que ve el navegador seria invalido.
+		$motivo = isset($_POST["motivo"]) ? trim($_POST["motivo"]) : '';
 		$usuario_registro = $_SESSION["usu_usuario"];
 
 		// Guarda el valor original (sin transformaciones SQL) y el id_registro
@@ -28365,6 +28431,12 @@ case 'confirmar_ProgramacionLote_AddLote':
 		// Item 19: Peso Neto (Recepción de Mineral y Despacho de Mineral)
 		// En ambos casos el NETO recalcula el BRUTO a partir de la TARA: BRUTO = TARA + NETO.
 		// El valor ingresado llega siempre en KG.
+		//
+		// El historial de cambios (cambios_log) se escribe DESPUES de aplicar el cambio y SOLO si el
+		// valor realmente cambio. Asi el "valor anterior" que se muestra es el que estaba vigente antes
+		// de la edicion y el "valor resultante" es el que quedo guardado. Si el valor ingresado era
+		// igual al actual, se avisa por pantalla en lugar de dejar una entrada "21,848 -> 21,848" que
+		// hacia pensar que el modulo no detectaba los cambios.
 		// -----------------------------------------------------------------------------------------
 		if ($item == 19) {
 			$mensaje = '';
@@ -28430,26 +28502,22 @@ case 'confirmar_ProgramacionLote_AddLote':
 						}
 
 						// Guardar entrada en cambios_log
+						$json_log = '';
 						if ($id_vd > 0) {
-							$cambios_log = array();
-							$q_old_log = "SELECT cambios_log FROM despachos_primertramo_validaciondatos WHERE Id = " . $id_vd;
-							if ($res_old_log = mysqli_query($enlace, $q_old_log)) {
-								if ($row_old_log = mysqli_fetch_assoc($res_old_log)) {
-									$cambios_log = json_decode($row_old_log['cambios_log'], true);
-									if (!is_array($cambios_log)) $cambios_log = array();
-								}
+							if (f_HayCambioReal($neto_ant, $peso_neto)) {
+								$json_log = f_AgregarCambioLog(
+									$enlace,
+									'despachos_primertramo_validaciondatos',
+									$id_vd,
+									'Peso Neto',
+									f_FormatearValorCambioLog($neto_ant),
+									f_FormatearValorCambioLog($peso_neto),
+									$usuario_registro,
+									$motivo
+								);
+							} else {
+								$mensaje = 'El peso neto ingresado es igual al peso neto que ya tiene el lote. No se realizó ningún cambio.';
 							}
-
-							$cambios_log[] = array(
-								"descripcion"      => "Peso Neto",
-								"valor_anterior"   => ($neto_ant !== null ? number_format($neto_ant, 0, '.', ',') : '(Vacío)'),
-								"valor_resultante" => number_format($peso_neto, 0, '.', ','),
-								"usuario"          => $usuario_registro,
-								"motivo"           => $motivo
-							);
-
-							$json_log = mysqli_real_escape_string($enlace, json_encode($cambios_log, JSON_UNESCAPED_UNICODE));
-							mysqli_query($enlace, "UPDATE despachos_primertramo_validaciondatos SET cambios_log = '" . $json_log . "' WHERE Id = " . $id_vd);
 						}
 
 						// Realizar cierre contable nuevamente para que los datos del ticket contable se actualicen
@@ -28464,8 +28532,8 @@ case 'confirmar_ProgramacionLote_AddLote':
 							'peso_bruto_raw' => round($bruto_nuevo),
 							'peso_tara_raw'  => round($tara),
 							'peso_neto_raw'  => round($peso_neto),
-							'cambios_log'    => (isset($json_log) ? $json_log : ''),
-							'mensaje'        => ''
+							'cambios_log'    => $json_log,
+							'mensaje'        => $mensaje
 						));
 
 						break;
@@ -28494,29 +28562,31 @@ case 'confirmar_ProgramacionLote_AddLote':
 					$neto_nuevo_tm = $peso_neto / 1000;
 					$bruto_nuevo_tm = $tara_tm + $neto_nuevo_tm;
 
-					$neto_ant_kg = ($row_lote2["peso_neto"] !== null) ? round($row_lote2["peso_neto"] * 1000) : null;
-
-					$cambios_log = json_decode($row_lote2['cambios_log'], true);
-					if (!is_array($cambios_log)) $cambios_log = array();
-
-					$cambios_log[] = array(
-						"descripcion"      => "Peso Neto",
-						"valor_anterior"   => ($neto_ant_kg !== null ? number_format($neto_ant_kg, 0, '.', ',') : '(Vacío)'),
-						"valor_resultante" => number_format($peso_neto, 0, '.', ','),
-						"usuario"          => $usuario_registro,
-						"motivo"           => $motivo
-					);
-
-					$json_log = mysqli_real_escape_string($enlace, json_encode($cambios_log, JSON_UNESCAPED_UNICODE));
+					$neto_ant_kg = ($row_lote2["peso_neto"] !== null) ? floatval($row_lote2["peso_neto"]) * 1000 : null;
 
 					$q_save_dt = "UPDATE despachos_segundotramo_distribucion_lotes
 									 SET peso_bruto  = " . number_format($bruto_nuevo_tm, 3, '.', '') . ",
-										 peso_neto   = " . number_format($neto_nuevo_tm, 3, '.', '') . ",
-										 cambios_log = '" . $json_log . "'
+										 peso_neto   = " . number_format($neto_nuevo_tm, 3, '.', '') . "
 								   WHERE Id = " . intval($id_registro);
 
 					if (mysqli_query($enlace, $q_save_dt)) {
 						$estado = 1;
+
+						$json_log = '';
+						if (f_HayCambioReal($neto_ant_kg, $peso_neto)) {
+							$json_log = f_AgregarCambioLog(
+								$enlace,
+								'despachos_segundotramo_distribucion_lotes',
+								intval($id_registro),
+								'Peso Neto',
+								f_FormatearValorCambioLog($neto_ant_kg),
+								f_FormatearValorCambioLog($peso_neto),
+								$usuario_registro,
+								$motivo
+							);
+						} else {
+							$mensaje = 'El peso neto ingresado es igual al peso neto que ya tiene el lote. No se realizó ningún cambio.';
+						}
 
 						// Realizar cierre contable nuevamente para que los datos del ticket contable se actualicen
 						cerrar_lote_desde_segundo_tramo($enlace, $id_registro, $g_fecha, $usuario_registro);
@@ -28530,8 +28600,8 @@ case 'confirmar_ProgramacionLote_AddLote':
 							'peso_bruto_raw' => round($bruto_nuevo_tm * 1000),
 							'peso_tara_raw'  => round($tara_tm * 1000),
 							'peso_neto_raw'  => round($peso_neto),
-							'cambios_log'    => (isset($json_log) ? $json_log : ''),
-							'mensaje'        => ''
+							'cambios_log'    => $json_log,
+							'mensaje'        => $mensaje
 						));
 
 						break;
@@ -28550,6 +28620,10 @@ case 'confirmar_ProgramacionLote_AddLote':
 
 		// -----------------------------------------------------------------------------------------
 		// Items 13 y 14: Peso Bruto y Tara de Recepción de Mineral (Primer Tramo)
+		//
+		// El "valor anterior" del historial se toma de catalogolotes (que es de donde sale el dato que
+		// ve el usuario en la grilla y de donde se arma el Ticket Contable) y el "valor resultante" es
+		// el valor que queda guardado. Solo se registra la entrada si el valor realmente cambio.
 		// -----------------------------------------------------------------------------------------
 		if ($item == 13 || $item == 14) {
 			$valor_peso = floatval(trim($valor));
@@ -28580,7 +28654,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 				$tara_actual = ($tara_ant !== null) ? floatval($tara_ant) : 0;
 				$neto_nuevo  = $bruto_nuevo - $tara_actual;
 				$desc_log    = "Peso Bruto";
-				$val_ant_log = ($bruto_ant !== null) ? number_format($bruto_ant, 0, '.', ',') : '(Vacío)';
+				$valor_ant   = $bruto_ant;
 
 				$q_up_lote = "UPDATE catalogolotes L
 								 SET L.nPeso_InicialBalanza = " . $bruto_nuevo . ",
@@ -28596,7 +28670,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 				$bruto_actual = ($bruto_ant !== null) ? floatval($bruto_ant) : 0;
 				$neto_nuevo   = $bruto_actual - $tara_nueva;
 				$desc_log     = "Tara";
-				$val_ant_log  = ($tara_ant !== null) ? number_format($tara_ant, 0, '.', ',') : '(Vacío)';
+				$valor_ant    = $tara_ant;
 
 				$q_up_lote = "UPDATE catalogolotes L
 								 SET L.nPeso_FinalBalanza   = " . $tara_nueva . ",
@@ -28627,26 +28701,24 @@ case 'confirmar_ProgramacionLote_AddLote':
 				}
 
 				// Guardar cambios_log en despachos_primertramo_validaciondatos
+				$json_log = '';
+				$mensaje  = '';
+
 				if ($id_vd > 0) {
-					$cambios_log = array();
-					$q_old_log = "SELECT cambios_log FROM despachos_primertramo_validaciondatos WHERE Id = " . $id_vd;
-					if ($res_old_log = mysqli_query($enlace, $q_old_log)) {
-						if ($row_old_log = mysqli_fetch_assoc($res_old_log)) {
-							$cambios_log = json_decode($row_old_log['cambios_log'], true);
-							if (!is_array($cambios_log)) $cambios_log = array();
-						}
+					if (f_HayCambioReal($valor_ant, $valor_peso)) {
+						$json_log = f_AgregarCambioLog(
+							$enlace,
+							'despachos_primertramo_validaciondatos',
+							$id_vd,
+							$desc_log,
+							f_FormatearValorCambioLog($valor_ant),
+							f_FormatearValorCambioLog($valor_peso),
+							$usuario_registro,
+							$motivo
+						);
+					} else {
+						$mensaje = 'El peso ingresado es igual al peso que ya tiene el lote. No se realizó ningún cambio.';
 					}
-
-					$cambios_log[] = array(
-						"descripcion"      => $desc_log,
-						"valor_anterior"   => $val_ant_log,
-						"valor_resultante" => number_format($valor_peso, 0, '.', ','),
-						"usuario"          => $usuario_registro,
-						"motivo"           => $motivo
-					);
-
-					$json_log = mysqli_real_escape_string($enlace, json_encode($cambios_log, JSON_UNESCAPED_UNICODE));
-					mysqli_query($enlace, "UPDATE despachos_primertramo_validaciondatos SET cambios_log = '" . $json_log . "' WHERE Id = " . $id_vd);
 				}
 
 				// Realizar cierre contable nuevamente para que los datos del ticket contable se actualicen
@@ -28665,7 +28737,8 @@ case 'confirmar_ProgramacionLote_AddLote':
 					'peso_bruto_raw' => round($bruto_final_1),
 					'peso_tara_raw'  => round($tara_final_1),
 					'peso_neto_raw'  => round($neto_final_1),
-					'cambios_log'    => (isset($json_log) ? $json_log : '')
+					'cambios_log'    => $json_log,
+					'mensaje'        => $mensaje
 				));
 
 				break;
@@ -28677,6 +28750,10 @@ case 'confirmar_ProgramacionLote_AddLote':
 
 		// -----------------------------------------------------------------------------------------
 		// Items 16 y 17: Peso Bruto y Tara de Despacho de Mineral (Segundo Tramo)
+		//
+		// Los pesos del segundo tramo se guardan en TONELADAS, pero el usuario los edita en KG (que es
+		// la unidad de la grilla y del ticket contable). Por eso el historial tambien se registra en
+		// KG, leyendo el valor anterior del mismo campo que se va a modificar.
 		// -----------------------------------------------------------------------------------------
 		if ($item == 16 || $item == 17) {
 			$valor_peso_kg = floatval(trim($valor));
@@ -28709,7 +28786,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 				$tara_actual_tm = ($tara_ant_tm !== null) ? $tara_ant_tm : 0;
 				$neto_nuevo_tm  = $bruto_nuevo_tm - $tara_actual_tm;
 				$desc_log       = "Peso Bruto";
-				$val_ant_log    = ($bruto_ant_tm !== null) ? number_format($bruto_ant_tm * 1000, 0, '.', ',') : '(Vacío)';
+				$valor_ant_kg   = ($bruto_ant_tm !== null) ? $bruto_ant_tm * 1000 : null;
 
 				$q_up_dt = "UPDATE despachos_segundotramo_distribucion_lotes
 							   SET peso_bruto = " . number_format($bruto_nuevo_tm, 3, '.', '') . ",
@@ -28720,28 +28797,35 @@ case 'confirmar_ProgramacionLote_AddLote':
 				$bruto_actual_tm = ($bruto_ant_tm !== null) ? $bruto_ant_tm : 0;
 				$neto_nuevo_tm   = $bruto_actual_tm - $tara_nueva_tm;
 				$desc_log        = "Tara";
-				$val_ant_log     = ($tara_ant_tm !== null) ? number_format($tara_ant_tm * 1000, 0, '.', ',') : '(Vacío)';
+				$valor_ant_kg    = ($tara_ant_tm !== null) ? $tara_ant_tm * 1000 : null;
 
 				$q_up_dt = "UPDATE despachos_segundotramo_distribucion_lotes
 							   SET peso_tara = " . number_format($tara_nueva_tm, 3, '.', '') . ",
 								   peso_neto = " . number_format($neto_nuevo_tm, 3, '.', '');
 			}
 
-			$cambios_log = json_decode($row_lote2['cambios_log'], true);
-			if (!is_array($cambios_log)) $cambios_log = array();
-
-			$cambios_log[] = array(
-				"descripcion"      => $desc_log,
-				"valor_anterior"   => $val_ant_log,
-				"valor_resultante" => number_format($valor_peso_kg, 0, '.', ','),
-				"usuario"          => $usuario_registro,
-				"motivo"           => $motivo
-			);
-
-			$json_log = mysqli_real_escape_string($enlace, json_encode($cambios_log, JSON_UNESCAPED_UNICODE));
-			$q_up_dt .= ", cambios_log = '" . $json_log . "' WHERE Id = " . intval($id_registro);
+			$q_up_dt .= " WHERE Id = " . intval($id_registro);
 
 			if (mysqli_query($enlace, $q_up_dt)) {
+				// Guardar cambios_log en despachos_segundotramo_distribucion_lotes
+				$json_log = '';
+				$mensaje  = '';
+
+				if (f_HayCambioReal($valor_ant_kg, $valor_peso_kg)) {
+					$json_log = f_AgregarCambioLog(
+						$enlace,
+						'despachos_segundotramo_distribucion_lotes',
+						intval($id_registro),
+						$desc_log,
+						f_FormatearValorCambioLog($valor_ant_kg),
+						f_FormatearValorCambioLog($valor_peso_kg),
+						$usuario_registro,
+						$motivo
+					);
+				} else {
+					$mensaje = 'El peso ingresado es igual al peso que ya tiene el lote. No se realizó ningún cambio.';
+				}
+
 				// Realizar cierre contable nuevamente para que los datos del ticket contable se actualicen
 				cerrar_lote_desde_segundo_tramo($enlace, $id_registro, $g_fecha, $usuario_registro);
 
@@ -28758,7 +28842,8 @@ case 'confirmar_ProgramacionLote_AddLote':
 					'peso_bruto_raw' => round($bruto_final_2_kg),
 					'peso_tara_raw'  => round($tara_final_2_kg),
 					'peso_neto_raw'  => round($neto_final_2_kg),
-					'cambios_log'    => (isset($json_log) ? $json_log : '')
+					'cambios_log'    => $json_log,
+					'mensaje'        => $mensaje
 				));
 
 				break;
@@ -28894,7 +28979,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$estado = 0;
 		$mensaje = '';
 		$id_registro = intval($_POST["id_registro"]);
-		$motivo = mysqli_real_escape_string($enlace, trim($_POST["motivo"]));
+		$motivo = trim($_POST["motivo"]);
 		$usuario_registro = $_SESSION["usu_usuario"];
 
 		// Validación del permiso: el botón en el front solo se pinta cuando la sesión tiene
@@ -28939,22 +29024,8 @@ case 'confirmar_ProgramacionLote_AddLote':
 			} elseif ($row_pesos["peso_tara"] === null && $row_pesos["peso_bruto"] === null) {
 				$mensaje = 'El lote no tiene pesos registrados.';
 			} else {
-				$cambios_log = json_decode($row_pesos["cambios_log"], true);
-
-				if (!is_array($cambios_log)) {
-					$cambios_log = array();
-				}
-
-				$cambios_log[] = array(
-					"descripcion"      => 'Pesos del Lote',
-					"valor_anterior"   => 'Tara: ' . (($row_pesos["peso_tara"] === null) ? '(vacío)' : $row_pesos["peso_tara"])
-											. ' | Bruto: ' . (($row_pesos["peso_bruto"] === null) ? '(vacío)' : $row_pesos["peso_bruto"]),
-					"valor_resultante" => 'Tara: (vacío) | Bruto: (vacío)',
-					"usuario"          => $usuario_registro,
-					"motivo"           => $motivo
-				);
-
-				$json_log = mysqli_real_escape_string($enlace, json_encode($cambios_log, JSON_UNESCAPED_UNICODE));
+				$valor_anterior_log = 'Tara: ' . f_FormatearValorCambioLog($row_pesos["peso_tara"])
+										. ' | Bruto: ' . f_FormatearValorCambioLog($row_pesos["peso_bruto"]);
 
 				$q_limpiar = "UPDATE despachos_segundotramo_distribucion_lotes
 									SET peso_tara = NULL,
@@ -28963,12 +29034,24 @@ case 'confirmar_ProgramacionLote_AddLote':
 										peso_bruto = NULL,
 										peso_bruto_fechahoraregistro = NULL,
 										peso_bruto_usuarioregistro = NULL,
-										peso_neto = NULL,
-										cambios_log = '" . $json_log . "'
+										peso_neto = NULL
 								  WHERE Id = " . $id_registro;
 
 				if (mysqli_query($enlace, $q_limpiar)) {
 					$estado = 1;
+
+					// El historial de cambios se graba con f_AgregarCambioLog (misma logica que el resto
+					// de modificaciones del modulo) para que el JSON quede valido en el navegador.
+					f_AgregarCambioLog(
+						$enlace,
+						'despachos_segundotramo_distribucion_lotes',
+						$id_registro,
+						'Pesos del Lote',
+						$valor_anterior_log,
+						'Tara: (vacío) | Bruto: (vacío)',
+						$usuario_registro,
+						$motivo
+					);
 
 					// Re-sincroniza el Ticket Contable (Segundo Tramo). La funcion solo actúa si el
 					// registro ya fue migrado a consolidado_lotes_cierrecontable, que es el mismo
@@ -28987,56 +29070,74 @@ case 'confirmar_ProgramacionLote_AddLote':
 
 	case 'grabar_EditFechaPesoinicial':
 		$estado = 0;
+		$mensaje = '';
 		$id_registro    = intval($_POST["id_registro"]);
 		$tipo_condicion = intval($_POST["tipo_condicion"]);
-		$valor          = mysqli_real_escape_string($enlace, trim($_POST["valor"]));
-		$motivo         = mysqli_real_escape_string($enlace, trim($_POST["motivo"]));
+		$valor          = trim($_POST["valor"]);
+		$motivo         = trim($_POST["motivo"]);
 		$usuario        = $_SESSION["usu_usuario"];
-		$valor_anterior = '';
-		$cambios_log    = array();
+		$json_log       = '';
 
 		if (strlen($motivo) == 0) {
 			echo json_encode(array('estado' => 0, 'mensaje' => 'Debe indicar el motivo de la modificación.'));
+			break;
+		}
+
+		// La fecha se normaliza a "YYYY-MM-DD HH:MM:SS" para que el valor anterior y el resultante
+		// sean comparables. Antes, el segundo tramo mostraba la hora sin segundos ("13:32") y al
+		// guardar se comparaba contra "13:32:00", lo que hacia ver un cambio donde no lo habia.
+		$valor_normalizado = f_FormatearValorCambioLog($valor, true);
+
+		if ($valor_normalizado === '(Vacío)') {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'Debe indicar la fecha y hora del pesaje inicial.'));
 			break;
 		}
 
 		if ($tipo_condicion == 2) {
 			// Segundo Tramo: tabla despachos_segundotramo_distribucion_lotes
 			// Columna de fecha inicial = peso_tara_fechahoraregistro
-			$q_old = "SELECT peso_tara_fechahoraregistro, cambios_log FROM despachos_segundotramo_distribucion_lotes WHERE Id = " . $id_registro;
+			$q_old = "SELECT peso_tara_fechahoraregistro FROM despachos_segundotramo_distribucion_lotes WHERE Id = " . $id_registro;
+			$valor_anterior = null;
 			if ($res_old = mysqli_query($enlace, $q_old)) {
 				if ($row_old = mysqli_fetch_assoc($res_old)) {
 					$valor_anterior = $row_old['peso_tara_fechahoraregistro'];
-					$cambios_log    = json_decode($row_old['cambios_log'], true);
-					if (!is_array($cambios_log)) $cambios_log = array();
 				}
 			}
 
-			$cambios_log[] = array(
-				"descripcion"      => "Fecha de Pesaje Inicial",
-				"valor_anterior"   => ($valor_anterior !== null && strlen($valor_anterior) > 0 ? $valor_anterior : '(Vacío)'),
-				"valor_resultante" => $valor,
-				"usuario"          => $usuario,
-				"motivo"           => $motivo
-			);
-
-			$json_log = mysqli_real_escape_string($enlace, json_encode($cambios_log, JSON_UNESCAPED_UNICODE));
+			$valor_anterior_log = f_FormatearValorCambioLog($valor_anterior, true);
 
 			$q_update = "UPDATE despachos_segundotramo_distribucion_lotes
-			                SET peso_tara_fechahoraregistro = '" . $valor . "',
-			                    cambios_log = '" . $json_log . "'
+			                SET peso_tara_fechahoraregistro = '" . $valor_normalizado . "'
 			              WHERE Id = " . $id_registro;
 
 			if (mysqli_query($enlace, $q_update)) {
 				$estado = 1;
 
+				if (f_HayCambioReal($valor_anterior_log, $valor_normalizado)) {
+					$json_log = f_AgregarCambioLog(
+						$enlace,
+						'despachos_segundotramo_distribucion_lotes',
+						$id_registro,
+						'Fecha de Pesaje Inicial',
+						$valor_anterior_log,
+						$valor_normalizado,
+						$usuario,
+						$motivo
+					);
+				} else {
+					$mensaje = 'La fecha y hora ingresada es igual a la que ya tiene el lote. No se realizó ningún cambio.';
+				}
+
 				// Realizar cierre contable nuevamente para que los datos del ticket contable se actualicen
 				cerrar_lote_desde_segundo_tramo($enlace, $id_registro, $g_fecha, $usuario);
+			} else {
+				$estado  = 0;
+				$mensaje = 'Ocurrió un error al momento de grabar los datos.';
 			}
 		} else {
 			// Primer Tramo: tabla despachos_primertramo_validaciondatos
 			// Columna de fecha inicial = lote_pesoinicial_fechahoraregistro
-			// id_registro = id_CatalogoLotes => necesitamos el cod_lote
+			// id_registro = id_CatalogoLotes
 			$q_lote = "SELECT ccod_Lote FROM catalogolotes WHERE id_CatalogoLotes = " . $id_registro;
 			$cod_lote = '';
 			if ($res_lote = mysqli_query($enlace, $q_lote)) {
@@ -29045,7 +29146,9 @@ case 'confirmar_ProgramacionLote_AddLote':
 				}
 			}
 
-			if (strlen($cod_lote) > 0) {
+			if (strlen($cod_lote) == 0) {
+				$mensaje = 'El lote indicado no existe.';
+			} else {
 				// Asegurar que exista fila en despachos_primertramo_validaciondatos
 				$id_vd_fecha = 0;
 				$q_id_vd = "SELECT Id FROM despachos_primertramo_validaciondatos WHERE lote_id_lote = " . $id_registro . " ORDER BY Id DESC LIMIT 1";
@@ -29063,107 +29166,146 @@ case 'confirmar_ProgramacionLote_AddLote':
 					}
 				}
 
-				$q_old = "SELECT lote_pesoinicial_fechahoraregistro, cambios_log FROM despachos_primertramo_validaciondatos WHERE lote_id_lote = " . $id_registro . " ORDER BY Id DESC LIMIT 1";
+				// El valor anterior se toma de catalogolotes (de donde sale el dato que ve el usuario
+				// en la grilla) y, si no estuviera, del registro de validacion de datos.
+				$q_old = "SELECT L.tFechaInicialBalanza, L.tHoraInicialBalanza,
+								  V.lote_pesoinicial_fechahoraregistro
+							 FROM catalogolotes L
+							 LEFT JOIN despachos_primertramo_validaciondatos V ON V.lote_id_lote = L.id_CatalogoLotes
+							WHERE L.id_CatalogoLotes = " . $id_registro . "
+							ORDER BY V.Id DESC
+							LIMIT 1";
+
+				$valor_anterior = null;
+
 				if ($res_old = mysqli_query($enlace, $q_old)) {
 					if ($row_old = mysqli_fetch_assoc($res_old)) {
-						$valor_anterior = $row_old['lote_pesoinicial_fechahoraregistro'];
-						$cambios_log    = json_decode($row_old['cambios_log'], true);
-						if (!is_array($cambios_log)) $cambios_log = array();
+						$valor_anterior = trim((string) $row_old['lote_pesoinicial_fechahoraregistro']);
+
+						if (strlen($valor_anterior) == 0) {
+							$valor_anterior = trim((string) $row_old['tFechaInicialBalanza'] . ' ' . $row_old['tHoraInicialBalanza']);
+						}
 					}
 				}
 
-				$cambios_log[] = array(
-					"descripcion"      => "Fecha de Pesaje Inicial",
-					"valor_anterior"   => ($valor_anterior !== null && strlen($valor_anterior) > 0 ? $valor_anterior : '(Vacío)'),
-					"valor_resultante" => $valor,
-					"usuario"          => $usuario,
-					"motivo"           => $motivo
-				);
-
-				$json_log = mysqli_real_escape_string($enlace, json_encode($cambios_log, JSON_UNESCAPED_UNICODE));
+				$valor_anterior_log = f_FormatearValorCambioLog($valor_anterior, true);
 
 				$q_update = "UPDATE despachos_primertramo_validaciondatos
-				                SET lote_pesoinicial_fechahoraregistro = '" . $valor . "',
-				                    cambios_log = '" . $json_log . "'
+				                SET lote_pesoinicial_fechahoraregistro = '" . $valor_normalizado . "'
 				              WHERE lote_id_lote = " . $id_registro;
 
 				if (mysqli_query($enlace, $q_update)) {
 					$estado = 1;
 
 					// Sincroniza con catalogolotes (tFechaInicialBalanza y tHoraInicialBalanza)
-					$fecha_part = substr($valor, 0, 10);
-					$hora_part  = substr($valor, 11);
+					$fecha_part = substr($valor_normalizado, 0, 10);
+					$hora_part  = substr($valor_normalizado, 11);
 					mysqli_query($enlace, "UPDATE catalogolotes SET tFechaInicialBalanza = '" . $fecha_part . "', tHoraInicialBalanza = '" . $hora_part . "' WHERE id_CatalogoLotes = " . $id_registro);
 
 					// Realizar cierre contable nuevamente para que los datos del ticket contable se actualicen
 					cerrar_lote_desde_primer_tramo($enlace, $id_registro, $g_fecha, $usuario, 1);
+
+					if ($id_vd_fecha > 0) {
+						if (f_HayCambioReal($valor_anterior_log, $valor_normalizado)) {
+							$json_log = f_AgregarCambioLog(
+								$enlace,
+								'despachos_primertramo_validaciondatos',
+								$id_vd_fecha,
+								'Fecha de Pesaje Inicial',
+								$valor_anterior_log,
+								$valor_normalizado,
+								$usuario,
+								$motivo
+							);
+						} else {
+							$mensaje = 'La fecha y hora ingresada es igual a la que ya tiene el lote. No se realizó ningún cambio.';
+						}
+					}
+				} else {
+					$estado  = 0;
+					$mensaje = 'Ocurrió un error al momento de grabar los datos.';
 				}
 			}
 		}
 
-		$fecha_part = substr($valor, 0, 10);
-		$hora_part  = substr($valor, 11);
-		$fechahora_display = $fecha_part . ' ' . $hora_part;
-
 		echo json_encode(array(
 			'estado'      => $estado,
-			'fechahora'   => trim($fechahora_display),
-			'cambios_log' => (isset($json_log) ? $json_log : '')
+			'fechahora'   => $valor_normalizado,
+			'cambios_log' => $json_log,
+			'mensaje'     => $mensaje
 		));
 
 		break;
 
 	case 'grabar_EditFechaPesofinal':
 		$estado = 0;
+		$mensaje = '';
 		$id_registro    = intval($_POST["id_registro"]);
 		$tipo_condicion = intval($_POST["tipo_condicion"]);
-		$valor          = mysqli_real_escape_string($enlace, trim($_POST["valor"]));
-		$motivo         = mysqli_real_escape_string($enlace, trim($_POST["motivo"]));
+		$valor          = trim($_POST["valor"]);
+		$motivo         = trim($_POST["motivo"]);
 		$usuario        = $_SESSION["usu_usuario"];
-		$valor_anterior = '';
-		$cambios_log    = array();
+		$json_log       = '';
 
 		if (strlen($motivo) == 0) {
 			echo json_encode(array('estado' => 0, 'mensaje' => 'Debe indicar el motivo de la modificación.'));
 			break;
 		}
 
+		// La fecha se normaliza a "YYYY-MM-DD HH:MM:SS" para que el valor anterior y el resultante
+		// sean comparables (ver la nota de 'grabar_EditFechaPesoinicial').
+		$valor_normalizado = f_FormatearValorCambioLog($valor, true);
+
+		if ($valor_normalizado === '(Vacío)') {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'Debe indicar la fecha y hora del pesaje final.'));
+			break;
+		}
+
 		if ($tipo_condicion == 2) {
 			// Segundo Tramo: tabla despachos_segundotramo_distribucion_lotes
 			// Columna de fecha final = peso_bruto_fechahoraregistro
-			$q_old = "SELECT peso_bruto_fechahoraregistro, cambios_log FROM despachos_segundotramo_distribucion_lotes WHERE Id = " . $id_registro;
+			$q_old = "SELECT peso_bruto_fechahoraregistro FROM despachos_segundotramo_distribucion_lotes WHERE Id = " . $id_registro;
+			$valor_anterior = null;
 			if ($res_old = mysqli_query($enlace, $q_old)) {
 				if ($row_old = mysqli_fetch_assoc($res_old)) {
 					$valor_anterior = $row_old['peso_bruto_fechahoraregistro'];
-					$cambios_log    = json_decode($row_old['cambios_log'], true);
-					if (!is_array($cambios_log)) $cambios_log = array();
 				}
 			}
 
-			$cambios_log[] = array(
-				"descripcion"      => "Fecha de Pesaje Final",
-				"valor_anterior"   => ($valor_anterior !== null && strlen($valor_anterior) > 0 ? $valor_anterior : '(Vacío)'),
-				"valor_resultante" => $valor,
-				"usuario"          => $usuario,
-				"motivo"           => $motivo
-			);
-
-			$json_log = mysqli_real_escape_string($enlace, json_encode($cambios_log, JSON_UNESCAPED_UNICODE));
+			$valor_anterior_log = f_FormatearValorCambioLog($valor_anterior, true);
 
 			$q_update = "UPDATE despachos_segundotramo_distribucion_lotes
-			                SET peso_bruto_fechahoraregistro = '" . $valor . "',
-			                    cambios_log = '" . $json_log . "'
+			                SET peso_bruto_fechahoraregistro = '" . $valor_normalizado . "'
 			              WHERE Id = " . $id_registro;
 
 			if (mysqli_query($enlace, $q_update)) {
 				$estado = 1;
 
+				if (f_HayCambioReal($valor_anterior_log, $valor_normalizado)) {
+					$json_log = f_AgregarCambioLog(
+						$enlace,
+						'despachos_segundotramo_distribucion_lotes',
+						$id_registro,
+						'Fecha de Pesaje Final',
+						$valor_anterior_log,
+						$valor_normalizado,
+						$usuario,
+						$motivo
+					);
+				} else {
+					$mensaje = 'La fecha y hora ingresada es igual a la que ya tiene el lote. No se realizó ningún cambio.';
+				}
+
 				// Realizar cierre contable nuevamente para que los datos del ticket contable se actualicen
 				cerrar_lote_desde_segundo_tramo($enlace, $id_registro, $g_fecha, $usuario);
+			} else {
+				$estado  = 0;
+				$mensaje = 'Ocurrió un error al momento de grabar los datos.';
 			}
 		} else {
 			// Primer Tramo: tabla despachos_primertramo_validaciondatos
 			// Columna de fecha final = lote_pesofinal_fechahoraregistro
+			// id_registro = id_CatalogoLotes
 			$q_lote = "SELECT ccod_Lote FROM catalogolotes WHERE id_CatalogoLotes = " . $id_registro;
 			$cod_lote = '';
 			if ($res_lote = mysqli_query($enlace, $q_lote)) {
@@ -29172,7 +29314,9 @@ case 'confirmar_ProgramacionLote_AddLote':
 				}
 			}
 
-			if (strlen($cod_lote) > 0) {
+			if (strlen($cod_lote) == 0) {
+				$mensaje = 'El lote indicado no existe.';
+			} else {
 				// Asegurar que exista fila en despachos_primertramo_validaciondatos
 				$id_vd_fecha = 0;
 				$q_id_vd = "SELECT Id FROM despachos_primertramo_validaciondatos WHERE lote_id_lote = " . $id_registro . " ORDER BY Id DESC LIMIT 1";
@@ -29190,52 +29334,325 @@ case 'confirmar_ProgramacionLote_AddLote':
 					}
 				}
 
-				$q_old = "SELECT lote_pesofinal_fechahoraregistro, cambios_log FROM despachos_primertramo_validaciondatos WHERE lote_id_lote = " . $id_registro . " ORDER BY Id DESC LIMIT 1";
+				// El valor anterior se toma de catalogolotes (de donde sale el dato que ve el usuario
+				// en la grilla) y, si no estuviera, del registro de validacion de datos.
+				$q_old = "SELECT L.dFechaFinalBalanza, L.tHoraFinalBalanza,
+								  V.lote_pesofinal_fechahoraregistro
+							 FROM catalogolotes L
+							 LEFT JOIN despachos_primertramo_validaciondatos V ON V.lote_id_lote = L.id_CatalogoLotes
+							WHERE L.id_CatalogoLotes = " . $id_registro . "
+							ORDER BY V.Id DESC
+							LIMIT 1";
+
+				$valor_anterior = null;
+
 				if ($res_old = mysqli_query($enlace, $q_old)) {
 					if ($row_old = mysqli_fetch_assoc($res_old)) {
-						$valor_anterior = $row_old['lote_pesofinal_fechahoraregistro'];
-						$cambios_log    = json_decode($row_old['cambios_log'], true);
-						if (!is_array($cambios_log)) $cambios_log = array();
+						$valor_anterior = trim((string) $row_old['lote_pesofinal_fechahoraregistro']);
+
+						if (strlen($valor_anterior) == 0) {
+							$valor_anterior = trim((string) $row_old['dFechaFinalBalanza'] . ' ' . $row_old['tHoraFinalBalanza']);
+						}
 					}
 				}
 
-				$cambios_log[] = array(
-					"descripcion"      => "Fecha de Pesaje Final",
-					"valor_anterior"   => ($valor_anterior !== null && strlen($valor_anterior) > 0 ? $valor_anterior : '(Vacío)'),
-					"valor_resultante" => $valor,
-					"usuario"          => $usuario,
-					"motivo"           => $motivo
-				);
-
-				$json_log = mysqli_real_escape_string($enlace, json_encode($cambios_log, JSON_UNESCAPED_UNICODE));
+				$valor_anterior_log = f_FormatearValorCambioLog($valor_anterior, true);
 
 				$q_update = "UPDATE despachos_primertramo_validaciondatos
-				                SET lote_pesofinal_fechahoraregistro = '" . $valor . "',
-				                    cambios_log = '" . $json_log . "'
+				                SET lote_pesofinal_fechahoraregistro = '" . $valor_normalizado . "'
 				              WHERE lote_id_lote = " . $id_registro;
 
 				if (mysqli_query($enlace, $q_update)) {
 					$estado = 1;
 
 					// Sincroniza con catalogolotes (dFechaFinalBalanza y tHoraFinalBalanza)
-					$fecha_part = substr($valor, 0, 10);
-					$hora_part  = substr($valor, 11);
+					$fecha_part = substr($valor_normalizado, 0, 10);
+					$hora_part  = substr($valor_normalizado, 11);
 					mysqli_query($enlace, "UPDATE catalogolotes SET dFechaFinalBalanza = '" . $fecha_part . "', tHoraFinalBalanza = '" . $hora_part . "' WHERE id_CatalogoLotes = " . $id_registro);
 
 					// Realizar cierre contable nuevamente para que los datos del ticket contable se actualicen
 					cerrar_lote_desde_primer_tramo($enlace, $id_registro, $g_fecha, $usuario, 0);
+
+					if ($id_vd_fecha > 0) {
+						if (f_HayCambioReal($valor_anterior_log, $valor_normalizado)) {
+							$json_log = f_AgregarCambioLog(
+								$enlace,
+								'despachos_primertramo_validaciondatos',
+								$id_vd_fecha,
+								'Fecha de Pesaje Final',
+								$valor_anterior_log,
+								$valor_normalizado,
+								$usuario,
+								$motivo
+							);
+						} else {
+							$mensaje = 'La fecha y hora ingresada es igual a la que ya tiene el lote. No se realizó ningún cambio.';
+						}
+					}
+				} else {
+					$estado  = 0;
+					$mensaje = 'Ocurrió un error al momento de grabar los datos.';
 				}
 			}
 		}
 
-		$fecha_part = substr($valor, 0, 10);
-		$hora_part  = substr($valor, 11);
-		$fechahora_display = $fecha_part . ' ' . $hora_part;
-
 		echo json_encode(array(
 			'estado'      => $estado,
-			'fechahora'   => trim($fechahora_display),
-			'cambios_log' => (isset($json_log) ? $json_log : '')
+			'fechahora'   => $valor_normalizado,
+			'cambios_log' => $json_log,
+			'mensaje'     => $mensaje
+		));
+
+		break;
+
+	case 'get_ResumenBalanza_ListaOperadores':
+		// Lista de operadores de balanza habilitados para asignar a un lote.
+		//
+		// Se listan los usuarios de sistema que estan habilitados y que son operadores de balanza
+		// ('neuribe' y 'rpizarro'), con su nombre completo para que el usuario los reconozca.
+		$res = array();
+		$estado = 0;
+
+		// Usuario actualmente asignado (para marcarlo como seleccionado)
+		$usuario_actual = isset($_POST["usuario_actual"]) ? trim($_POST["usuario_actual"]) : '';
+
+		$html = '<option value="">Elija una opción...</option>';
+
+		$q_datos = "SELECT
+						usu.Id AS id_usuario,
+						usu.usu_usuario AS usuario,
+						CONCAT_WS(
+							' ',
+							NULLIF(TRIM(emp.nombres), ''),
+							NULLIF(TRIM(emp.apellido_paterno), ''),
+							NULLIF(TRIM(emp.apellido_materno), '')
+						) AS empleado
+					FROM
+						tb_usuario usu
+					INNER JOIN tb_empleados emp ON
+						emp.Id = usu.id_empleado
+					WHERE
+						emp.estado = 'A' AND usu.estado = 'A' AND usu.usu_usuario IN ('neuribe', 'rpizarro')
+					ORDER BY
+						emp.nombres ASC";
+
+		if ($res_datos = mysqli_query($enlace, $q_datos)) {
+			if (mysqli_num_rows($res_datos) > 0) {
+				$estado = 1;
+
+				while ($row_datos = mysqli_fetch_array($res_datos)) {
+					$etiqueta = trim((string) $row_datos["empleado"]);
+
+					if (strlen($etiqueta) == 0) {
+						$etiqueta = $row_datos["usuario"];
+					}
+
+					$html .= '<option value="' . htmlspecialchars($row_datos["usuario"], ENT_QUOTES, 'UTF-8') . '" '
+							. (($usuario_actual === $row_datos["usuario"]) ? 'selected' : '') . '>'
+							. htmlspecialchars($etiqueta . ' (' . $row_datos["usuario"] . ')', ENT_QUOTES, 'UTF-8')
+							. '</option>';
+				}
+			}
+		}
+
+		echo json_encode(array('estado' => $estado, 'html' => $html));
+
+		break;
+
+	case 'grabar_EditOperadorBalanza':
+		// Edita el operador de balanza de un lote (Recepcion o Despacho de Mineral).
+		//
+		// El motivo es obligatorio y el cambio queda registrado en el historial de cambios (cambios_log)
+		// del lote. Ademas se vuelve a hacer el cierre contable para que el Ticket Contable muestre
+		// al nuevo operador.
+		//
+		//   - Recepcion de Mineral (tipo_condicion = 1): se actualiza correlativo_ticketsbalanza
+		//     (columna usuario_registro del ticket de balanza del primer tramo), que es de donde
+		//     print_ticketbalanza.php saca el "Operador" del comprobante.
+		//   - Despacho de Mineral (tipo_condicion = 2): se actualizan las columnas
+		//     peso_tara_usuarioregistro y peso_bruto_usuarioregistro de
+		//     despachos_segundotramo_distribucion_lotes y la columna fechahora_usuario de
+		//     consolidado_lotes_cierrecontable (que es de donde print_ticketbalanza_segundotramo.php
+		//     saca el "Operador").
+		$estado  = 0;
+		$mensaje = '';
+
+		$id_registro    = intval($_POST["id_registro"]);
+		$tipo_condicion = intval($_POST["tipo_condicion"]);
+		$operador       = isset($_POST["operador"]) ? trim($_POST["operador"]) : '';
+		$motivo         = isset($_POST["motivo"]) ? trim($_POST["motivo"]) : '';
+		$usuario        = $_SESSION["usu_usuario"];
+		$json_log       = '';
+
+		if (strlen($motivo) == 0) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'Debe indicar el motivo de la modificación.'));
+			break;
+		}
+
+		if ($id_registro <= 0) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'El registro indicado no es válido.'));
+			break;
+		}
+
+		if (strlen($operador) == 0) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'Debe seleccionar el operador de balanza.'));
+			break;
+		}
+
+		// Valida que el operador exista y este habilitado
+		$operador_valido = '';
+		$nombre_operador = '';
+
+		$q_operador = "SELECT usu.usu_usuario,
+							   CONCAT_WS(
+									' ',
+									NULLIF(TRIM(emp.nombres), ''),
+									NULLIF(TRIM(emp.apellido_paterno), ''),
+									NULLIF(TRIM(emp.apellido_materno), '')
+							   ) AS empleado
+							FROM tb_usuario usu
+							INNER JOIN tb_empleados emp ON emp.Id = usu.id_empleado
+							WHERE emp.estado = 'A' AND usu.estado = 'A'
+							  AND usu.usu_usuario = '" . mysqli_real_escape_string($enlace, $operador) . "'";
+
+		if ($res_operador = mysqli_query($enlace, $q_operador)) {
+			if ($row_operador = mysqli_fetch_assoc($res_operador)) {
+				$operador_valido = $row_operador["usu_usuario"];
+				$nombre_operador = trim((string) $row_operador["empleado"]);
+			}
+		}
+
+		if (strlen($operador_valido) == 0) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'El operador de balanza seleccionado no es válido.'));
+			break;
+		}
+
+		if (strlen($nombre_operador) == 0) {
+			$nombre_operador = $operador_valido;
+		}
+
+		if ($tipo_condicion == 1) {
+			// --- RECEPCIÓN DE MINERAL (Primer Tramo) ---
+			// Operador anterior: el que registro el ticket de balanza del lote
+			$operador_ant = '';
+
+			$q_ant = "SELECT usuario_registro
+						FROM correlativo_ticketsbalanza
+					   WHERE id_lote = " . $id_registro . "
+						 AND is_primertramo = 1
+					   ORDER BY Id DESC
+					   LIMIT 1";
+
+			if ($res_ant = mysqli_query($enlace, $q_ant)) {
+				if ($row_ant = mysqli_fetch_assoc($res_ant)) {
+					$operador_ant = trim((string) $row_ant["usuario_registro"]);
+				}
+			}
+
+			if (strlen($operador_ant) == 0) {
+				$mensaje = 'El lote no tiene un ticket de balanza registrado, por lo que no se puede asignarle un operador.';
+			} elseif ($operador_ant === $operador_valido) {
+				$mensaje = 'El operador seleccionado es el mismo que ya tiene el lote. No se realizó ningún cambio.';
+			} else {
+				$q_update = "UPDATE correlativo_ticketsbalanza
+								SET usuario_registro = '" . mysqli_real_escape_string($enlace, $operador_valido) . "'
+							  WHERE id_lote = " . $id_registro . "
+								AND is_primertramo = 1";
+
+				if (mysqli_query($enlace, $q_update)) {
+					$estado = 1;
+
+					// Historial de cambios del lote
+					$id_vd = 0;
+					$q_vd = "SELECT Id FROM despachos_primertramo_validaciondatos WHERE lote_id_lote = " . $id_registro . " ORDER BY Id DESC LIMIT 1";
+
+					if ($res_vd = mysqli_query($enlace, $q_vd)) {
+						if ($row_vd = mysqli_fetch_assoc($res_vd)) {
+							$id_vd = intval($row_vd["Id"]);
+						}
+					}
+
+					if ($id_vd > 0) {
+						$json_log = f_AgregarCambioLog(
+							$enlace,
+							'despachos_primertramo_validaciondatos',
+							$id_vd,
+							'Operador de Balanza',
+							f_FormatearValorCambioLog($operador_ant),
+							f_FormatearValorCambioLog($nombre_operador . ' (' . $operador_valido . ')'),
+							$usuario,
+							$motivo
+						);
+					}
+
+					// Realizar cierre contable nuevamente para que los datos del ticket contable se actualicen
+					cerrar_lote_desde_primer_tramo($enlace, $id_registro, $g_fecha, $usuario, 0);
+				} else {
+					$mensaje = 'Ocurrió un error al momento de grabar los datos.';
+				}
+			}
+		} elseif ($tipo_condicion == 2) {
+			// --- DESPACHO DE MINERAL (Segundo Tramo) ---
+			$operador_ant = '';
+
+			$q_ant = "SELECT COALESCE(peso_bruto_usuarioregistro, peso_tara_usuarioregistro) AS operador
+						FROM despachos_segundotramo_distribucion_lotes
+					   WHERE Id = " . $id_registro;
+
+			if ($res_ant = mysqli_query($enlace, $q_ant)) {
+				if ($row_ant = mysqli_fetch_assoc($res_ant)) {
+					$operador_ant = trim((string) $row_ant["operador"]);
+				}
+			}
+
+			if ($operador_ant === $operador_valido) {
+				$mensaje = 'El operador seleccionado es el mismo que ya tiene el lote. No se realizó ningún cambio.';
+			} else {
+				$q_update = "UPDATE despachos_segundotramo_distribucion_lotes
+								SET peso_tara_usuarioregistro = '" . mysqli_real_escape_string($enlace, $operador_valido) . "',
+									peso_bruto_usuarioregistro = '" . mysqli_real_escape_string($enlace, $operador_valido) . "'
+							  WHERE Id = " . $id_registro;
+
+				if (mysqli_query($enlace, $q_update)) {
+					$estado = 1;
+
+					$json_log = f_AgregarCambioLog(
+						$enlace,
+						'despachos_segundotramo_distribucion_lotes',
+						$id_registro,
+						'Operador de Balanza',
+						f_FormatearValorCambioLog($operador_ant),
+						f_FormatearValorCambioLog($nombre_operador . ' (' . $operador_valido . ')'),
+						$usuario,
+						$motivo
+					);
+
+					// Realizar cierre contable nuevamente para que los datos del ticket contable se actualicen
+					cerrar_lote_desde_segundo_tramo($enlace, $id_registro, $g_fecha, $usuario);
+
+					// El cierre contable graba en consolidated_lotes_cierrecontable el usuario que lo
+					// ejecuto, asi que el operador se asigna DESPUES del cierre para que no lo pise.
+					// print_ticketbalanza_segundotramo.php toma el "Operador" de ahi.
+					$q_cierre = "UPDATE consolidado_lotes_cierrecontable
+									SET fechahora_usuario = '" . mysqli_real_escape_string($enlace, $operador_valido) . "'
+								  WHERE id_tipoingreso = 2
+									AND id_registro = " . $id_registro;
+
+					mysqli_query($enlace, $q_cierre);
+				} else {
+					$mensaje = 'Ocurrió un error al momento de grabar los datos.';
+				}
+			}
+		} else {
+			$mensaje = 'Tipo de condición no válido.';
+		}
+
+		echo json_encode(array(
+			'estado'         => $estado,
+			'operador'       => $operador_valido,
+			'operador_nombre'=> $nombre_operador,
+			'cambios_log'    => $json_log,
+			'mensaje'        => $mensaje
 		));
 
 		break;

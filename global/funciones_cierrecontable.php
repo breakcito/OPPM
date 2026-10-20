@@ -643,6 +643,224 @@ function f_RenumerarTicketsBalanzaPorOrdenPesaje($enlace, $id_md5, $id_tipoingre
 	return $ticket_observado;
 }
 
+// ----------------------------------------------------------------------------------------------------------
+// Helpers del Historial de Cambios (cambios_log).
+//
+// El "cambios_log" de las tablas de loteria (despachos_primertramo_validaciondatos y
+// despachos_segundotramo_distribucion_lotes) es una columna JSON donde se apilan las modificaciones
+// que se hicieron sobre un lote desde el modulo de Resumen de Balanza.
+//
+// Estas funciones concentran la logica para que TODOS los puntos que escriben en el historial
+// (pesos, fechas y operador de balanza) guarden la informacion de la misma manera y, sobre todo,
+// que el "valor anterior" y el "valor resultante" sean siempre comparables entre si. Si los dos
+// valores se mostraban con distinta precision (por ejemplo, el anterior redondeado a enteros y el
+// nuevo con decimales) el usuario veia "ningun cambio" en el historial aunque si lo hubo.
+//
+// ----------------------------------------------------------------------------------------------------------
+
+// Formatea un valor para mostrarlo en el historial de cambios.
+//
+// - Si el valor es numerico se conservan los decimales que realmente tiene (se quitan los ceros
+//   sobrantes), de modo que 21848 y 21848.5 NO se vean iguales.
+// - Si el valor es una fecha/hora se normaliza a "YYYY-MM-DD HH:MM:SS", para que el valor anterior
+//   y el resultante sean comparables (por ejemplo "2026-10-13 13:32" vs "2026-10-13 13:32:00").
+// - Si el valor viene vacio se devuelve "(Vacio)".
+function f_FormatearValorCambioLog($valor, $es_fechahora = false)
+{
+	if ($valor === null) {
+		return '(Vacío)';
+	}
+
+	if (is_array($valor)) {
+		return '(Vacío)';
+	}
+
+	$valor = trim((string) $valor);
+
+	if (strlen($valor) == 0) {
+		return '(Vacío)';
+	}
+
+	// Fechas y horas: se normalizan para que la comparacion con el valor resultante sea exacta.
+	if ($es_fechahora) {
+		$timestamp = strtotime($valor);
+
+		if ($timestamp !== false) {
+			return date('Y-m-d H:i:s', $timestamp);
+		}
+
+		return $valor;
+	}
+
+	if (is_numeric($valor)) {
+		$texto = number_format(floatval($valor), 3, '.', ',');
+
+		// Se quitan SOLO los ceros decimales sobrantes (los de la parte entera se respetan).
+		if (strpos($texto, '.') !== false) {
+			$texto = rtrim(rtrim($texto, '0'), '.');
+		}
+
+		if (strlen($texto) == 0) {
+			return '0';
+		}
+
+		return $texto;
+	}
+
+	return $valor;
+}
+
+// Determina si entre dos valores hubo un cambio real.
+//
+// Se usa para NO registrar en el historial una modificacion que en realidad no cambio nada: en ese
+// caso el historial mostraba "21,848 -> 21,848" y el usuario concluyo que el sistema no detectaba los
+// cambios. Ahora el backend avisa que el valor ingresado es igual al actual y no ensucia el log.
+function f_HayCambioReal($valor_anterior, $valor_resultante)
+{
+	$anterior = ($valor_anterior === null) ? '' : trim((string) $valor_anterior);
+	$resultante = ($valor_resultante === null) ? '' : trim((string) $valor_resultante);
+
+	if (is_numeric($anterior) && is_numeric($resultante)) {
+		return (abs(floatval($anterior) - floatval($resultante)) > 0.000001);
+	}
+
+	return ($anterior !== $resultante);
+}
+
+// Agrega una entrada al historial de cambios (cambios_log) de un registro.
+//
+//   1. Lee el JSON actual del registro.
+//   2. Agrega la entrada nueva al final (se conserva el orden cronologico).
+//   3. Graba el JSON resultante.
+//
+// Devuelve el JSON final SIN escapar (listo para devolverlo al front dentro de un json_encode) o
+// '' si no se pudo guardar. Antes se devolvia el JSON ya escapado para SQL, lo que producia un JSON
+// invalido en el navegador (por ejemplo cuando el motivo llevaba apostro) y hacia fallar el
+// "Historial de Modificaciones".
+function f_AgregarCambioLog($enlace, $tabla, $id_registro, $descripcion, $valor_anterior, $valor_resultante, $usuario_registro, $motivo)
+{
+	$tablas_permitidas = array(
+		'despachos_primertramo_validaciondatos',
+		'despachos_segundotramo_distribucion_lotes'
+	);
+
+	if (!in_array($tabla, $tablas_permitidas)) {
+		return '';
+	}
+
+	$id_registro = intval($id_registro);
+
+	if ($id_registro <= 0) {
+		return '';
+	}
+
+	$cambios_log = array();
+
+	$q_log = "SELECT cambios_log
+				 FROM " . $tabla . "
+				WHERE Id = " . $id_registro;
+
+	if ($res_log = mysqli_query($enlace, $q_log)) {
+		if ($row_log = mysqli_fetch_assoc($res_log)) {
+			$cambios_log = json_decode($row_log['cambios_log'], true);
+
+			if (!is_array($cambios_log)) {
+				$cambios_log = array();
+			}
+		}
+	}
+
+	$cambios_log[] = array(
+		"descripcion"      => $descripcion,
+		"valor_anterior"   => $valor_anterior,
+		"valor_resultante" => $valor_resultante,
+		"usuario"          => $usuario_registro,
+		"motivo"           => $motivo
+	);
+
+	$json_log = json_encode($cambios_log, JSON_UNESCAPED_UNICODE);
+
+	$q_update = "UPDATE " . $tabla . "
+					SET cambios_log = '" . mysqli_real_escape_string($enlace, $json_log) . "'
+				  WHERE Id = " . $id_registro;
+
+	if (!mysqli_query($enlace, $q_update)) {
+		return '';
+	}
+
+	return $json_log;
+}
+
+// ----------------------------------------------------------------------------------------------------------
+// Elimina todos los registros derivados de un lote del primer tramo.
+//
+// Cuando se elimina un lote desde el modulo de Balanza (Recepcion de Mineral) quedan "huecos" en
+// las tablas de los procesos posteriores: el lote ya no existe en catalogolotes, pero su registro
+// sigue en despachos_primertramo_validaciondatos, en el correlativo del ticket de balanza
+// (correlativo_ticketsbalanza) y en el cierre contable (consolidado_lotes_cierrecontable). Como
+// luego se crea un lote nuevo que toma el mismo codigo, esos registros "fantasma" se mezclan con los
+// del lote nuevo y todo queda descuadrado.
+//
+// Esta funcion los elimina en cascada y devuelve un arreglo con el detalle de lo que se borro.
+// ----------------------------------------------------------------------------------------------------------
+function f_EliminarLotePrimerTramo_EnCascada($enlace, $id_lote)
+{
+	$detalle = array(
+		'validaciondatos' => 0,
+		'correlativoticket' => 0,
+		'cierrecontable' => 0
+	);
+
+	$id_lote = intval($id_lote);
+
+	if ($id_lote <= 0) {
+		return $detalle;
+	}
+
+	// 1. Ids de los registros de despachos_primertramo_validaciondatos del lote
+	$ids_validaciondatos = array();
+
+	$q_vd = "SELECT Id
+				   FROM despachos_primertramo_validaciondatos
+				  WHERE lote_id_lote = " . $id_lote;
+
+	if ($res_vd = mysqli_query($enlace, $q_vd)) {
+		while ($row_vd = mysqli_fetch_array($res_vd)) {
+			$ids_validaciondatos[] = intval($row_vd["Id"]);
+		}
+	}
+
+	// 2. Cierre contable del primer tramo (consolidado_lotes_cierrecontable)
+	if (count($ids_validaciondatos) > 0) {
+		$q_cierre = "DELETE FROM consolidado_lotes_cierrecontable
+						 WHERE id_tipoingreso = 1
+						   AND id_registro IN (" . implode(',', $ids_validaciondatos) . ")";
+
+		if ($res_cierre = mysqli_query($enlace, $q_cierre)) {
+			$detalle['cierrecontable'] = mysqli_affected_rows($enlace);
+		}
+	}
+
+	// 3. Registro de validacion de datos del primer tramo
+	$q_del_vd = "DELETE FROM despachos_primertramo_validaciondatos
+					 WHERE lote_id_lote = " . $id_lote;
+
+	if ($res_del_vd = mysqli_query($enlace, $q_del_vd)) {
+		$detalle['validaciondatos'] = mysqli_affected_rows($enlace);
+	}
+
+	// 4. Correlativo del ticket de balanza del primer tramo
+	$q_del_ticket = "DELETE FROM correlativo_ticketsbalanza
+						   WHERE id_lote = " . $id_lote . "
+							 AND is_primertramo = 1";
+
+	if ($res_del_ticket = mysqli_query($enlace, $q_del_ticket)) {
+		$detalle['correlativoticket'] = mysqli_affected_rows($enlace);
+	}
+
+	return $detalle;
+}
+
 function cerrar_lote_desde_segundo_tramo($enlace, $id_lote_a_cerrar, $g_fecha, $usuario_registro)
 {
     // Grabando cierre
