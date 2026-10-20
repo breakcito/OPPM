@@ -1396,7 +1396,7 @@
         f_LoadCards_LotesPesoFinal();
       }
 
-      function f_LoadCards_IngresoUnidades(){
+      function f_LoadCards_IngresoUnidades(_sin_reprogramar){
         f_LoadingIngresoUnidades(1);
 
         $.post( "apis/backend.php", { accion: "get_ListaIngresoUnidades_Cards" }, 
@@ -1410,7 +1410,12 @@
 
             f_LoadingIngresoUnidades(0);
 
-            setTimeout('f_LoadCards_IngresoUnidades()', 60000);
+            // Solo se reprograma la carga automatica cuando el refresco no fue disparado por el usuario:
+            // de lo contrario se acumularian varias cadenas de temporizadores y la lista se refrescaria
+            // mas de una vez por minuto.
+            if (!_sin_reprogramar){
+              setTimeout('f_LoadCards_IngresoUnidades()', 60000);
+            }
 
           }, "json");
       }
@@ -3388,17 +3393,24 @@
 
       function f_EliminarUnidad(_event, _id_unidad, _placa, _fechahora_registro){
         // Detiene la propagación de los eventos de objetos superiores
-          event.stopPropagation();
+          var _evt = _event || window.event;
 
-        if (!confirm("¿Está seguro de eliminar la Unidad seleccionada? \n\n   - PLaca: " + _placa + "\n   - Ingreso: " + _fechahora_registro)){
+          if (_evt && _evt.stopPropagation){
+            _evt.stopPropagation();
+          }
+
+        if (!confirm("¿Está seguro de eliminar la Unidad seleccionada? \n\n   - PLaca: " + _placa + "\n   - Ingreso: " + _fechahora_registro + "\n\nLa unidad dejará de mostrarse en este módulo.")){
           return;
         }
 
-        // Grabando salida
-          $.post( "apis/backend.php", { accion: "eliminar_UnidadIngreso", id_unidad: _id_unidad }, 
+        // Eliminando unidad (eliminacion logica: cEstado_Registro = 'X')
+          $.post( "apis/backend.php", { accion: "eliminar_UnidadIngresoBalanza", id_unidad: _id_unidad }, 
             function( data ) {
               if(data.estado == 1){
-                f_LoadCards_IngresoUnidades();
+                // Recarga las listas de las que pudo salir la unidad
+                  f_LoadCards_IngresoUnidades(1);
+                  f_LoadCards_UnidadesValidacion();
+                  f_LoadCards_LotesPesoFinal();
               }
               else{
                 if(data.estado == 2){

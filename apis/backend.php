@@ -20220,12 +20220,23 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
 														 I.placa,
 														 I.dFechaIngreso,
 														 I.dhoraingresoPlanta,
-														 CONCAT(I.dFechaIngreso, ' ', I.dhoraingresoPlanta) AS FECHAHORA_REGISTRO
+														 CONCAT(I.dFechaIngreso, ' ', I.dhoraingresoPlanta) AS FECHAHORA_REGISTRO,
+														 (
+															SELECT COUNT(L.id_CatalogoLotes)
+															FROM catalogolotes L
+															WHERE L.id_controlIngresoVehiculo = I.id_controlIngresoVehiculo
+														 ) AS NUM_LOTES,
+														 (
+															SELECT COUNT(D.Id)
+															FROM despachos_primertramo_validaciondatos D
+															WHERE D.balanza_id_controlingresovehiculo = I.id_controlIngresoVehiculo
+														 ) AS CNT_VALIDACION
 												FROM controlingresovehiculo I
 														 INNER JOIN tbconfig_tipoingresounidades IU ON I.id_tipoingresounidad = IU.Id
 											 WHERE IU.balanza_primertramo = 1
 												 AND I.is_iniciovalidacion = 0
 												 AND I.is_loteaum = 0
+												 AND I.cEstado_Registro <> 'X'
 												 AND DATE(I.dFechaIngreso) > '2023-07-03'
 											ORDER BY I.dFechaIngreso, I.dhoraingresoPlanta";
 
@@ -20238,8 +20249,11 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
 					$html .= '	<div Style="border: solid; border-width: 1px; border-color: #E6E9ED; border-radius: 7px; background-color: #6F6E68; color: #ffffff; text-align: center; padding: 5px; cursor: pointer;">';
 					$html .= '		<div class="d-flex justify-content-center">';
 
-					if ($_SESSION['eliminar_unidadesingreso'] == 1) {
-						$html .= '			<img src="' . $img_delete . '" style="margin-left: -5px; margin-right: 5px; padding: 2px; width: 28px; height: 28px; cursor: pointer;" onclick="f_EliminarUnidad(event, ' . $row_ingreso["id_controlIngresoVehiculo"] . ", '" . $row_ingreso["placa"] . "', '" . $row_ingreso["FECHAHORA_REGISTRO"] . "'" . ');">';
+					// El boton de eliminar solo se muestra si la unidad aun no empezo a pesarse: si ya tiene
+					// lotes (o registros de validacion de datos de esos lotes) el registro ya genero
+					// informacion operativa y no debe eliminarse desde aqui.
+					if ($_SESSION['eliminar_unidadesingreso'] == 1 && $row_ingreso["NUM_LOTES"] == 0 && $row_ingreso["CNT_VALIDACION"] == 0) {
+						$html .= '			<img src="' . $img_delete . '" title="Eliminar Unidad" style="margin-left: -5px; margin-right: 5px; padding: 2px; width: 28px; height: 28px; cursor: pointer;" onclick="f_EliminarUnidad(event, ' . $row_ingreso["id_controlIngresoVehiculo"] . ", '" . $row_ingreso["placa"] . "', '" . $row_ingreso["FECHAHORA_REGISTRO"] . "'" . ');">';
 					}
 
 					$html .= '			<label style="font-weight: bold; cursor: pointer; font-size: 14px; margin-top: 3px;">';
@@ -20381,7 +20395,12 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
 				SELECT COUNT(L.id_CatalogoLotes)
 				FROM catalogolotes L
 				WHERE L.id_controlIngresoVehiculo = I.id_controlIngresoVehiculo
-			) AS NUM_LOTES
+			) AS NUM_LOTES,
+			(
+				SELECT COUNT(D.Id)
+				FROM despachos_primertramo_validaciondatos D
+				WHERE D.balanza_id_controlingresovehiculo = I.id_controlIngresoVehiculo
+			) AS CNT_VALIDACION
 		FROM controlingresovehiculo I
 
 		INNER JOIN tbconfig_tipoingresounidades IU ON I.id_tipoingresounidad = IU.Id
@@ -20400,6 +20419,7 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
 			AND I.is_iniciovalidacion = 1 
 			AND I.is_cierrevalidacion = 0 
 			AND I.is_loteaum = 0 
+			AND I.cEstado_Registro <> 'X'
 			AND DATE(I.iniciovalidacion_fechahoraregistro) > '2023-07-04'
 
 		ORDER BY I.iniciovalidacion_fechahoraregistro
@@ -20416,8 +20436,16 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
 					$html .= '	<table class="table table-bordered table-hover">';
 					$html .= '		<thead>';
 					$html .= '			<tr style="font-size: 14px; background-color: #6F6E68; color: #ffffff;">';
-					$html .= '				<th colspan="9" style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle; border-top-left-radius: 15px;">';
+					$html .= '				<th colspan="9" style="position: relative; text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle; border-top-left-radius: 15px;">';
 					$html .= '					Unidad: <label style="color: #f8da62;">' . $row_ingreso["placa"] . '</label> | Ingreso a Planta: <label style="color: #f8da62;">' . $row_ingreso["dFechaIngreso"] . ' ' . $row_ingreso["dhoraingresoPlanta"] . '</label>';
+
+					// El boton de eliminar solo se muestra si la unidad aun no empezo a pesarse: si ya tiene
+					// lotes (o registros de validacion de datos de esos lotes) el registro ya genero
+					// informacion operativa y no debe eliminarse desde aqui.
+					if ($_SESSION['eliminar_unidadesingreso'] == 1 && $row_ingreso["NUM_LOTES"] == 0 && $row_ingreso["CNT_VALIDACION"] == 0) {
+						$html .= '					<img src="' . $img_delete . '" title="Eliminar Unidad" style="position: absolute; top: 50%; transform: translateY(-50%); right: 6px; padding: 2px; width: 26px; height: 26px; cursor: pointer;" onclick="f_EliminarUnidad(event, ' . $row_ingreso["id_controlIngresoVehiculo"] . ", '" . $row_ingreso["placa"] . "', '" . $row_ingreso["FECHAHORA_REGISTRO"] . "'" . ');">';
+					}
+
 					$html .= '				</th>';
 
 					$html .= '				<th style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle; border-top-right-radius: 15px;">';
@@ -21494,6 +21522,9 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
 											 WHERE tFechaInicialBalanza IS NOT NULL
 												 AND dFechaFinalBalanza IS NULL
 												 AND is_loteaum = 0
+												 AND id_controlIngresoVehiculo IN (SELECT id_controlIngresoVehiculo
+																																		 FROM controlingresovehiculo
+																																		WHERE cEstado_Registro <> 'X')
 												 AND DATE(tFechaInicialBalanza) > '2023-07-04'";
 
 		if (strlen($arr_unidades) > 0) {
@@ -50625,6 +50656,80 @@ case 'confirmar_ProgramacionLote_AddLote':
 
 		if ($res_delete = mysqli_query($enlace, $q_delete)) {
 			$estado = 1;
+		}
+
+		echo json_encode(array('estado' => $estado));
+
+		break;
+
+	case 'eliminar_UnidadIngresoBalanza':
+		$estado = 0;
+
+		// Recupera variables
+		$id_unidad = intval($_POST["id_unidad"]);
+
+		// Permiso del usuario para eliminar unidades de ingreso. Se valida tambien en el backend
+		// (no solo en el front) para que el endpoint no quede abierto.
+		if (!isset($_SESSION['eliminar_unidadesingreso']) || $_SESSION['eliminar_unidadesingreso'] != 1) {
+			echo json_encode(array('estado' => $estado));
+
+			break;
+		}
+
+		if ($id_unidad <= 0) {
+			echo json_encode(array('estado' => $estado));
+
+			break;
+		}
+
+		// 1. Validando que la unidad NO haya empezado a pesarse.
+		//    Si ya tiene lotes (o registros de validacion de datos de esos lotes) es porque ya genero
+		//    informacion operativa, de tickets de balanza y de cierre contable: eliminarla dejaria
+		//    huecos en los procesos posteriores. En ese caso el boton ni siquiera se muestra en el front.
+		$q_validar = "SELECT
+									(SELECT COUNT(id_CatalogoLotes)
+									   FROM catalogolotes
+									  WHERE id_controlIngresoVehiculo = " . $id_unidad . ") AS _COUNT_LOTES,
+									(SELECT COUNT(Id)
+									   FROM despachos_primertramo_validaciondatos
+									  WHERE balanza_id_controlingresovehiculo = " . $id_unidad . ") AS _COUNT_VALIDACION";
+
+		$tiene_lotes = 0;
+
+		if ($res_validar = mysqli_query($enlace, $q_validar)) {
+			if ($row_validar = mysqli_fetch_array($res_validar)) {
+				if (intval($row_validar["_COUNT_LOTES"]) > 0 || intval($row_validar["_COUNT_VALIDACION"]) > 0) {
+					$tiene_lotes = 1;
+				}
+			}
+		}
+
+		if ($tiene_lotes == 1) {
+			echo json_encode(array('estado' => 2));
+
+			break;
+		}
+
+		// 2. Eliminando la unidad de forma LOGICA.
+		//    No se borra fisicamente el registro: se marca con cEstado_Registro = 'X' y deja de aparecer
+		//    en este modulo (los listados filtran por cEstado_Registro <> 'X').
+		$q_update = "UPDATE controlingresovehiculo
+										 SET cEstado_Registro = 'X'
+									 WHERE id_controlIngresoVehiculo = " . $id_unidad . "
+										   AND cEstado_Registro <> 'X'";
+
+		if ($res_update = mysqli_query($enlace, $q_update)) {
+			$estado = 1;
+
+			// 3. Marca con el mismo estado la copia de respaldo que se creo al iniciar la validacion
+			//    de la unidad (controlingresovehiculo_checked), para que no quede desalineada.
+			$q_update_checked = "UPDATE controlingresovehiculo_checked
+										  SET cEstado_Registro = 'X'
+										WHERE id_controlIngresoVehiculo = " . $id_unidad . "
+										  AND cEstado_Registro <> 'X'";
+
+			if ($res_update_checked = mysqli_query($enlace, $q_update_checked)) {
+			}
 		}
 
 		echo json_encode(array('estado' => $estado));
