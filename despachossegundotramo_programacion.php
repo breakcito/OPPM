@@ -37,6 +37,9 @@ if (!isset($_SESSION["Id"])) {
 	<!-- JSColor -->
 	<script src="libs/jscolor/jscolor.js"></script>
 
+	<!-- SweetAlert2 -->
+	<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.10.1/dist/sweetalert2.all.min.js"></script>
+
 	<title><?php echo $nom_app; ?> | Programación de Despachos</title>
 
 	<script type="text/javascript">
@@ -662,6 +665,21 @@ if (!isset($_SESSION["Id"])) {
 
 								<label id="lbl_ayuda_codigodespacho" style="font-size: 12px; font-style: italic; color: #6c757d; margin-top: 9px; margin-left: 10px;">
 									Sugerido por el sistema. Si el correlativo real es otro, modifíquelo.
+								</label>
+							</div>
+						</div>
+					</div>
+
+					<!-- Aviso de reordenamiento de los Codigos de Planta (solo Colibri al agregar lote) -->
+					<div class="row" id="div_ayuda_codigoplanta" style="display: none;">
+						<div class="col-md-12 col-sm-12 col-xs-12">
+							<div class="d-flex" style="padding: 3px; margin-top: 0px;">
+								<label style="font-size: 12px; font-style: italic; color: #cfaa41; min-width: 130px;">
+									Nota:
+								</label>
+
+								<label style="font-size: 12px; font-style: italic; color: #6c757d; margin-top: 7px;">
+									Al agregar el lote, los Códigos de Planta se reordenan según el código del lote: el lote nuevo ocupa la posición que le corresponde y los códigos que quedan después se desplazan.
 								</label>
 							</div>
 						</div>
@@ -2574,6 +2592,14 @@ if (!isset($_SESSION["Id"])) {
 				f_LoadCodigosSugeridosProgramacion();
 			}
 
+			// Aviso de reordenamiento de los Codigos de Planta: solo aplica a Colibri
+			// cuando se agregan lotes a una programacion ya registrada.
+			if (idplanta_Selected == 3 && _modo == 'E') {
+				$("#div_ayuda_codigoplanta").show();
+			} else {
+				$("#div_ayuda_codigoplanta").hide();
+			}
+
 			// Cargando datos
 			f_LoadFiltroModalidadEnvio();
 			f_LoadFiltroLotes();
@@ -3964,7 +3990,7 @@ if (!isset($_SESSION["Id"])) {
 
 	<!-- Funciones de Grabación -->
 	<script type="text/javascript">
-		function f_ConfirmarProgramacion(_is_confirmado_duplicado) {
+		function f_ConfirmarProgramacion(_is_confirmado_duplicado, _is_confirmado_reordenamiento) {
 			// Recuperando datos hidden
 			var modo = $("#modo_grabarprogramacion").val();
 			var id_programacion = $("#id_programacion").val();
@@ -4123,7 +4149,8 @@ if (!isset($_SESSION["Id"])) {
 						id_campana: id_campana_sel,
 						codigo_cabecera: codigo_cabecera,
 						arr_codigos_detalle: arr_codigos_detalle,
-						is_confirmado_duplicado: _is_confirmado_duplicado
+						is_confirmado_duplicado: _is_confirmado_duplicado,
+						is_confirmado_reordenamiento: (_is_confirmado_reordenamiento || 0)
 					},
 					function(data) {
 						// Aviso de codigo repetido: si el operador confirma, se reenvia
@@ -4134,6 +4161,19 @@ if (!isset($_SESSION["Id"])) {
 							if (f_ConfirmarCodigoRepetido(data.duplicados)) {
 								f_ConfirmarProgramacion(1);
 							}
+
+							return;
+						}
+
+						// Aviso de reordenamiento de los Codigos de Planta: el backend
+						// detecta que la secuencia de codigos debe reordenarse y espera
+						// la confirmacion del operador antes de aplicar el cambio.
+						if (data.estado == 21) {
+							f_LoadingGrabarProgramacion(0);
+
+							f_ConfirmarReordenamientoCodigosPlanta(data.mensaje, function (_is_confirmado) {
+								f_ConfirmarProgramacion(_is_confirmado_duplicado, _is_confirmado);
+							});
 
 							return;
 						}
@@ -4155,17 +4195,75 @@ if (!isset($_SESSION["Id"])) {
 			}
 		}
 
+		// ================================================================
+		// REORDENAMIENTO DE LOS CODIGOS DE PLANTA
+		// ================================================================
+		// Los codigos de planta forman una secuencia unica por planta y su orden
+		// lo define el codigo del lote. Cuando se agrega o elimina un lote, esa
+		// secuencia puede tener que reordenarse, en cuyo caso el backend lo
+		// detecta (estado 21) y espera la confirmacion del operador.
+		function f_ConfirmarReordenamientoCodigosPlanta(_mensaje, _callback) {
+			var _html = (typeof _mensaje !== 'undefined' && _mensaje !== null && _mensaje.length > 0) ?
+				_mensaje :
+				"Los Códigos de Planta deben reordenarse para respetar el orden de los códigos de lote.";
+
+			_html += "<br><br><b>Esta acción no se puede deshacer.</b>";
+
+			if (typeof Swal === 'undefined') {
+				// Si SweetAlert2 no esta disponible se usa el confirm nativo.
+				if (confirm(_html.replace(/<br>/g, "\n").replace(/<b>|<\/b>/g, ""))) {
+					_callback(1);
+				}
+
+				return;
+			}
+
+			Swal.fire({
+				title: '¿Desea reordenar los Códigos de Planta?',
+				html: _html,
+				icon: 'warning',
+				showCancelButton: true,
+				confirmButtonText: 'Sí, reordenar',
+				cancelButtonText: 'Cancelar',
+				reverseButtons: true,
+				focusConfirm: false,
+				focusCancel: true
+			}).then(function (result) {
+				if (!result.isConfirmed) {
+					return;
+				}
+
+				_callback(1);
+			});
+		}
+
 		function f_EliminarProgramacion(_item, _id_programacion, _fechahora, _usuario) {
 			if (!confirm("¿Está seguro de Eliminar la Programación seleccionada?\n\n   - Fecha Hora Creación: " + _fechahora + "\n   - Usuario Creación: " + _usuario + "\n\nSi continua se eliminarán los datos permanentemente incluyendo todos los Lote y sus Distribuciones si es que las tuviera.\n\n¿Está seguro de continuar?")) {
 				return;
 			}
 
+			f_EliminarProgramacion_Enviar(_id_programacion, 0);
+		}
+
+		function f_EliminarProgramacion_Enviar(_id_programacion, _is_confirmado_reordenamiento) {
 			// Eliminando Datos
 			$.post("apis/backend.php", {
 					accion: "eliminar_Programacion",
-					id_programacion: _id_programacion
+					id_programacion: _id_programacion,
+					is_confirmado_reordenamiento: (_is_confirmado_reordenamiento || 0)
 				},
 				function(data) {
+					// Aviso de reordenamiento de los Codigos de Planta: el backend
+					// detecta que la secuencia de codigos debe reordenarse y espera
+					// la confirmacion del operador antes de eliminar el despacho.
+					if (data.estado == 21) {
+						f_ConfirmarReordenamientoCodigosPlanta(data.mensaje, function (_is_confirmado) {
+							f_EliminarProgramacion_Enviar(_id_programacion, _is_confirmado);
+						});
+
+						return;
+					}
+
 					if (data.estado == 1) {
 						f_LoadItemPlanta(itemplanta_Selected, idplanta_Selected);
 					} else {
@@ -4184,6 +4282,10 @@ if (!isset($_SESSION["Id"])) {
 						if (data.estado == 4) {
 							alert("Ocurrió un error al momento de actualizar los correlativos de los Códigos de Despacho.");
 						}
+
+						if (data.estado == 8) {
+							alert("El despacho se eliminó, pero no se pudieron reordenar los Códigos de Planta. Revise los despachos siguientes.");
+						}
 					}
 
 				}, "json");
@@ -4194,12 +4296,28 @@ if (!isset($_SESSION["Id"])) {
 				return;
 			}
 
+			f_EliminarProgramacion_Lote_Enviar(_id_programacionlote, 0);
+		}
+
+		function f_EliminarProgramacion_Lote_Enviar(_id_programacionlote, _is_confirmado_reordenamiento) {
 			// Eliminando Datos
 			$.post("apis/backend.php", {
 					accion: "eliminar_ProgramacionLote",
-					id_programacionlote: _id_programacionlote
+					id_programacionlote: _id_programacionlote,
+					is_confirmado_reordenamiento: (_is_confirmado_reordenamiento || 0)
 				},
 				function(data) {
+					// Aviso de reordenamiento de los Codigos de Planta: el backend
+					// detecta que la secuencia de codigos debe reordenarse y espera
+					// la confirmacion del operador antes de eliminar el lote.
+					if (data.estado == 21) {
+						f_ConfirmarReordenamientoCodigosPlanta(data.mensaje, function (_is_confirmado) {
+							f_EliminarProgramacion_Lote_Enviar(_id_programacionlote, _is_confirmado);
+						});
+
+						return;
+					}
+
 					if (data.estado == 1) {
 						f_LoadItemPlanta(itemplanta_Selected, idplanta_Selected);
 					} else {
@@ -4229,6 +4347,10 @@ if (!isset($_SESSION["Id"])) {
 
 						if (data.estado == 7) {
 							alert("Ocurrió un error al momento de eliminar la Distribución del Lote seleccionado.");
+						}
+
+						if (data.estado == 8) {
+							alert("El Lote se eliminó, pero no se pudieron reordenar los Códigos de Planta. Revise el despacho.");
 						}
 					}
 
@@ -4769,26 +4891,42 @@ if (!isset($_SESSION["Id"])) {
 				function(data) {
 					if (data.estado == 1) {
 						// Agregar el Lote AUM a la programación
-						$.post("apis/backend.php", {
-								accion: "confirmar_ProgramacionLote_AddLote",
-								id_planta: idplanta_Selected,
-								id_programacion: _id_programacion,
-								arr_lotes: data.cod_lote,
-								is_loteaum: 1
-							},
-							function(data2) {
-								if (data2.estado == 1) {
-									f_LoadItemPlanta(itemplanta_Selected, idplanta_Selected, 1, _item_programacion, _id_programacion);
-								} else {
-									alert("Ocurrió un error al momento de agregar el Lote AUM a la programación.");
-								}
-
-							}, "json");
+						f_AgregarLoteAUM_Programacion(_id_programacion, _item_programacion, data.cod_lote, 0);
 					} else {
 						alert("Ocurrió un error al momento de crear el Lote AUM.");
 					}
 
 					f_cerrarModal("modal_loteaum");
+
+				}, "json");
+		}
+
+		function f_AgregarLoteAUM_Programacion(_id_programacion, _item_programacion, _cod_lote, _is_confirmado_reordenamiento) {
+			$.post("apis/backend.php", {
+					accion: "confirmar_ProgramacionLote_AddLote",
+					id_planta: idplanta_Selected,
+					id_programacion: _id_programacion,
+					arr_lotes: _cod_lote,
+					is_loteaum: 1,
+					is_confirmado_reordenamiento: (_is_confirmado_reordenamiento || 0)
+				},
+				function(data2) {
+					// Aviso de reordenamiento de los Codigos de Planta: el backend
+					// detecta que la secuencia de codigos debe reordenarse y espera
+					// la confirmacion del operador antes de aplicar el cambio.
+					if (data2.estado == 21) {
+						f_ConfirmarReordenamientoCodigosPlanta(data2.mensaje, function (_is_confirmado) {
+							f_AgregarLoteAUM_Programacion(_id_programacion, _item_programacion, _cod_lote, _is_confirmado);
+						});
+
+						return;
+					}
+
+					if (data2.estado == 1) {
+						f_LoadItemPlanta(itemplanta_Selected, idplanta_Selected, 1, _item_programacion, _id_programacion);
+					} else {
+						alert("Ocurrió un error al momento de agregar el Lote AUM a la programación.");
+					}
 
 				}, "json");
 		}

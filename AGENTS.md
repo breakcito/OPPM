@@ -13,17 +13,57 @@ Archivo backend: \apis\backend.php
 
 ==================================================
 
-Modulo de balanza - recepcion de mineral: C:\wamp64\www\oppmerp\pesos_primertramo.php
+Modulo de Programación de Despachos:
+    C:\wamp64\www\oppmerp\despachossegundotramo_programacion.php
 
-Permite que, por cada card de vehiculo sin iniciar el proceso de pesaje o ya iniciado el proceso de pesaje, haya un boton para poder eliminar logicamente ese registro de la tabla de controlingresovehiculo, es decir, hacer que en este modulo ya no aparezca. Por otro lado, si este carro ya comenzo a pesarse y tiene lotes dentro, ya no muestres este boton. Para ello hay una columna en la tabla mencionada de 'cEstado_Registro' donde al eliminar podrias colocar el estado de 'X'
+Actualmente, al registrar una programacion de despacho, la generacion de codigos estan bien pues incluso si no se adapta a la realidad del usuario, lo puede asignar manualmente. 
 
-Cases del backend relevantes:
-- get_ListaIngresoUnidades_Cards > devuelve la lista de vehiculos pendientes por comenzar el proceso de balanza
-- get_ListaIngresoUnidadesValidacion_Cards > devuelve los vehiculos en proceso de pesaje
-- get_ListaLotesPesoFinal_Cards > devuelve los lotes que estan siendo o han sido pesados en los carros en proceso de pesaje
-- grabar_GestionLotes : usado para registrar los pesos inicial/final que es donde se dispara el cierre contable
-- eliminar_Lote : usado para eliminar un lote, pero que no se preocupa por borrar los registros en la tabla de despachos_primertramo_validaciondatos, correlativo_ticketsbalanza y consolidado_lotes_cierrecontable
+Sin embargo, cuando luego de haber registrado un despacho, se agrega un nuevo lote a este despacho y se calculan los codigos, el campo de "codigo_planta" de la tabla de despachos_segundotramo_programacion_detalle se asigna el ultimo codigo a partir del ultimo anterior de algun lote del despacho. Sin embargo, estos codigos deben reordenarse en base al codigo de los lotes. Por ejemplo, si un despacho tiene estos lotes con sus codigos de planta asi:
+
+DESPACHO A
+LOTE    |   CÓDIGO DE PLANTA
+----------------------------
+261611  |   008-3743
+261613  |   008-3744
+261615  |   008-3745
+261617  |   008-3746
+261627  |   008-3747
+
+DESPACHO B
+LOTE    |   CÓDIGO DE PLANTA
+----------------------------
+261629  |   008-3748
+261631  |   008-3749
+261633  |   008-3750
+261635  |   008-3751
+261637  |   008-3752
+
+Y decido agregar un lote (261619) mas al despacho A, entonces los codigos deben quedar asi:
+
+DESPACHO A
+LOTE    |   CÓDIGO DE PLANTA
+----------------------------
+261611  |   008-3743
+261613  |   008-3744
+261615  |   008-3745
+261617  |   008-3746
+261619  |   008-3747 -- NUEVO LOTE, SE ACTUALIZAN LOS CODIGOS HACIA DELANTE
+261627  |   008-3748 
+
+DESPACHO B
+LOTE    |   CÓDIGO DE PLANTA
+----------------------------
+261629  |   008-3749
+261631  |   008-3750
+261633  |   008-3751
+261635  |   008-3752
+261637  |   008-3753
 
 
-Funciones relevantes para ambos casos:
-C:\wamp64\www\oppmerp\global\funciones_cierrecontable.php
+Cases relevantes a revisar:
+    get_Programacion_CodigosSugeridos
+    get_LotesProgramadosParaDespacho
+    confirmar_ProgramacionLote
+    confirmar_ProgramacionLote_AddLote
+    get_DespachosProgramacion_ListaProgramaciones
+    get_DespachosProgramacion_ListaDistribuciones
