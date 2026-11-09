@@ -44389,9 +44389,13 @@ case 'confirmar_ProgramacionLote_AddLote':
 		}
 
 		$q_datos .= ") AS DATOS
-										 LEFT JOIN tbconfig_tarifatransporte TT ON TT.estado = 'A'
-											 AND DATOS.id_coordinadortransporte = TT.id_coordinadortransporte
-											 AND DATOS.id_planta = TT.id_planta
+										 LEFT JOIN (SELECT id_planta, id_coordinadortransporte, MAX(Id) AS Id
+													 FROM tbconfig_tarifatransporte
+													WHERE estado = 'A'
+													  GROUP BY id_planta, id_coordinadortransporte) TTV
+											 ON TTV.id_planta = DATOS.id_planta
+											AND TTV.id_coordinadortransporte = DATOS.id_coordinadortransporte
+										 LEFT JOIN tbconfig_tarifatransporte TT ON TT.Id = TTV.Id
 										 LEFT JOIN tbconfig_monedas MO ON TT.id_moneda = MO.Id
 										 LEFT JOIN liquidaciones_transporte LC ON DATOS.codigo_despacho = LC.codigo_despacho
 											 AND DATOS.guias_remitenteruc = LC.remitente_ruc
@@ -44614,7 +44618,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$d = 1;
 		$html = '';
 
-		$q_datos = "SELECT DL.cod_lote,
+		$q_datos = "SELECT DISTINCT DL.cod_lote,
 													 DL.num_parte,
 													 DL.guias_remitenteruc,
 													 DL.guias_remitenterazonsocial,
@@ -44796,9 +44800,11 @@ case 'confirmar_ProgramacionLote_AddLote':
 		}
 
 		// Grabando datos (id_moneda = 1, estado = 'A', fechahora y usuario automáticos)
+		// La tarifa se registra como una opción más: el usuario puede elegir libremente
+		// cualquiera de las tarifas registradas para la planta y el coordinador
 		$q_insert = "INSERT INTO tbconfig_tarifatransporte (id_planta, id_coordinadortransporte, id_moneda, tarifa_sin_igv, estado, fechahora_registro, usuario_registro) VALUES (";
-		$q_insert .= $id_planta . ", ";
-		$q_insert .= $id_coordinadortransporte . ", ";
+		$q_insert .= (int)$id_planta . ", ";
+		$q_insert .= (int)$id_coordinadortransporte . ", ";
 		$q_insert .= "1, ";
 		$q_insert .= $tarifa_sin_igv . ", ";
 		$q_insert .= "'A', ";
@@ -44816,29 +44822,24 @@ case 'confirmar_ProgramacionLote_AddLote':
 
 	case 'cierre_LiquidacionTransporte':
 		$estado = 0;
+		$id_cierre = 0;
+		$id_cierre_md5 = '';
+		$modo = 'N';	// N = Nuevo, M = Modificación
 
 		// Recuperando parámetros
-		$codigo_despacho = $_POST["codigo_despacho"];
-		$ruc_remitente = $_POST["ruc_remitente"];
-		$placa = $_POST["placa"];
-		$tarifa = $_POST["tarifa"];
-		$id_tarifatransporte = $_POST["id_tarifatransporte"];
-		$id_material = $_POST["id_material"];
+		$codigo_despacho = mysqli_real_escape_string($enlace, $_POST["codigo_despacho"]);
+		$ruc_remitente = mysqli_real_escape_string($enlace, $_POST["ruc_remitente"]);
+		$placa = mysqli_real_escape_string($enlace, $_POST["placa"]);
+		$tarifa = (isset($_POST["tarifa"])) ? $_POST["tarifa"] : '';
+		$id_tarifatransporte = (isset($_POST["id_tarifatransporte"])) ? $_POST["id_tarifatransporte"] : '';
+		$id_material = (isset($_POST["id_material"])) ? $_POST["id_material"] : '';
 		$id_planta = $_POST["id_planta"];
 		$id_coordinadortransporte = $_POST["id_coordinadortransporte"];
 		$usuario_registro = $_SESSION["usu_usuario"];
 
-		// Eliminando registro previo
-		$q_delete = "DELETE FROM liquidaciones_transporte";
-		$q_delete .= " WHERE codigo_despacho = '" . $codigo_despacho . "'";
-		$q_delete .= "   AND remitente_ruc = '" . $ruc_remitente . "'";
-		$q_delete .= "   AND placa = '" . $placa . "'";
-
-		if ($res_delete = mysqli_query($enlace, $q_delete)) {
-		}
-
 		// Si no se envió id_tarifatransporte (caso Lomas), mantiene el valor de $tarifa recibido
 		// Si se envió id_tarifatransporte, se obtiene la tarifa_sin_igv desde la tabla
+		// (no se filtra por estado: una liquidación puede haber aplicado una tarifa que después fue reemplazada)
 		$tarifa_aplicada = $tarifa;
 		$moneda_abv = '';
 
@@ -44847,8 +44848,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 																		 MO.abv AS MONEDA_ABV
 																FROM tbconfig_tarifatransporte TT
 																	 LEFT JOIN tbconfig_monedas MO ON TT.id_moneda = MO.Id
-														 WHERE TT.Id = " . $id_tarifatransporte . "
-															 AND TT.estado = 'A'";
+															WHERE TT.Id = " . (int)$id_tarifatransporte;
 
 			if ($res_tarifa = mysqli_query($enlace, $q_tarifa)) {
 				if (mysqli_num_rows($res_tarifa) > 0) {
@@ -44861,25 +44861,79 @@ case 'confirmar_ProgramacionLote_AddLote':
 			}
 		}
 
-		// Inserta el registro de cierre
-		$q_insert = "INSERT INTO liquidaciones_transporte (codigo_despacho, remitente_ruc, placa, id_tarifatransporte, tarifa, id_material, fechahora_registro, usuario_registro) VALUES (";
-		$q_insert .= "'" . $codigo_despacho . "', ";
-		$q_insert .= "'" . $ruc_remitente . "', ";
-		$q_insert .= "'" . $placa . "', ";
-		$q_insert .= ((strlen($id_tarifatransporte) == 0) ? 'NULL' : $id_tarifatransporte) . ", ";
-		$q_insert .= ((strlen($tarifa) == 0) ? 'NULL' : $tarifa) . ", ";
-		$q_insert .= ((strlen($id_material) == 0) ? 'NULL' : $id_material) . ", ";
-		$q_insert .= "'" . $g_fecha . "', ";
-		$q_insert .= "'" . $usuario_registro . "')";
+		// Buscando liquidaciones registradas previamente para la misma unidad de transporte
+		// La llave de la liquidación es: codigo_despacho + remitente_ruc + placa
+		$q_existe = "SELECT Id
+					 FROM liquidaciones_transporte
+					WHERE codigo_despacho = '" . $codigo_despacho . "'
+					  AND remitente_ruc = '" . $ruc_remitente . "'
+					  AND placa = '" . $placa . "'
+					ORDER BY Id DESC";
 
-		if ($res_insert = mysqli_query($enlace, $q_insert)) {
-			$estado = 1;
+		$arr_liquidaciones = array();
 
-			$id_cierre = mysqli_insert_id($enlace);
+		if ($res_existe = mysqli_query($enlace, $q_existe)) {
+			while ($row_existe = mysqli_fetch_array($res_existe)) {
+				array_push($arr_liquidaciones, $row_existe["Id"]);
+			}
+		}
 
-			// Convertir a MD5
-			$id_cierre_md5 = '';
+		if (count($arr_liquidaciones) > 0) {
+			// MODIFICACIÓN: se actualiza la liquidación ya existente
+			// (se conservan el Id, la liquidación firmada y los datos del comprobante)
+			$id_cierre = $arr_liquidaciones[0];
+			$modo = 'M';
 
+			$q_update = "UPDATE liquidaciones_transporte SET ";
+
+			if (strlen($id_tarifatransporte) > 0) {
+				$q_update .= "id_tarifatransporte = " . (int)$id_tarifatransporte . ", ";
+			}
+
+			if (strlen($tarifa) > 0) {
+				$q_update .= "tarifa = " . (float)$tarifa . ", ";
+			}
+
+			if (strlen($id_material) > 0 && $id_material > 0) {
+				$q_update .= "id_material = " . (int)$id_material . ", ";
+			}
+
+			$q_update .= "fechahora_registro = '" . $g_fecha . "', ";
+			$q_update .= "usuario_registro = '" . $usuario_registro . "'";
+			$q_update .= " WHERE Id = " . $id_cierre;
+
+			if ($res_update = mysqli_query($enlace, $q_update)) {
+				$estado = 1;
+			}
+
+			// Eliminando liquidaciones duplicadas heredadas (se conserva la más reciente)
+			for ($l = 1; $l < count($arr_liquidaciones); $l++) {
+				$q_delete_duplicado = "DELETE FROM liquidaciones_transporte";
+				$q_delete_duplicado .= " WHERE Id = " . $arr_liquidaciones[$l];
+
+				mysqli_query($enlace, $q_delete_duplicado);
+			}
+		} else {
+			// CREACIÓN: se inserta el registro de cierre
+			$q_insert = "INSERT INTO liquidaciones_transporte (codigo_despacho, remitente_ruc, placa, id_tarifatransporte, tarifa, id_material, fechahora_registro, usuario_registro) VALUES (";
+			$q_insert .= "'" . $codigo_despacho . "', ";
+			$q_insert .= "'" . $ruc_remitente . "', ";
+			$q_insert .= "'" . $placa . "', ";
+			$q_insert .= ((strlen($id_tarifatransporte) == 0) ? 'NULL' : (int)$id_tarifatransporte) . ", ";
+			$q_insert .= ((strlen($tarifa) == 0) ? 'NULL' : (float)$tarifa) . ", ";
+			$q_insert .= ((strlen($id_material) == 0) ? 'NULL' : (int)$id_material) . ", ";
+			$q_insert .= "'" . $g_fecha . "', ";
+			$q_insert .= "'" . $usuario_registro . "')";
+
+			if ($res_insert = mysqli_query($enlace, $q_insert)) {
+				$estado = 1;
+
+				$id_cierre = mysqli_insert_id($enlace);
+			}
+		}
+
+		// Convertir a MD5
+		if ($id_cierre > 0) {
 			$q_md5 = "SELECT MD5(" . $id_cierre . ") AS MD5";
 
 			if ($res_md5 = mysqli_query($enlace, $q_md5)) {
@@ -44891,7 +44945,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 			}
 		}
 
-		echo json_encode(array('estado' => $estado, 'id_cierre' => $id_cierre, 'id_cierre_md5' => $id_cierre_md5, 'fechahora_registro' => $g_fecha, 'usuario_registro' => $usuario_registro, 'tarifa' => $tarifa_aplicada, 'moneda_abv' => $moneda_abv));
+		echo json_encode(array('estado' => $estado, 'id_cierre' => $id_cierre, 'id_cierre_md5' => $id_cierre_md5, 'fechahora_registro' => $g_fecha, 'usuario_registro' => $usuario_registro, 'tarifa' => $tarifa_aplicada, 'moneda_abv' => $moneda_abv, 'modo' => $modo));
 
 		break;
 
@@ -44899,11 +44953,36 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$estado = 0;
 
 		// Recuperando parámetros
-		$id_cierre = $_POST["id_cierre"];
+		$id_cierre = (int)$_POST["id_cierre"];
 
-		// Eliminando registro previo
+		// Obteniendo la llave de la liquidación (para eliminar también sus duplicados)
+		$codigo_despacho = '';
+		$ruc_remitente = '';
+		$placa = '';
+
+		$q_datos = "SELECT codigo_despacho, remitente_ruc, placa
+					 FROM liquidaciones_transporte
+					WHERE Id = " . $id_cierre;
+
+		if ($res_datos = mysqli_query($enlace, $q_datos)) {
+			if (mysqli_num_rows($res_datos) > 0) {
+				while ($row_datos = mysqli_fetch_array($res_datos)) {
+					$codigo_despacho = $row_datos["codigo_despacho"];
+					$ruc_remitente = $row_datos["remitente_ruc"];
+					$placa = $row_datos["placa"];
+				}
+			}
+		}
+
+		// Eliminando el registro de la liquidación (y sus duplicados heredados)
 		$q_delete = "DELETE FROM liquidaciones_transporte";
 		$q_delete .= " WHERE Id = " . $id_cierre;
+
+		if (strlen($codigo_despacho) > 0) {
+			$q_delete .= "    OR (codigo_despacho = '" . $codigo_despacho . "'";
+			$q_delete .= "        AND remitente_ruc = '" . $ruc_remitente . "'";
+			$q_delete .= "        AND placa = '" . $placa . "')";
+		}
 
 		if ($res_delete = mysqli_query($enlace, $q_delete)) {
 			$estado = 1;
@@ -44970,7 +45049,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 													 DATOS.guias_idmodalidadenvio AS ID_MODALIDAD_ENVIO,
 													 DATOS.MODALIDAD_ENVIO,
 													 DATOS.FECHAHORA_SALIDA,
-													 DATOS.FECHA_LLEGADAPLANTA,
+													 MIN(DATOS.FECHA_LLEGADAPLANTA) AS FECHA_LLEGADAPLANTA,
 													 DATOS.TIPO_VEHICULO,
 													 DATOS.PLACA1,
 													 DATOS.PLACA2,
@@ -45060,14 +45139,19 @@ case 'confirmar_ProgramacionLote_AddLote':
 		}
 
 		$q_datos .= ") AS DATOS
-										 LEFT JOIN tbconfig_tarifatransporte TT ON DATOS.id_coordinadortransporte = TT.id_coordinadortransporte
-											 AND DATOS.id_planta = TT.id_planta
+										 LEFT JOIN (SELECT id_planta, id_coordinadortransporte, MAX(Id) AS Id
+													 FROM tbconfig_tarifatransporte
+													WHERE estado = 'A'
+													  GROUP BY id_planta, id_coordinadortransporte) TTV
+											 ON TTV.id_planta = DATOS.id_planta
+											AND TTV.id_coordinadortransporte = DATOS.id_coordinadortransporte
+										 LEFT JOIN tbconfig_tarifatransporte TT ON TT.Id = TTV.Id
 										 LEFT JOIN tbconfig_monedas MO ON TT.id_moneda = MO.Id
 										 LEFT JOIN liquidaciones_transporte LC ON DATOS.codigo_despacho = LC.codigo_despacho
 											 AND DATOS.guias_remitenteruc = LC.remitente_ruc
 											 AND DATOS.PLACA1 = LC.placa
 										 LEFT JOIN tbconfig_tipopagocomprobante TPC ON LC.id_tipopagocomprobante = TPC.Id
-										 GROUP BY DATOS.id_planta, DATOS.PLANTA, DATOS.ID_UNIDAD, DATOS.codigo_despacho, DATOS.codigo_despacho_comercializacion, DATOS.guias_idmodalidadenvio, DATOS.FECHAHORA_SALIDA, DATOS.FECHA_LLEGADAPLANTA, DATOS.TIPO_VEHICULO, DATOS.PLACA1, DATOS.PLACA2, DATOS.TRANSPORTISTA_RUC, DATOS.TRANSPORTISTA_RAZONSOCIAL, MO.abv, IFNULL(LC.tarifa, TT.tarifa_sin_igv), COORDINADOR_TRANSPORTE, guias_remitenteruc, LC.Id
+										 GROUP BY DATOS.id_planta, DATOS.PLANTA, DATOS.ID_UNIDAD, DATOS.codigo_despacho, DATOS.codigo_despacho_comercializacion, DATOS.guias_idmodalidadenvio, DATOS.FECHAHORA_SALIDA, DATOS.TIPO_VEHICULO, DATOS.PLACA1, DATOS.PLACA2, DATOS.TRANSPORTISTA_RUC, DATOS.TRANSPORTISTA_RAZONSOCIAL, MO.abv, IFNULL(LC.tarifa, TT.tarifa_sin_igv), COORDINADOR_TRANSPORTE, guias_remitenteruc, LC.Id
 										 ORDER BY (LC.Id IS NULL) DESC, DATOS.PLANTA, codigo_despacho";
 
 		if ($res_datos = mysqli_query($enlace, $q_datos)) {

@@ -86,7 +86,7 @@
 											 DATOS.TRANSPORTISTA_RUC,
 											 DATOS.TRANSPORTISTA_RAZONSOCIAL,
 											 MO.abv AS MONEDA_ABV,
-											 TT.tarifa_sin_igv,
+											 IFNULL(DATOS.TARIFA_CIERRE, TT.tarifa_sin_igv) AS tarifa_sin_igv,
 											 DATOS.COORDINADOR_TRANSPORTE,
 											 DATOS.guias_remitenteruc,
 											 DATOS.guias_puntopartida,
@@ -147,6 +147,7 @@
 															 DL.guias_puntopartida,
 															 DL.guias_puntodestino,
 															 DL.guias_glosa,
+			 																 LC.tarifa AS TARIFA_CIERRE,
 															 LC.fechahora_registro AS FECHAHORA_CERRE,
 											 				 LC.usuario_registro AS USUARIO_CIERRE,
 											 				 DL.cod_lote,
@@ -183,8 +184,13 @@
 												         AND VR.estado = 'A'
 												       LEFT JOIN tbconfig_materialesflete MF ON LC.id_material = MF.Id
 												 WHERE MD5(LC.Id) = '".$id_liquidacionmd5."') AS DATOS
-										 	 LEFT JOIN tbconfig_tarifatransporte TT ON DATOS.id_coordinadortransporte = TT.id_coordinadortransporte
-										     AND DATOS.id_planta = TT.id_planta
+										 LEFT JOIN (SELECT id_planta, id_coordinadortransporte, MAX(Id) AS Id
+													 FROM tbconfig_tarifatransporte
+													WHERE estado = 'A'
+													  GROUP BY id_planta, id_coordinadortransporte) TTV
+											 ON TTV.id_planta = DATOS.id_planta
+											AND TTV.id_coordinadortransporte = DATOS.id_coordinadortransporte
+										 LEFT JOIN tbconfig_tarifatransporte TT ON TT.Id = TTV.Id
 											 LEFT JOIN tbconfig_monedas MO ON TT.id_moneda = MO.Id";
 
 		if ($res_datos = mysqli_query($enlace, $q_datos)){

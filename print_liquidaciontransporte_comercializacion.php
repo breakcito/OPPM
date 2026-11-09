@@ -265,9 +265,13 @@ $q_datos = "SELECT DATOS.ID_UNIDAD,
 												       INNER JOIN catalogolotes L ON DL.cod_lote = L.ccod_Lote
 												       LEFT JOIN tbconfig_plantas PLD ON L.balanza_id_planta = PLD.Id
 												 WHERE MD5(LC.Id) = '" . $id_liquidacionmd5 . "') AS DATOS
-										 	 LEFT JOIN tbconfig_tarifatransporte TT ON TT.estado = 'A'
-										 	 	 AND DATOS.id_coordinadortransporte = TT.id_coordinadortransporte
-										     AND DATOS.id_planta = TT.id_planta
+										 LEFT JOIN (SELECT id_planta, id_coordinadortransporte, MAX(Id) AS Id
+													 FROM tbconfig_tarifatransporte
+													WHERE estado = 'A'
+													  GROUP BY id_planta, id_coordinadortransporte) TTV
+											 ON TTV.id_planta = DATOS.id_planta
+											AND TTV.id_coordinadortransporte = DATOS.id_coordinadortransporte
+										 LEFT JOIN tbconfig_tarifatransporte TT ON TT.Id = TTV.Id
 											 LEFT JOIN tbconfig_monedas MO ON TT.id_moneda = MO.Id";
 
 if ($res_datos = mysqli_query($enlace, $q_datos)) {

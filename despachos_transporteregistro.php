@@ -3063,7 +3063,9 @@ if (!isset($_SESSION["Id"])) {
 							id_seleccionado = data.res[index_coincidencia].Id;
 							monto_seleccionado = parseFloat(data.res[index_coincidencia].tarifa_sin_igv).toFixed(2);
 						}
-						else if (data.res.length == 1) {
+						else {
+							// Si no hay coincidencia con la tarifa actual, se preselecciona la mas reciente
+							// (la primera de la lista). El usuario puede elegir cualquiera de las registradas.
 							id_seleccionado = data.res[0].Id;
 							monto_seleccionado = parseFloat(data.res[0].tarifa_sin_igv).toFixed(2);
 						}
@@ -3143,20 +3145,9 @@ if (!isset($_SESSION["Id"])) {
 					$("#wt_tarifa_grabando").hide();
 
 				if (data.estado == 1) {
-					// Recargar lista (sin auto-seleccionar por coincidencia porque el usuario acaba de crear una nueva)
-					f_LoadTarifasTransporte(parseInt(id_planta), parseInt(id_coordinadortransporte), 0);
-
-					// Marcar la nueva tarifa como seleccionada
-					setTimeout(function () {
-						var nuevoId = String(data.id_tarifatransporte);
-						var $radio = $("#radio_tarifa_" + nuevoId);
-
-						if ($radio.length > 0) {
-							$radio.prop('checked', true);
-							$("#hd_tarifa_id").val(data.id_tarifatransporte);
-							$("#hd_tarifa_monto").val(parseFloat(data.tarifa_sin_igv).toFixed(2));
-						}
-					}, 400);
+					// La tarifa nueva se registra como una opcion mas: se recarga la lista
+					// para que el usuario pueda elegirla (o cualquier otra registrada)
+					f_LoadTarifasTransporte(parseInt(id_planta), parseInt(id_coordinador), 0);
 
 					// Cerrar form de nueva tarifa
 					$("#div_tarifa_nueva").hide();
