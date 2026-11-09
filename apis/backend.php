@@ -2218,18 +2218,18 @@ function f_CalcularSiguienteCorrelativoDespacho($enlace, $id_planta, $id_modalid
 		'error' => null
 	);
 
-	if ($id_planta != 3 && $id_planta != 5) {
-		$resultado['error'] = 'La planta seleccionada no aplica para esta logica.';
-		return $resultado;
-	}
+	// if ($id_planta != 3 && $id_planta != 5) {
+	// 	$resultado['error'] = 'La planta seleccionada no aplica para esta logica.';
+	// 	return $resultado;
+	// }
 
 	// Para DET se exige modalidad explicita (5 o 6).
 	// Para CAB la modalidad NO se usa (la cabecera es global por planta),
 	// pero se acepta el parametro para mantener compatibilidad de la firma.
-	if ($tipo == 'DET' && $id_modalidadenvio != 5 && $id_modalidadenvio != 6) {
-		$resultado['error'] = 'Solo las modalidades 5 (VIII) y 6 (48 SAC) generan codigo de detalle.';
-		return $resultado;
-	}
+	// if ($tipo == 'DET' && $id_modalidadenvio != 5 && $id_modalidadenvio != 6) {
+	// 	$resultado['error'] = 'Solo las modalidades 5 (VIII) y 6 (48 SAC) generan codigo de detalle.';
+	// 	return $resultado;
+	// }
 
 	// 1. Determinar prefijo de cabecera según planta
 	if ($id_planta == 3) {
@@ -2766,9 +2766,7 @@ function f_ActualizarCodigoCabeceraProgramacion($enlace, $id_planta, $id_program
 	$codigo_anterior = trim((string) $codigo_anterior);
 	$codigo_nuevo = trim((string) $codigo_nuevo);
 
-	if ($codigo_anterior === '' || $codigo_anterior === $codigo_nuevo) {
-		return;
-	}
+	
 
 	$cod_anterior = mysqli_real_escape_string($enlace, $codigo_anterior);
 	$cod_nuevo = mysqli_real_escape_string($enlace, $codigo_nuevo);
@@ -27953,11 +27951,11 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
 		$usuario_registro = $_SESSION["usu_usuario"];
 
 		// Pre-condición: sólo se permite registrar programación para Colibri (3) o Solandra (5)
-		if ($id_planta != 3 && $id_planta != 5 && $id_planta != 16) {
-			echo json_encode(array('estado' => $estado, 'mensaje' => 'La planta seleccionada no aplica para esta lógica.'));
+		// if ($id_planta != 3 && $id_planta != 5 && $id_planta != 16) {
+		// 	echo json_encode(array('estado' => $estado, 'mensaje' => 'La planta seleccionada no aplica para esta lógica.'));
 
-			return;
-		}
+		// 	return;
+		// }
 
 		// MAX (06/09/2024 17:59): Solo para Lotes con estado MINERAL RETIRADO
 		if ($id_planta == 16) {
@@ -28352,11 +28350,11 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$usuario_registro = $_SESSION["usu_usuario"];
 
 		// Solo aplica a Colibri y Solandra
-		if ($id_planta != 3 && $id_planta != 5) {
-			echo json_encode(array('estado' => 0, 'mensaje' => 'La planta seleccionada no aplica para esta logica.'));
+		// if ($id_planta != 3 && $id_planta != 5) {
+		// 	echo json_encode(array('estado' => 0, 'mensaje' => 'La planta seleccionada no aplica para esta logica.'));
 
-			return;
-		}
+		// 	return;
+		// }
 
 		// ============================================================
 		// LOGICA NUEVA: Agregar lote(s) a una programacion existente.
@@ -30917,9 +30915,9 @@ case 'confirmar_ProgramacionLote_AddLote':
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; background-color: #ffffff; font-weight: bold;">';
 					$html .= '    <div id="trdiv_CodigoDespacho_' . $row_datos["ID_DETALLE"] . '">';
 					$html .= '      ' . $row_datos["codigo_despacho"];
-					if ($id_planta == 3 || $id_planta == 5) {
+					// if ($id_planta == 3 || $id_planta == 5) {
 						$html .= '      <i class="bi bi-pencil-square" style="cursor: pointer; margin-left: 5px; color: #337ab7;" title="Editar código de despacho (cabecera)" onclick="f_EditCodigoDespachoCabecera(' . $row_datos["Id"] . ", '" . addslashes($row_datos["codigo_despacho"]) . "'" . ')"></i>';
-					}
+					// }
 					$html .= '    </div>';
 					$html .= '    <input id="td_programacionloteaum_' . $d . '" type="hidden" value="' . $is_loteaum . '">';
 					$html .= '  </td>';
@@ -30927,7 +30925,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; background-color: #ffffff; font-weight: bold;" ' . (($id_planta != 3) ? '' : '') . '>';
 					$html .= '    <div id="trdiv_CodigoDespachoComercializacion_' . $row_datos["ID_DETALLE"] . '">';
 					$html .= '      ' . $row_datos["codigo_despacho_comercializacion"];
-					if ($id_planta == 3 || $id_planta == 5) {
+					// if ($id_planta == 3 || $id_planta == 5) {
 						$modalidad_lote = intval($row_datos["ID_MODALIDADENVIO"]);
 						if ($modalidad_lote == 0) {
 							if (strpos($row_datos["codigo_despacho_comercializacion"], 'VIII') !== false) {
@@ -30937,7 +30935,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 							}
 						}
 						$html .= '      <i class="bi bi-pencil-square" style="cursor: pointer; margin-left: 5px; color: #337ab7;" title="Editar código de despacho del lote" onclick="f_EditCodigoDespachoLote(' . $row_datos["ID_DETALLE"] . ', ' . $row_datos["Id"] . ", '" . addslashes($row_datos["cod_lote"]) . "', " . $modalidad_lote . ", '" . addslashes($row_datos["codigo_despacho_comercializacion"]) . "', '" . addslashes($row_datos["codigo_despacho"]) . "'" . ')"></i>';
-					}
+					// }
 					$html .= '    </div>';
 					$html .= '  </td>';
 
