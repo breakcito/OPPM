@@ -1129,13 +1129,12 @@ function f_Redondear_Mas($valor, $num_decimales)
 }
 
 // =============================================================================
-// REORDENAMIENTO DE LOS CODIGOS DE PLANTA POR CODIGO DE LOTE (Colibri)
+// SECUENCIA DE CODIGOS DE PLANTA (Colibri - id_planta = 3)
 // =============================================================================
-// Los codigos de planta forman una SECUENCIA UNICA por planta y el orden de esa
-// secuencia lo define el codigo del lote (cod_lote). Al agregar un lote a una
-// programacion ya registrada, el lote nuevo debe ocupar la posicion que le
-// corresponde por su codigo de lote y los codigos que quedan despues se
-// desplazan una posicion hacia adelante.
+// Los codigos de planta (ej. "008-3743") forman UNA SOLA SECUENCIA por planta.
+// El orden de la secuencia lo define el codigo del lote (cod_lote): primero por
+// programacion (orden de registro de los despachos) y dentro de cada
+// programacion por codigo de lote.
 //
 //   Despacho A:  261611 -> 008-3743        Despacho B:  261629 -> 008-3748
 //                261613 -> 008-3744                        261631 -> 008-3749
@@ -1143,7 +1142,11 @@ function f_Redondear_Mas($valor, $num_decimales)
 //                261617 -> 008-3746                        261635 -> 008-3751
 //                261627 -> 008-3747                        261637 -> 008-3752
 //
-//   Se agrega el lote 261619 al despacho A (queda en medio):
+// 1) Se agrega el lote 261619 al despacho A (queda en medio): el lote nuevo
+//    ocupa la posicion que le corresponde por su codigo de lote y los codigos
+//    que quedan despues (incluidos los de los despachos posteriores) se
+//    desplazan una posicion hacia adelante.
+//
 //                261611 -> 008-3743                        261629 -> 008-3749
 //                261613 -> 008-3744                        261631 -> 008-3750
 //                261615 -> 008-3745                        261633 -> 008-3751
@@ -1151,20 +1154,30 @@ function f_Redondear_Mas($valor, $num_decimales)
 //                261619 -> 008-3747  <- lote nuevo         261637 -> 008-3753
 //                261627 -> 008-3748
 //
+// 2) El operador edita a mano el codigo del lote 261633 (de 008-3751 a
+//    008-3755): el codigo editado queda como ANCLA y los codigos que le siguen
+//    se reanudan a partir de el.
+//
+//                261629 -> 008-3749                        261639 -> 008-3758
+//                261631 -> 008-3750                        261641 -> 008-3759
+//                261633 -> 008-3755  <- editado            261643 -> 008-3760
+//                261635 -> 008-3756
+//                261637 -> 008-3757
+//
+// 3) Se elimina un lote o un despacho completo: los codigos que quedan despues
+//    retroceden para cerrar el hueco dejado por los codigos liberados.
+//
 // Reglas de la reordenacion:
-// - Los codigos de planta forman una secuencia UNICA por planta. El orden de la
-//   secuencia es: primero por programacion (orden de registro de los despachos)
-//   y dentro de cada programacion por codigo de lote.
-// - El lote nuevo toma el correlativo siguiente al de su antecesor (por codigo
-//   de lote) y los lotes que lo siguen se desplazan una posicion, incluidos los
-//   de los despachos posteriores.
-// - Los codigos que NO se renumeran (se respetan tal cual):
+// - Los codigos que NO se renumeran (son ANCLAS y se respetan tal cual):
 //     . los emitidos en balanza (is_creadoenbalanza = 1): ese codigo ya fue
 //       entregado fisicamente, es definitivo;
 //     . los editados a mano por el operador (el codigo del detalle difiere del
 //       generado por el sistema);
 //     . los que llevan anotacion (ej. "008-3043 PARTE 1").
 // - Los correlativos reservados (emitidos en balanza) nunca se reutilizan.
+// - Los correlativos que quedaron "en el aire" (de lotes o despachos
+//   eliminados) se IGNORAN: no cuentan para el calculo del siguiente codigo,
+//   de modo que la numeracion no deja huecos.
 // =============================================================================
 
 // Descompone un codigo de planta en prefijo, correlativo y sufijo.
@@ -1193,203 +1206,213 @@ function f_ConstruirCodigoPlanta($prefijo, $correlativo, $sufijo)
 	return $prefijo . str_pad(intval($correlativo), 4, '0', STR_PAD_LEFT) . $sufijo;
 }
 
-// Calcula el REORDENAMIENTO de los codigos de planta de Colibri, sin aplicarlo.
+// Devuelve los numeros de CORRELATIVO que estan RESERVADOS en la planta: los
+// codigos que ya fueron emitidos en balanza (entregados fisicamente) y que por
+// lo tanto no se pueden volver a asignar.
 //
-// $modo = 'A' -> se agregaron lote(s) a una programacion ya registrada: el lote
-//                nuevo se ubica segun su codigo de lote y los codigos posteriores
-//                se desplazan para mantener la secuencia continua y sin repeticiones.
-//                $lotes_pendientes = codigos de lote que todavia NO estan en la BD
-//                (se usan para calcular el reordenamiento antes de registrarlos).
-// $modo = 'E' -> se elimino un lote de una programacion: el lote eliminado libera
-//                su correlativo y los codigos posteriores retroceden una posicion
-//                para que la secuencia quede nuevamente continua.
-// $modo = 'D' -> se elimino un despacho completo: se liberan todos sus
-//                correlativos y los codigos posteriores retroceden esa misma
-//                cantidad de posiciones.
-//
-// Retorna:
-//   'is_requerido' => true cuando algun lote YA EXISTENTE cambia su codigo, es
-//                     decir, cuando la operacion exige reordenar la secuencia.
-//   'cambios'      => lista de cambios a aplicar sobre los lotes.
-function f_GetReordenamientoCodigosPlanta($enlace, $id_planta, $id_programacion, $correlativo_prefijo, $modo = 'A', $cod_lote_eliminado = '', $lotes_pendientes = array(), $cantidad_liberados = 0)
+// Los correlativos "huerfanos" (los que quedaron en el aire porque se elimino
+// un lote o un despacho) NO se consideran reservados: se ignoran, de modo que
+// la numeracion no deje huecos.
+function f_GetNumerosReservadosPlanta($enlace, $id_planta)
 {
-	$id_planta = intval($id_planta);
-	$id_programacion = intval($id_programacion);
-
-	// 1. Lista unica de los lotes de la planta en el ORDEN de la secuencia:
-	//    primero por programacion (orden de registro de los despachos) y dentro
-	//    de cada programacion por codigo de lote. Asi cada despacho mantiene
-	//    su bloque de codigos y el lote agregado se ubica en la posicion que le
-	//    corresponde dentro de su propio despacho.
-	//    is_nuevo = 1 -> lote recien agregado a la programacion (sin codigo de planta).
-	$q_lotes = "SELECT D.Id AS Id,
-						D.id_programacion AS id_programacion,
-						D.cod_lote AS cod_lote,
-						IFNULL(D.codigo_planta, '') AS codigo_planta,
-						0 AS is_nuevo
-					FROM despachos_segundotramo_programacion_detalle D
-					WHERE D.id_planta = " . $id_planta . "
-						AND D.codigo_planta IS NOT NULL
-						AND D.codigo_planta <> ''";
-
-	// El lote que se esta eliminando todavia esta en la BD: se excluye de la
-	// secuencia para poder calcular el reordenamiento.
-	$q_lote_excluido = (($modo == 'E' && strlen($cod_lote_eliminado) > 0) ? " AND D.cod_lote <> '" . mysqli_real_escape_string($enlace, $cod_lote_eliminado) . "'" : "");
-
-	// Modo 'D' (se elimina el despacho completo): se excluyen TODOS sus lotes.
-	$q_programacion_excluida = (($modo == 'D') ? " AND D.id_programacion <> " . $id_programacion : "");
-
-	$q_lotes .= $q_lote_excluido . $q_programacion_excluida . "
-					UNION ALL
-					SELECT D.Id AS Id,
-						D.id_programacion AS id_programacion,
-						D.cod_lote AS cod_lote,
-						'' AS codigo_planta,
-						1 AS is_nuevo
-					FROM despachos_segundotramo_programacion_detalle D
-					WHERE D.id_programacion = " . $id_programacion . "
-						AND (D.codigo_planta IS NULL OR D.codigo_planta = '')" . $q_lote_excluido . "
-					ORDER BY id_programacion, cod_lote";
-
-	$lotes = array();
-
-	if ($res_lotes = mysqli_query($enlace, $q_lotes)) {
-		while ($row_lote = mysqli_fetch_array($res_lotes)) {
-			$lotes[] = array(
-				'id' => intval($row_lote["Id"]),
-				'id_programacion' => intval($row_lote["id_programacion"]),
-				'cod_lote' => $row_lote["cod_lote"],
-				'codigo_planta' => $row_lote["codigo_planta"],
-				'is_nuevo' => intval($row_lote["is_nuevo"]),
-				'prefijo' => $correlativo_prefijo,
-				'correlativo' => 0,
-				'correlativo_registro' => 0,
-				'correlativo_nuevo' => 0,
-				'sufijo' => '',
-				'es_fijo' => 0,
-				'desplazamiento' => 0,
-				'id_correlativo' => 0
-			);
-		}
-	}
-
-	// 1.1 Lotes pendientes de registro: se agregan como posiciones virtuales
-	//     para poder calcular el reordenamiento ANTES de grabarlos.
-	if ($modo == 'A') {
-		foreach ($lotes_pendientes as $cod_lote_pendiente) {
-			$cod_lote_pendiente = trim($cod_lote_pendiente);
-
-			if (strlen($cod_lote_pendiente) == 0) {
-				continue;
-			}
-
-			$is_existente = false;
-			$indice_insercion = count($lotes);
-
-			for ($i = 0; $i < count($lotes); $i++) {
-				if ($lotes[$i]["id_programacion"] == $id_programacion
-					&& $lotes[$i]["cod_lote"] == $cod_lote_pendiente) {
-					$is_existente = true;
-					break;
-				}
-
-				if ($lotes[$i]["id_programacion"] > $id_programacion
-					|| ($lotes[$i]["id_programacion"] == $id_programacion
-						&& $lotes[$i]["cod_lote"] > $cod_lote_pendiente)) {
-					$indice_insercion = $i;
-					break;
-				}
-			}
-
-			if ($is_existente) {
-				continue;
-			}
-
-			$lote_virtual = array(
-				'id' => 0,
-				'id_programacion' => $id_programacion,
-				'cod_lote' => $cod_lote_pendiente,
-				'codigo_planta' => '',
-				'is_nuevo' => 1,
-				'prefijo' => $correlativo_prefijo,
-				'correlativo' => 0,
-				'correlativo_registro' => 0,
-				'correlativo_nuevo' => 0,
-				'sufijo' => '',
-				'es_fijo' => 0,
-				'desplazamiento' => 0,
-				'id_correlativo' => 0
-			);
-
-			array_splice($lotes, $indice_insercion, 0, array($lote_virtual));
-		}
-	}
-
-	// 2. Posicion (pivot) a partir de la cual se reconstruye la secuencia.
-	//    - Modo 'A': el primer lote agregado que todavia no tiene codigo de planta.
-	//    - Modo 'E': la posicion que ocupaba el lote eliminado.
-	//    - Modo 'D': la posicion que ocupaba el despacho eliminado (sus lotes ya
-	//      no estan en la lista).
-	$pivot = -1;
-
-	if ($modo == 'A') {
-		for ($i = 0; $i < count($lotes); $i++) {
-			if ($lotes[$i]["is_nuevo"] == 1) {
-				$pivot = $i;
-				break;
-			}
-		}
-	} else {
-		$pivot = count($lotes);
-
-		for ($i = 0; $i < count($lotes); $i++) {
-			if ($lotes[$i]["id_programacion"] != $id_programacion) {
-				if ($lotes[$i]["id_programacion"] > $id_programacion) {
-					// El lote (o el despacho) eliminado era el ultimo de su
-					// programacion: la secuencia continua con la siguiente.
-					$pivot = $i;
-					break;
-				}
-
-				continue;
-			}
-
-			if ($modo == 'E' && $lotes[$i]["cod_lote"] > $cod_lote_eliminado) {
-				$pivot = $i;
-				break;
-			}
-		}
-	}
-
-	// Modo 'A': sin lotes nuevos que reordenar no hay nada que hacer.
-	if ($modo == 'A' && $pivot < 0) {
-		return array('is_requerido' => false, 'cambios' => array());
-	}
-
-	// 1.1 Correlativos de planta registrados por el sistema: indican que numero
-	//     le corresponde a cada lote y con que codigo fue generado. Si el codigo
-	//     del detalle difiere del registrado, es que el operador lo edito a mano
-	//     y NO debe renumerarse.
-	$correlativos = array();
 	$reservados = array();
 
-	$q_corr = "SELECT C.Id AS Id,
-						C.id_programaciondetalle AS id_programaciondetalle,
-						C.correlativo AS correlativo,
-						C.codigo_planta AS codigo_planta,
-						C.is_creadoenbalanza AS is_creadoenbalanza
+	$q = "SELECT DISTINCT correlativo
+			FROM correlativo_plantas
+		   WHERE id_planta = " . intval($id_planta) . "
+			 AND (is_creadoenbalanza = 1
+			  OR codlote_balanza IS NOT NULL
+			  OR id_programaciondetalle <= 0)";
+
+	if ($res = mysqli_query($enlace, $q)) {
+		while ($row = mysqli_fetch_assoc($res)) {
+			$reservados[intval($row["correlativo"])] = true;
+		}
+	}
+
+	return $reservados;
+}
+
+// Devuelve el codigo de planta que fue emitido en balanza para un lote.
+// Devuelve NULL si el lote todavia no paso por balanza.
+function f_GetCodigoPlantaBalanza($enlace, $id_planta, $cod_lote)
+{
+	$codigo = '';
+
+	$q = "SELECT codigo_planta
+			FROM correlativo_plantas
+		   WHERE id_planta = " . intval($id_planta) . "
+			 AND codlote_balanza = '" . mysqli_real_escape_string($enlace, $cod_lote) . "'
+		   LIMIT 1";
+
+	if ($res = mysqli_query($enlace, $q)) {
+		if ($row = mysqli_fetch_assoc($res)) {
+			$codigo = trim($row["codigo_planta"]);
+		}
+	}
+
+	if (strlen($codigo) == 0) {
+		return null;
+	}
+
+	return $codigo;
+}
+
+// Devuelve el ultimo numero de codigo de planta que esta EN USO en la planta.
+//
+// Solo se consideran los codigos que realmente estan asignados a un lote
+// (despachos registrados) y los que quedaron reservados en balanza. Los
+// correlativos que quedaron "en el aire" (de lotes o despachos eliminados) se
+// ignoran: si se tomaran en cuenta, la numeracion dejaria huecos.
+function f_GetUltimoNumeroEnUsoPlanta($enlace, $id_planta)
+{
+	$ultimo = 0;
+
+	$q = "SELECT IFNULL(D.codigo_planta, '') AS codigo_planta
+			FROM despachos_segundotramo_programacion_detalle D
+		   WHERE D.id_planta = " . intval($id_planta) . "
+			 AND D.codigo_planta IS NOT NULL
+			 AND D.codigo_planta <> ''";
+
+	if ($res = mysqli_query($enlace, $q)) {
+		while ($row = mysqli_fetch_assoc($res)) {
+			$parsed = f_ParsearCodigoPlanta($row["codigo_planta"]);
+
+			if (!is_null($parsed) && $parsed["correlativo"] > $ultimo) {
+				$ultimo = $parsed["correlativo"];
+			}
+		}
+	}
+
+	// Los codigos emitidos en balanza tambien consumen numeracion.
+	foreach (f_GetNumerosReservadosPlanta($enlace, $id_planta) as $numero_reservado => $x) {
+		if ($numero_reservado > $ultimo) {
+			$ultimo = $numero_reservado;
+		}
+	}
+
+	return $ultimo;
+}
+
+// Indica si la tabla correlativo_plantas ya tiene la columna is_editado.
+//
+// Si el script de cambios (cambios.sql) todavia no se aplico en la base de
+// datos, se usa la deteccion por comparacion con el correlativo registrado
+// (ver f_GetSecuenciaCodigosPlanta), de modo que el modulo sigue funcionando
+// aunque la base de datos este desactualizada.
+function f_TieneColumnaIsEditado($enlace)
+{
+	static $tiene = null;
+
+	if (is_null($tiene)) {
+		$res = mysqli_query($enlace, "SHOW COLUMNS FROM correlativo_plantas LIKE 'is_editado'");
+
+		$tiene = (mysqli_num_rows($res) > 0) ? 1 : 0;
+	}
+
+	return $tiene;
+}
+
+// Devuelve la cantidad de lotes de la planta que usan cada codigo de planta.
+// Se usa para detectar los codigos que quedaron desfasados por el flujo
+// antiguo: su numero registrado sigue en uso en otro lote, por lo que no son
+// una edicion manual del operador sino un residuo de la numeracion anterior.
+function f_GetCantidadUsoCodigosPlanta($enlace, $id_planta)
+{
+	$uso = array();
+
+	$q = "SELECT D.codigo_planta,
+					COUNT(*) AS _CANTIDAD
+				FROM despachos_segundotramo_programacion_detalle D
+			   WHERE D.id_planta = " . intval($id_planta) . "
+				 AND D.codigo_planta IS NOT NULL
+				 AND D.codigo_planta <> ''
+			GROUP BY D.codigo_planta";
+
+	if ($res = mysqli_query($enlace, $q)) {
+		while ($row = mysqli_fetch_assoc($res)) {
+			$uso[$row["codigo_planta"]] = intval($row["_CANTIDAD"]);
+		}
+	}
+
+	return $uso;
+}
+
+// Arma la SECUENCIA de lotes de una planta: el orden en el que se distribuyen
+// los codigos de planta.
+//
+// La secuencia es: primero por programacion (orden de registro de los
+// despachos) y dentro de cada programacion por codigo de lote.
+//
+// Cada elemento de la secuencia trae:
+//   id               -> Id del detalle (0 si el lote todavia no esta registrado)
+//   id_programacion  -> despacho al que pertenece el lote
+//   cod_lote         -> codigo del lote
+//   codigo_planta    -> codigo actual del lote ('' si todavia no tiene)
+//   is_nuevo         -> 1 si el lote aun no tiene codigo (debe numerarse)
+//   prefijo / sufijo -> partes del codigo actual
+//   correlativo      -> numero del codigo actual (0 si no es numerico)
+//   es_ancla         -> 1 si el codigo NO se renumera (se respeta tal cual)
+//   es_balanza       -> 1 si el codigo fue emitido en balanza
+//   es_editado       -> 1 si el codigo fue editado a mano por el operador
+//   id_correlativo   -> Id del registro en correlativo_plantas (0 si no existe)
+//
+// $opciones:
+//   id_programacion      -> despacho en foco (ubica los lotes pendientes)
+//   lotes_pendientes     -> cod_lote que se van a agregar y todavia NO estan
+//                           registrados (se agregan como posiciones virtuales)
+//   excluir_cod_lote     -> lote que se esta eliminando (no entra en la secuencia)
+//   excluir_programacion -> despacho que se esta eliminando (no entra en la secuencia)
+//   anclar_id_detalle    -> detalle cuyo codigo acaba de ser editado: queda como ancla
+function f_GetSecuenciaCodigosPlanta($enlace, $id_planta, $opciones = array())
+{
+	$id_planta = intval($id_planta);
+
+	$id_programacion = intval(isset($opciones['id_programacion']) ? $opciones['id_programacion'] : 0);
+	$lotes_pendientes = isset($opciones['lotes_pendientes']) ? $opciones['lotes_pendientes'] : array();
+	$excluir_cod_lote = isset($opciones['excluir_cod_lote']) ? trim($opciones['excluir_cod_lote']) : '';
+	$excluir_programacion = intval(isset($opciones['excluir_programacion']) ? $opciones['excluir_programacion'] : 0);
+	$anclar_id_detalle = intval(isset($opciones['anclar_id_detalle']) ? $opciones['anclar_id_detalle'] : 0);
+
+	$prefijo_planta = f_GetPrefijoCodigoPlanta($enlace, $id_planta);
+
+	// 0. Marca de "codigo editado a mano por el operador". Si la base de datos
+	//    todavia no tiene la columna is_editado (no se aplico cambios.sql), se
+	//    detecta por comparacion con el correlativo registrado.
+	$tiene_is_editado = f_TieneColumnaIsEditado($enlace);
+	$uso_codigos = ($tiene_is_editado) ? array() : f_GetCantidadUsoCodigosPlanta($enlace, $id_planta);
+
+	// 1. Correlativos registrados por el sistema para los lotes de la planta.
+	//    $correlativos: [Id del detalle] -> correlativo registrado por el sistema.
+	//    $balanza:      [cod_lote]       -> codigo emitido en balanza.
+	$correlativos = array();
+	$balanza = array();
+
+	$q_corr = "SELECT C.Id,
+					  C.id_programaciondetalle,
+					  C.correlativo,
+					  C.codigo_planta,
+					  C.is_creadoenbalanza,
+					  C.codlote_balanza" . (($tiene_is_editado) ? ",
+					  C.is_editado" : "") . "
 					FROM correlativo_plantas C
 				   WHERE C.id_planta = " . $id_planta;
 
 	if ($res_corr = mysqli_query($enlace, $q_corr)) {
-		while ($row_corr = mysqli_fetch_array($res_corr)) {
+		while ($row_corr = mysqli_fetch_assoc($res_corr)) {
+			$codlote_balanza = trim((string) $row_corr["codlote_balanza"]);
+
+			if (strlen($codlote_balanza) > 0) {
+				$balanza[$codlote_balanza] = $row_corr["codigo_planta"];
+			}
+
 			$id_detalle = intval($row_corr["id_programaciondetalle"]);
 
-			// Correlativo sin lote asociado o emitido en balanza: ese numero ya
-			// fue entregado fisicamente, queda reservado y no se puede reutilizar.
-			if ($id_detalle <= 0 || intval($row_corr["is_creadoenbalanza"]) == 1) {
-				$reservados[intval($row_corr["correlativo"])] = true;
-
+			// Los correlativos de balanza y los que no estan asociados a un
+			// detalle no sirven para detectar los codigos editados a mano.
+			if ($id_detalle <= 0
+				|| intval($row_corr["is_creadoenbalanza"]) == 1
+				|| strlen($codlote_balanza) > 0) {
 				continue;
 			}
 
@@ -1397,260 +1420,387 @@ function f_GetReordenamientoCodigosPlanta($enlace, $id_planta, $id_programacion,
 				$correlativos[$id_detalle] = array(
 					'id' => intval($row_corr["Id"]),
 					'correlativo' => intval($row_corr["correlativo"]),
-					'codigo_planta' => $row_corr["codigo_planta"]
+					'codigo_planta' => $row_corr["codigo_planta"],
+					'is_editado' => (($tiene_is_editado) ? intval($row_corr["is_editado"]) : 0)
 				);
 			}
 		}
 	}
 
-	// 2. Codigos de planta emitidos en balanza: son definitivos, no se renumeran.
-	$codigos_balanza = array();
+	// 2. Lotes de la planta en el orden de la secuencia.
+	$secuencia = array();
 
-	$q_balanza = "SELECT codlote_balanza,
-								codigo_planta
-							FROM correlativo_plantas
-					   WHERE id_planta = " . $id_planta . "
-							AND codlote_balanza IS NOT NULL
-							AND codlote_balanza <> ''";
+	$q_lotes = "SELECT D.Id,
+						D.id_programacion,
+						D.cod_lote,
+						IFNULL(D.codigo_planta, '') AS codigo_planta
+					FROM despachos_segundotramo_programacion_detalle D
+					WHERE D.id_planta = " . $id_planta . "
+					ORDER BY D.id_programacion, D.cod_lote";
 
-	if ($res_balanza = mysqli_query($enlace, $q_balanza)) {
-		while ($row_balanza = mysqli_fetch_array($res_balanza)) {
-			$codigos_balanza[$row_balanza["codlote_balanza"]] = $row_balanza["codigo_planta"];
-		}
-	}
+	if ($res_lotes = mysqli_query($enlace, $q_lotes)) {
+		while ($row_lote = mysqli_fetch_assoc($res_lotes)) {
+			$id_detalle = intval($row_lote["Id"]);
+			$cod_lote = $row_lote["cod_lote"];
+			$id_programacion_lote = intval($row_lote["id_programacion"]);
 
-	// 3. Parseo de los codigos y marca de los lotes con codigo definitivo.
-	foreach ($lotes as $i => $lote) {
-		// Correlativo que el sistema registro para este lote (NULL si no existe).
-		$registro = isset($correlativos[$lote["id"]]) ? $correlativos[$lote["id"]] : null;
+			// Los lotes que se estan eliminando no entran en la secuencia.
+			if ($excluir_programacion > 0 && $id_programacion_lote == $excluir_programacion) {
+				continue;
+			}
 
-		if ($lote["is_nuevo"] == 1) {
-			// Lote nuevo: si ya tiene codigo emitido en balanza, se respeta tal cual.
-			if (isset($codigos_balanza[$lote["cod_lote"]])) {
-				$parsed_balanza = f_ParsearCodigoPlanta($codigos_balanza[$lote["cod_lote"]]);
+			if (strlen($excluir_cod_lote) > 0 && $cod_lote == $excluir_cod_lote) {
+				continue;
+			}
 
-				$lotes[$i]["codigo_planta"] = $codigos_balanza[$lote["cod_lote"]];
+			$codigo_planta = trim($row_lote["codigo_planta"]);
+			$parsed = f_ParsearCodigoPlanta($codigo_planta);
 
-				if (!is_null($parsed_balanza)) {
-					$lotes[$i]["prefijo"] = $parsed_balanza["prefijo"];
-					$lotes[$i]["correlativo"] = $parsed_balanza["correlativo"];
-					$lotes[$i]["sufijo"] = $parsed_balanza["sufijo"];
+			$es_balanza = (isset($balanza[$cod_lote])) ? 1 : 0;
+			$es_editado = 0;
+			$es_ancla = 0;
+			$es_anotacion = 0;
+			$es_sin_registro = 0;
+			$is_nuevo = 0;
+			$prefijo = $prefijo_planta;
+			$sufijo = '';
+			$correlativo = 0;
+			$id_correlativo = 0;
+
+			if (strlen($codigo_planta) == 0) {
+				// Lote sin codigo: el sistema le asigna uno.
+				$is_nuevo = 1;
+			} else {
+				$prefijo = (!is_null($parsed)) ? $parsed["prefijo"] : $prefijo_planta;
+				$sufijo = (!is_null($parsed)) ? $parsed["sufijo"] : '';
+				$correlativo = (!is_null($parsed)) ? $parsed["correlativo"] : 0;
+
+				$registro = isset($correlativos[$id_detalle]) ? $correlativos[$id_detalle] : null;
+
+				// El codigo fue editado a mano por el operador: es un ANCLA de la
+				// secuencia, no se renumera y los codigos que le siguen se
+				// reanudan a partir de el.
+				//
+				//   . Con la columna is_editado: la marca la pone el propio
+				//     sistema cuando el operador edita un codigo.
+				//   . Sin esa columna (base de datos sin actualizar): se deduce
+				//     comparando con el correlativo registrado. Solo se
+				//     considera edicion manual si el numero anterior quedo
+				//     LIBRE (no lo usa ningun otro lote): los codigos
+				//     desfasados que dejo el flujo antiguo (su numero
+				//     registrado sigue en uso en otro lote) NO son una
+				//     edicion manual, son un residuo que hay que renumerar.
+				if (!is_null($registro)) {
+					// Se guarda el Id del correlativo del lote: si despues se
+					// renumera, se actualiza ese registro (no se crea otro).
+					$id_correlativo = $registro["id"];
+
+					if ($tiene_is_editado) {
+						$es_editado = ($registro["is_editado"] == 1) ? 1 : 0;
+					} else {
+						$es_editado = 0;
+
+						if (strtoupper(trim($registro["codigo_planta"])) != strtoupper($codigo_planta)) {
+							$uso_registro = isset($uso_codigos[$registro["codigo_planta"]]) ? intval($uso_codigos[$registro["codigo_planta"]]) : 0;
+
+							if ($uso_registro == 0) {
+								$es_editado = 1;
+							}
+						}
+					}
+				} else {
+					// El lote no tiene correlativo registrado: el codigo no se
+					// puede renumerar (no se sabe que numero le corresponde).
+					$es_editado = 1;
+					$es_sin_registro = 1;
 				}
 
-				$lotes[$i]["es_fijo"] = 1;
+				if ($es_editado == 1) {
+					$es_ancla = 1;
+				}
+
+				// Codigo emitido en balanza: ya fue entregado fisicamente.
+				if ($es_balanza == 1) {
+					$es_ancla = 1;
+				}
+
+				// Codigo con anotacion (ej. "008-3043 PARTE 1"): no pertenece a la
+				// secuencia numerica.
+				if (is_null($parsed) || strlen($parsed["sufijo"]) > 0) {
+					$es_ancla = 1;
+					$es_anotacion = 1;
+				}
 			}
 
-			continue;
-		}
-
-		$parsed = f_ParsearCodigoPlanta($lote["codigo_planta"]);
-
-		if (is_null($parsed)) {
-			// Codigo no numerico: no se puede reordenar, se mantiene como ancla.
-			$lotes[$i]["es_fijo"] = 1;
-			continue;
-		}
-
-		$lotes[$i]["prefijo"] = $parsed["prefijo"];
-		$lotes[$i]["correlativo"] = $parsed["correlativo"];
-		$lotes[$i]["sufijo"] = $parsed["sufijo"];
-
-		if (!is_null($registro)) {
-			$lotes[$i]["id_correlativo"] = $registro["id"];
-			$lotes[$i]["correlativo_registro"] = $registro["correlativo"];
-		}
-
-		// Codigo con anotacion (ej. "008-3043 PARTE 1"): no pertenece a la
-		// secuencia numerica, se respeta tal cual.
-		if (strlen($parsed["sufijo"]) > 0) {
-			$lotes[$i]["es_fijo"] = 1;
-
-			continue;
-		}
-
-		// El codigo de este lote fue emitido en balanza: es definitivo.
-		if (isset($codigos_balanza[$lote["cod_lote"]])
-			&& $codigos_balanza[$lote["cod_lote"]] == $lote["codigo_planta"]) {
-			$lotes[$i]["es_fijo"] = 1;
-			continue;
-		}
-
-		// El codigo NO es el que genero el sistema (fue editado a mano o proviene
-		// de una version anterior): se respeta tal cual y no se renumera.
-		if (is_null($registro) || $registro["codigo_planta"] != $lote["codigo_planta"]) {
-			$lotes[$i]["es_fijo"] = 1;
-		}
-	}
-
-	// 4. Desplazamiento de cada entrada: cuantos lotes nuevos hay antes de ella.
-	//    Los lotes nuevos que ya traen un codigo emitido en balanza NO consumen
-	//    numeracion (el codigo ya fue entregado), por lo que no desplazan a los
-	//    lotes que los siguen.
-	//    En modo 'E' (se elimino un lote) los codigos posteriores retroceden una
-	//    posicion para cerrar el hueco dejado por el lote eliminado.
-	//    En modo 'D' (se elimino el despacho completo) los codigos posteriores
-	//    retroceden tantas posiciones como codigos se liberaron.
-	$nuevos = 0;
-
-	// Cantidad de codigos de planta que se liberan con la operacion. En modo 'D'
-	// (se elimina el despacho completo) hay que conocerla ANTES de eliminar los
-	// lotes, por eso puede venir calculada desde el llamador.
-	$cantidad_liberados = intval($cantidad_liberados);
-
-	if ($modo == 'D' && $cantidad_liberados <= 0) {
-		$q_liberados = "SELECT COUNT(*) AS TOTAL
-									FROM despachos_segundotramo_programacion_detalle
-								WHERE id_programacion = " . $id_programacion . "
-									AND codigo_planta IS NOT NULL
-									AND codigo_planta <> ''";
-
-		if ($res_liberados = mysqli_query($enlace, $q_liberados)) {
-			if ($row_liberados = mysqli_fetch_assoc($res_liberados)) {
-				$cantidad_liberados = intval($row_liberados["TOTAL"]);
-			}
-		}
-	} elseif ($modo == 'E' && $cantidad_liberados <= 0) {
-		$cantidad_liberados = 1;
-	}
-
-	foreach ($lotes as $i => $lote) {
-		if ($modo == 'E' || $modo == 'D') {
-			$lotes[$i]["desplazamiento"] = ($i >= $pivot) ? -$cantidad_liberados : 0;
-
-			continue;
-		}
-
-		$lotes[$i]["desplazamiento"] = $nuevos;
-
-		if ($lote["is_nuevo"] == 1 && $lote["es_fijo"] == 0) {
-			$nuevos++;
-		}
-	}
-
-	// 5. Correlativos ya utilizados que no se pueden repetir.
-	$usados = array();
-
-	// 5.1 Numeros reservados: los codigos emitidos en balanza ya fueron
-	//     entregados fisicamente, ese numero no se puede volver a asignar.
-	foreach ($reservados as $numero_reservado => $x) {
-		$usados[$numero_reservado] = true;
-	}
-
-	// 5.2 Correlativos de los lotes con codigo definitivo (emitido en balanza o
-	//     escrito a mano): conservan su numero y no se renumeran.
-	foreach ($lotes as $lote) {
-		if ($lote["es_fijo"] == 1) {
-			if ($lote["correlativo"] > 0) {
-				$usados[$lote["correlativo"]] = true;
+			// El lote recien editado por el operador queda como ancla.
+			if ($anclar_id_detalle > 0 && $anclar_id_detalle == $id_detalle) {
+				$es_ancla = 1;
+				$es_editado = 1;
 			}
 
-			if ($lote["correlativo_registro"] > 0) {
-				$usados[$lote["correlativo_registro"]] = true;
+			$secuencia[] = array(
+				'id' => $id_detalle,
+				'id_programacion' => $id_programacion_lote,
+				'cod_lote' => $cod_lote,
+				'codigo_planta' => $codigo_planta,
+				'is_nuevo' => $is_nuevo,
+				'prefijo' => $prefijo,
+				'sufijo' => $sufijo,
+				'correlativo' => $correlativo,
+				'correlativo_nuevo' => 0,
+				'es_ancla' => $es_ancla,
+				'es_balanza' => $es_balanza,
+				'es_editado' => $es_editado,
+				'es_anotacion' => $es_anotacion,
+				'es_sin_registro' => $es_sin_registro,
+				'id_correlativo' => $id_correlativo
+			);
+		}
+	}
+
+	// 3. Lotes pendientes de registro: se agregan como posiciones virtuales
+	//    para poder calcular el reordenamiento ANTES de grabarlos.
+	foreach ($lotes_pendientes as $cod_lote_pendiente) {
+		$cod_lote_pendiente = trim($cod_lote_pendiente);
+
+		if (strlen($cod_lote_pendiente) == 0) {
+			continue;
+		}
+
+		// Si el lote ya esta en la secuencia, no se agrega de nuevo.
+		$is_existente = false;
+
+		foreach ($secuencia as $item) {
+			if ($item["cod_lote"] == $cod_lote_pendiente && $item["id_programacion"] == $id_programacion) {
+				$is_existente = true;
+				break;
 			}
 		}
-	}
 
-	// 5.3 Ancla: el correlativo del ultimo lote anterior al primer lote nuevo.
-	//     Los lotes anteriores al lote nuevo conservan su codigo (no se tocan).
-	$anterior = 0;
-
-	for ($i = 0; $i < $pivot; $i++) {
-		if ($lotes[$i]["es_fijo"] == 0 && $lotes[$i]["correlativo"] > 0) {
-			$usados[$lotes[$i]["correlativo"]] = true;
-			$anterior = $lotes[$i]["correlativo"];
+		if ($is_existente) {
+			continue;
 		}
+
+		$item_nuevo = array(
+			'id' => 0,
+			'id_programacion' => $id_programacion,
+			'cod_lote' => $cod_lote_pendiente,
+			'codigo_planta' => '',
+			'is_nuevo' => 1,
+			'prefijo' => $prefijo_planta,
+			'sufijo' => '',
+			'correlativo' => 0,
+			'correlativo_nuevo' => 0,
+			'es_ancla' => 0,
+			'es_balanza' => 0,
+			'es_editado' => 0,
+			'id_correlativo' => 0
+		);
+
+		// Se ubica en la posicion que le corresponde por codigo de lote.
+		$indice = count($secuencia);
+
+		for ($i = 0; $i < count($secuencia); $i++) {
+			if ($secuencia[$i]["id_programacion"] == $id_programacion) {
+				if ($secuencia[$i]["cod_lote"] > $cod_lote_pendiente) {
+					$indice = $i;
+					break;
+				}
+
+				continue;
+			}
+
+			if ($secuencia[$i]["id_programacion"] > $id_programacion) {
+				$indice = $i;
+				break;
+			}
+		}
+
+		array_splice($secuencia, $indice, 0, array($item_nuevo));
 	}
 
-	// 5.4 Sin ancla (modo 'A': el lote nuevo es el primero de la secuencia): se usa
-	//     como base el correlativo del lote siguiente, de modo que el lote nuevo
-	//     ocupe ese lugar y el resto de la secuencia se desplace hacia adelante.
-	//     En los modos de eliminacion NO se aplica: alli el correlativo liberado
-	//     debe quedar libre para que los codigos siguientes retrocedan y ocupen
-	//     ese numero.
-	if ($anterior == 0 && $modo == 'A') {
-		for ($i = $pivot + 1; $i < count($lotes); $i++) {
-			if ($lotes[$i]["es_fijo"] == 0 && $lotes[$i]["correlativo"] > 0) {
-				$anterior = $lotes[$i]["correlativo"] - 1;
+	return $secuencia;
+}
+
+// Calcula el REORDENAMIENTO de los codigos de planta de una planta, sin
+// aplicarlo.
+//
+// $opciones:
+//   modo             -> 'A' (se agregan lotes a un despacho ya registrado),
+//                       'E' (se elimina un lote de un despacho),
+//                       'D' (se elimina un despacho completo) o
+//                       'U' (el operador edita a mano un codigo)
+//   id_programacion  -> despacho en foco
+//   cod_lote         -> lote que se elimina (modo 'E')
+//   lotes_pendientes -> lotes que se agregan y todavia NO estan registrados
+//   id_detalle       -> detalle cuyo codigo fue editado (modo 'U')
+//
+// Retorna:
+//   'is_requerido' => true cuando algun lote YA EXISTENTE cambia su codigo, es
+//                     decir, cuando la operacion exige reordenar la secuencia.
+//   'cambios'      => lista de cambios a aplicar sobre los lotes.
+function f_CalcularReordenamientoCodigosPlanta($enlace, $id_planta, $opciones)
+{
+	$id_planta = intval($id_planta);
+
+	$modo = isset($opciones['modo']) ? $opciones['modo'] : 'A';
+	$id_programacion = intval(isset($opciones['id_programacion']) ? $opciones['id_programacion'] : 0);
+	$cod_lote_eliminado = isset($opciones['cod_lote']) ? trim($opciones['cod_lote']) : '';
+	$lotes_pendientes = isset($opciones['lotes_pendientes']) ? $opciones['lotes_pendientes'] : array();
+	$id_detalle_editar = intval(isset($opciones['id_detalle']) ? $opciones['id_detalle'] : 0);
+
+	$secuencia = f_GetSecuenciaCodigosPlanta($enlace, $id_planta, array(
+		'id_programacion' => $id_programacion,
+		'lotes_pendientes' => $lotes_pendientes,
+		'excluir_cod_lote' => (($modo == 'E') ? $cod_lote_eliminado : ''),
+		'excluir_programacion' => (($modo == 'D') ? $id_programacion : 0),
+		'anclar_id_detalle' => (($modo == 'U') ? $id_detalle_editar : 0)
+	));
+
+	// 1. Pivot: posicion a partir de la cual se reconstruye la secuencia.
+	//    - Modo 'A': el primer lote sin codigo del despacho en foco.
+	//    - Modo 'E': la posicion que ocupaba el lote eliminado.
+	//    - Modo 'D': la posicion que ocupaba el despacho eliminado.
+	//    - Modo 'U': el lote editado.
+	$pivot = -1;
+
+	if ($modo == 'A') {
+		for ($i = 0; $i < count($secuencia); $i++) {
+			if ($secuencia[$i]["is_nuevo"] == 1 && $secuencia[$i]["id_programacion"] == $id_programacion) {
+				$pivot = $i;
+				break;
+			}
+		}
+	} elseif ($modo == 'E') {
+		for ($i = 0; $i < count($secuencia); $i++) {
+			if ($secuencia[$i]["id_programacion"] == $id_programacion) {
+				if ($secuencia[$i]["cod_lote"] > $cod_lote_eliminado) {
+					$pivot = $i;
+					break;
+				}
+
+				continue;
+			}
+
+			if ($secuencia[$i]["id_programacion"] > $id_programacion) {
+				$pivot = $i;
+				break;
+			}
+		}
+	} elseif ($modo == 'D') {
+		for ($i = 0; $i < count($secuencia); $i++) {
+			if ($secuencia[$i]["id_programacion"] > $id_programacion) {
+				$pivot = $i;
+				break;
+			}
+		}
+	} elseif ($modo == 'U') {
+		for ($i = 0; $i < count($secuencia); $i++) {
+			if ($secuencia[$i]["id"] == $id_detalle_editar) {
+				$pivot = $i;
 				break;
 			}
 		}
 	}
 
-	// 5.5 Sin ningun correlativo en la secuencia (modo 'A'): se continua al final
-	//     de la numeracion emitida en la planta.
-	if ($anterior == 0 && $modo == 'A') {
-		$anterior = f_GetUltimoCorrelativoPlanta($enlace, $id_planta);
+	// No hay nada que reordenar.
+	if ($pivot < 0) {
+		return array('is_requerido' => false, 'cambios' => array());
 	}
 
-	// 5.6 Asignacion de los correlativos desde el lote nuevo hacia adelante.
-	for ($i = $pivot; $i < count($lotes); $i++) {
-		if ($lotes[$i]["es_fijo"] == 1) {
-			// Codigo definitivo (emitido en balanza o escrito a mano): no se renumera
-			// y no forma parte de la secuencia numerica.
-			$lotes[$i]["correlativo_nuevo"] = $lotes[$i]["correlativo"];
-
-			continue;
+	// 1.1 EDICION A MANO (modo 'U'): el codigo que digito el operador define el
+	//      INICIO de la secuencia. Por lo tanto, los lotes que vienen despues
+	//      se renumeran consecutivamente a partir de el, aunque tambien
+	//      estaban marcados como editados a mano (esas marcas son decisiones
+	//      anteriores que el operador esta reemplazando).
+	//      Se respetan, en cambio, los codigos emitidos en balanza (ya fueron
+	//      entregados fisicamente) y los que llevan anotacion.
+	if ($modo == 'U') {
+		for ($i = $pivot + 1; $i < count($secuencia); $i++) {
+			if ($secuencia[$i]["es_ancla"] == 1
+				&& $secuencia[$i]["es_editado"] == 1
+				&& $secuencia[$i]["es_balanza"] == 0
+				&& $secuencia[$i]["es_anotacion"] == 0
+				&& $secuencia[$i]["es_sin_registro"] == 0) {
+				$secuencia[$i]["es_ancla"] = 0;
+				$secuencia[$i]["es_editado"] = 0;
+			}
 		}
-
-		if ($lotes[$i]["is_nuevo"] == 1) {
-			// Lote nuevo: continua la secuencia desde su antecesor.
-			$correlativo = $anterior + 1;
-		} else {
-			// Lote existente: se desplaza la cantidad de lotes nuevos que lo preceden.
-			$correlativo = max($lotes[$i]["correlativo"] + $lotes[$i]["desplazamiento"], $anterior + 1);
-		}
-
-		// No se repite un correlativo que ya este en uso.
-		while (isset($usados[$correlativo])) {
-			$correlativo++;
-		}
-
-		$usados[$correlativo] = true;
-
-		$lotes[$i]["correlativo_nuevo"] = $correlativo;
-		$anterior = $correlativo;
 	}
 
-	// 6. Preparacion de los cambios: solo se graban los que cambian.
-	//    is_requerido = true cuando un lote YA EXISTENTE cambia su codigo: eso
-	//    significa que la secuencia se esta reordenando y el usuario debe
-	//    confirmar la operacion.
-	$actualizaciones = array();
-	$is_requerido = false;
+	// 2. Numeros que no se pueden asignar:
+	//    . los reservados (emitidos en balanza);
+	//    . los de las anclas, que conservan su codigo.
+	$tomados = f_GetNumerosReservadosPlanta($enlace, $id_planta);
 
-	for ($i = $pivot; $i < count($lotes); $i++) {
-		$lote = $lotes[$i];
+	foreach ($secuencia as $item) {
+		if ($item["es_ancla"] == 1 && $item["correlativo"] > 0) {
+			$tomados[$item["correlativo"]] = true;
+		}
+	}
 
-		if ($lote["es_fijo"] == 1) {
-			// Lote nuevo con codigo de balanza: se le asigna su codigo definitivo.
-			if ($lote["is_nuevo"] == 1 && strlen($lote["codigo_planta"]) > 0) {
-				$actualizaciones[] = array(
-					'id' => $lote["id"],
-					'codigo_planta' => $lote["codigo_planta"],
-					'correlativo' => $lote["correlativo"],
-					'id_correlativo' => 0,
-					'is_fijo' => 1
-				);
+	// 3. Base: el numero con el que continua la secuencia. Los lotes que quedan
+	//    antes del pivot conservan su codigo, asi que su numero ya esta usado.
+	$numero_anterior = 0;
+
+	for ($i = 0; $i < $pivot; $i++) {
+		if ($secuencia[$i]["correlativo"] > 0) {
+			$tomados[$secuencia[$i]["correlativo"]] = true;
+
+			$numero_anterior = max($numero_anterior, $secuencia[$i]["correlativo"]);
+		}
+	}
+
+	// 4. Reconstruccion de la secuencia desde el pivot.
+	for ($i = $pivot; $i < count($secuencia); $i++) {
+		// Ancla: codigo definitivo (emitido en balanza, editado a mano o con
+		// anotacion). No se renumera y la secuencia continua a partir de el.
+		if ($secuencia[$i]["es_ancla"] == 1) {
+			if ($secuencia[$i]["correlativo"] > 0) {
+				$numero_anterior = max($numero_anterior, $secuencia[$i]["correlativo"]);
 			}
 
 			continue;
 		}
 
-		$codigo_nuevo = f_ConstruirCodigoPlanta($lote["prefijo"], $lote["correlativo_nuevo"], $lote["sufijo"]);
+		$numero = $numero_anterior + 1;
 
-		if ($lote["is_nuevo"] == 1 || $codigo_nuevo != $lote["codigo_planta"]) {
+		// No se repite un correlativo que ya este en uso.
+		while (isset($tomados[$numero])) {
+			$numero++;
+		}
+
+		$tomados[$numero] = true;
+		$numero_anterior = $numero;
+
+		$secuencia[$i]["correlativo_nuevo"] = $numero;
+	}
+
+	// 5. Preparacion de los cambios: solo se graban los que cambian.
+	$actualizaciones = array();
+	$is_requerido = false;
+
+	for ($i = $pivot; $i < count($secuencia); $i++) {
+		if ($secuencia[$i]["es_ancla"] == 1) {
+			// Las anclas conservan su codigo: no hay nada que grabar.
+			continue;
+		}
+
+		$codigo_nuevo = f_ConstruirCodigoPlanta($secuencia[$i]["prefijo"], $secuencia[$i]["correlativo_nuevo"], $secuencia[$i]["sufijo"]);
+
+		if ($secuencia[$i]["is_nuevo"] == 1 || $codigo_nuevo != $secuencia[$i]["codigo_planta"]) {
 			// Un lote que ya existia (no es nuevo) cambiando su codigo implica que
 			// la secuencia se esta reordenando.
-			if ($lote["is_nuevo"] == 0) {
+			if ($secuencia[$i]["is_nuevo"] == 0) {
 				$is_requerido = true;
 			}
 
 			$actualizaciones[] = array(
-				'id' => $lote["id"],
-				'id_correlativo' => $lote["id_correlativo"],
+				'id' => $secuencia[$i]["id"],
+				'id_correlativo' => $secuencia[$i]["id_correlativo"],
 				'codigo_planta' => $codigo_nuevo,
-				'correlativo' => $lote["correlativo_nuevo"],
-				'is_fijo' => 0
+				'correlativo' => $secuencia[$i]["correlativo_nuevo"],
+				'is_nuevo' => $secuencia[$i]["is_nuevo"]
 			);
 		}
 	}
@@ -1658,9 +1808,10 @@ function f_GetReordenamientoCodigosPlanta($enlace, $id_planta, $id_programacion,
 	return array('is_requerido' => $is_requerido, 'cambios' => $actualizaciones);
 }
 
+
 // Aplica los cambios de codigos de planta calculados por
-// f_GetReordenamientoCodigosPlanta. Todo se graba en una sola transaccion para
-// que la secuencia nunca quede a medias.
+// f_CalcularReordenamientoCodigosPlanta. Todo se graba en una sola transaccion
+// para que la secuencia nunca quede a medias.
 function f_AplicarReordenamientoCodigosPlanta($enlace, $id_planta, $actualizaciones, $fecha_registro, $usuario_registro)
 {
 	if (count($actualizaciones) == 0) {
@@ -1670,9 +1821,14 @@ function f_AplicarReordenamientoCodigosPlanta($enlace, $id_planta, $actualizacio
 	mysqli_query($enlace, "START TRANSACTION");
 
 	foreach ($actualizaciones as $actualizacion) {
+		// Los lotes pendientes (aun no registrados) no se graban.
+		if (intval($actualizacion["id"]) <= 0) {
+			continue;
+		}
+
 		$q_update = "UPDATE despachos_segundotramo_programacion_detalle
 							SET codigo_planta = '" . mysqli_real_escape_string($enlace, $actualizacion["codigo_planta"]) . "'
-					  WHERE Id = " . $actualizacion["id"];
+					  WHERE Id = " . intval($actualizacion["id"]);
 
 		if (!mysqli_query($enlace, $q_update)) {
 			mysqli_query($enlace, "ROLLBACK");
@@ -1680,16 +1836,12 @@ function f_AplicarReordenamientoCodigosPlanta($enlace, $id_planta, $actualizacio
 			return false;
 		}
 
-		// El codigo de balanza ya tiene su registro en correlativo_plantas.
-		if ($actualizacion["is_fijo"] == 1) {
-			continue;
-		}
-
 		// correlativo_plantas: se actualiza el registro del lote o se crea si no existia.
 		if ($actualizacion["id_correlativo"] > 0) {
 			$q_update_corr = "UPDATE correlativo_plantas
 									SET correlativo = " . intval($actualizacion["correlativo"]) . ",
-											codigo_planta = '" . mysqli_real_escape_string($enlace, $actualizacion["codigo_planta"]) . "'
+											codigo_planta = '" . mysqli_real_escape_string($enlace, $actualizacion["codigo_planta"]) . "'" . ((f_TieneColumnaIsEditado($enlace)) ? ",
+													is_editado = 0" : "") . "
 							  WHERE Id = " . $actualizacion["id_correlativo"];
 		} else {
 			$q_update_corr = "INSERT INTO correlativo_plantas (id_planta, id_programaciondetalle, correlativo,
@@ -1719,7 +1871,10 @@ function f_AplicarReordenamientoCodigosPlanta($enlace, $id_planta, $actualizacio
 // desplazan para mantener la secuencia continua y sin repeticiones.
 function f_ReordenarCodigosPlantaPorLote($enlace, $id_planta, $id_programacion, $correlativo_prefijo, $fecha_registro, $usuario_registro)
 {
-	$reordenamiento = f_GetReordenamientoCodigosPlanta($enlace, $id_planta, $id_programacion, $correlativo_prefijo, 'A');
+	$reordenamiento = f_CalcularReordenamientoCodigosPlanta($enlace, $id_planta, array(
+		'modo' => 'A',
+		'id_programacion' => $id_programacion
+	));
 
 	return f_AplicarReordenamientoCodigosPlanta($enlace, $id_planta, $reordenamiento['cambios'], $fecha_registro, $usuario_registro);
 }
@@ -1753,45 +1908,11 @@ function f_GetPrefijoCodigoPlanta($enlace, $id_planta)
 	return $correlativo_prefijo;
 }
 
-// Devuelve el ultimo correlativo de codigo de planta emitido en la planta.
-function f_GetUltimoCorrelativoPlanta($enlace, $id_planta)
-{
-	$ultimo = 0;
-
-	$q = "SELECT MAX(correlativo) AS ULTIMO
-			FROM correlativo_plantas
-			WHERE id_planta = " . intval($id_planta);
-
-	if ($res = mysqli_query($enlace, $q)) {
-		if ($row = mysqli_fetch_assoc($res)) {
-			$ultimo = intval($row["ULTIMO"]);
-		}
-	}
-
-	// Los codigos escritos a mano (sin correlativo registrado) tambien consumen
-	// numeracion: se toma el mayor para no repetir ninguno.
-	$q_manual = "SELECT IFNULL(D.codigo_planta, '') AS codigo_planta
-					FROM despachos_segundotramo_programacion_detalle D
-				   WHERE D.id_planta = " . intval($id_planta) . "
-					 AND D.codigo_planta IS NOT NULL
-					 AND D.codigo_planta <> ''";
-
-	if ($res = mysqli_query($enlace, $q_manual)) {
-		while ($row = mysqli_fetch_assoc($res)) {
-			$parsed = f_ParsearCodigoPlanta($row["codigo_planta"]);
-
-			if (!is_null($parsed) && $parsed["correlativo"] > $ultimo) {
-				$ultimo = $parsed["correlativo"];
-			}
-		}
-	}
-
-	return $ultimo;
-}
-
 // Función para Generar Códigos de Planta para Colibrí (Programación de Despachos - 2do tramo)
-// $is_addlote = false  -> Creación inicial de la programación: borra correlativos previos del
-//                         programa en correlativo_plantas y asigna código a TODOS los lotes.
+// $is_addlote = false  -> Creación inicial de la programación: asigna un código de planta a
+//                         TODOS los lotes del despacho, a partir del último código EN USO de
+//                         la planta (los correlativos que quedaron "en el aire" se ignoran,
+//                         de modo que la numeración no deja huecos).
 // $is_addlote = true   -> Agregar lote(s) a una programación existente: reordena los códigos
 //                         de planta para que el lote nuevo ocupe la posición que le
 //                         corresponde según su código de lote (ver
@@ -1801,133 +1922,100 @@ function f_GetUltimoCorrelativoPlanta($enlace, $id_planta)
 //                         del operador antes de aplicarlo.
 function f_SetCodigosPlanta($enlace, $id_planta, $id_programacion, $fecha_registro, $usuario_registro, $is_addlote = false)
 {
-	if ($id_planta == 3) {
-		// 1. Obtiene el Prefijo del Código de Planta
-		$correlativo_prefijo = '';
+	// Solo Colibri (id_planta = 3) genera códigos de planta.
+	if ($id_planta != 3) {
+		return true;
+	}
 
-		$q_prefijo = "SELECT correlativo_prefijo
-													FROM tbconfig_plantas
-												 WHERE Id = " . $id_planta;
+	// 1. Obtiene el Prefijo del Código de Planta
+	$correlativo_prefijo = f_GetPrefijoCodigoPlanta($enlace, $id_planta);
 
-		if ($res_prefijo = mysqli_query($enlace, $q_prefijo)) {
-			if (mysqli_num_rows($res_prefijo) > 0) {
-				while ($row_prefijo = mysqli_fetch_array($res_prefijo)) {
-					$correlativo_prefijo = $row_prefijo["correlativo_prefijo"];
-				}
+	// 1.1 Agregar lote(s) a una programación YA REGISTRADA.
+	//     Los códigos de planta de la planta forman una secuencia única cuyo
+	//     orden lo define el código del lote, por lo que el lote nuevo debe
+	//     ocupar la posición que le corresponde y desplazar los códigos que
+	//     quedan después (incluidos los de los despachos siguientes).
+	if ($is_addlote) {
+		return f_ReordenarCodigosPlantaPorLote($enlace, $id_planta, $id_programacion, $correlativo_prefijo, $fecha_registro, $usuario_registro);
+	}
+
+	// 2. Número con el que continua la numeración: el último código EN USO de la
+	//    planta. Los correlativos que quedaron "en el aire" (lotes o despachos
+	//    eliminados) NO se consideran, para que la numeración no deje huecos.
+	$new_codigo = intval(f_GetUltimoNumeroEnUsoPlanta($enlace, $id_planta));
+
+	// 2.1 Números que no se pueden reutilizar (emitidos en balanza).
+	$reservados = f_GetNumerosReservadosPlanta($enlace, $id_planta);
+
+	// 3. Elimina los Correlativos que puedan existir en la tabla de correlativos
+	//    de planta para los lotes de esta programacion (por si se vuelve a
+	//    grabar la misma programacion).
+	$q_delete = "DELETE FROM correlativo_plantas
+											WHERE id_programaciondetalle IN (SELECT Id
+																														FROM despachos_segundotramo_programacion_detalle
+																													WHERE id_programacion = " . intval($id_programacion) . ")";
+
+	mysqli_query($enlace, $q_delete);
+
+	// 4. Asigna los Códigos de Planta por cada Lote (ordenados por código de lote).
+	$q_detalle = "SELECT Id,
+								cod_lote
+							FROM despachos_segundotramo_programacion_detalle
+							WHERE id_programacion = " . intval($id_programacion) . "
+							ORDER BY cod_lote";
+
+	if ($res_detalle = mysqli_query($enlace, $q_detalle)) {
+		while ($row_detalle = mysqli_fetch_array($res_detalle)) {
+			$id_detalle = intval($row_detalle["Id"]);
+			$cod_lote = $row_detalle["cod_lote"];
+
+			// 4.1 Lote con código de Planta creado en balanza: se respeta tal cual.
+			$codigo_balanza = f_GetCodigoPlantaBalanza($enlace, $id_planta, $cod_lote);
+
+			if (!is_null($codigo_balanza)) {
+				$q_update = "UPDATE despachos_segundotramo_programacion_detalle
+								SET codigo_planta = '" . mysqli_real_escape_string($enlace, $codigo_balanza) . "'
+							  WHERE Id = " . $id_detalle;
+
+				mysqli_query($enlace, $q_update);
+
+				continue;
 			}
-		}
 
-		// 1.1 Agregar lote(s) a una programación YA REGISTRADA.
-		//     Los códigos de planta de la planta forman una secuencia única cuyo
-		//     orden lo define el código del lote, por lo que el lote nuevo debe
-		//     ocupar la posición que le corresponde y desplazar los códigos que
-		//     quedan después (incluidos los de los despachos siguientes).
-		if ($is_addlote) {
-			return f_ReordenarCodigosPlantaPorLote($enlace, $id_planta, $id_programacion, $correlativo_prefijo, $fecha_registro, $usuario_registro);
-		}
+			// 4.2 Lote sin código: se le asigna el siguiente correlativo libre.
+			$new_codigo++;
 
-		// 2. Obtiene el último correlativo desde donde continuar la numeración.
-		//    Creación inicial: se toma el MAYOR correlativo ya emitido en la planta
-		//    (no solo el de la última programación), para evitar que se reinicie la
-		//    numeración cuando la última programación quedó sin codigo_planta (NULL)
-		//    por la version bugueada, y para no repetir ningun numero reservado.
-		$ultimo_codigo = intval(f_GetUltimoCorrelativoPlanta($enlace, $id_planta));
-
-		// 3. Elimina los Correlativos que puedan existir en la tabla de correlativos de planta.
-		//    SOLO en creación inicial (en AddLote se retorna antes, en el punto 1.1,
-		//    porque la reordenación debe preservar los registros existentes).
-		if (!$is_addlote) {
-			$q_delete = "DELETE FROM correlativo_plantas
-													WHERE id_programaciondetalle IN (SELECT Id
-																														 FROM despachos_segundotramo_programacion_detalle
-																														WHERE id_programacion = " . $id_programacion . ")";
-
-			if ($res_delete = mysqli_query($enlace, $q_delete)) {
+			while (isset($reservados[$new_codigo])) {
+				$new_codigo++;
 			}
-		}
 
-		// 4. Asigna los Códigos de Planta por cada Lote.
-		//    (el modo "Agregar Lote" retorna antes, en el punto 1.1)
-		$new_codigo = intval($ultimo_codigo);
+			$correlativo_planta = $correlativo_prefijo . str_pad($new_codigo, 4, '0', STR_PAD_LEFT);
 
-		$where_detalle = "WHERE id_programacion = " . $id_programacion;
+			$q_update = "UPDATE despachos_segundotramo_programacion_detalle
+							SET codigo_planta = '" . mysqli_real_escape_string($enlace, $correlativo_planta) . "'
+						  WHERE Id = " . $id_detalle;
 
-		$q_detalle = "SELECT Id,
-															 cod_lote
-													FROM despachos_segundotramo_programacion_detalle
-												 " . $where_detalle . "
-											ORDER BY cod_lote";
+			if (!mysqli_query($enlace, $q_update)) {
+				return false;
+			}
 
-		if ($res_detalle = mysqli_query($enlace, $q_detalle)) {
-			if (mysqli_num_rows($res_detalle) > 0) {
-				while ($row_detalle = mysqli_fetch_array($res_detalle)) {
-					// Verificar si es un Lote con Código de Planta creado en balanza
-					$q_verify = "SELECT codigo_planta
-																 FROM correlativo_plantas
-																WHERE codlote_balanza = '" . $row_detalle["cod_lote"] . "'";
+			// Inserta el correlativo en la tabla de correlativos planta
+			$q_insert = "INSERT INTO correlativo_plantas (id_planta, id_programaciondetalle, correlativo,
+																			codigo_planta, fechahora_registro, usuario_registro)
+															VALUES (" . intval($id_planta) . ", " . $id_detalle . ", "
+														. intval($new_codigo) . ", '"
+														. mysqli_real_escape_string($enlace, $correlativo_planta) . "', '"
+														. $fecha_registro . "', '" . mysqli_real_escape_string($enlace, $usuario_registro) . "')";
 
-					if ($res_verify = mysqli_query($enlace, $q_verify)) {
-						if (mysqli_num_rows($res_verify) > 0) {
-							while ($row_verify = mysqli_fetch_array($res_verify)) {
-								$q_update = "UPDATE despachos_segundotramo_programacion_detalle SET";
-								$q_update .= "   codigo_planta = '" . $row_verify["codigo_planta"] . "'";
-								$q_update .= " WHERE Id = " . $row_detalle["Id"];
-
-								if ($res_update = mysqli_query($enlace, $q_update)) {
-								}
-							}
-						} else {
-							// Recorre los siguientes códigos hasta encontrar uno disponible
-							$c = 1;
-
-							while ($c < 999) {
-								$new_codigo++;
-
-								$q_verify = "SELECT codigo_planta
-																				 FROM correlativo_plantas
-																				WHERE correlativo = " . $new_codigo . "
-																					AND is_creadoenbalanza = 1";
-
-								if ($res_verify = mysqli_query($enlace, $q_verify)) {
-									if (mysqli_num_rows($res_verify) == 0) {
-										// Asigna el nuevo correlativo
-										$correlaivo_planta = $correlativo_prefijo . str_pad($new_codigo, 4, '0', STR_PAD_LEFT);
-
-										$q_update = "UPDATE despachos_segundotramo_programacion_detalle SET";
-										$q_update .= "   codigo_planta = '" . $correlaivo_planta . "'";
-										$q_update .= " WHERE Id = " . $row_detalle["Id"];
-
-										if ($res_update = mysqli_query($enlace, $q_update)) {
-										}
-
-										// Inserta el correlativo en la tabla de correlativos planta
-										$q_insert = "INSERT INTO correlativo_plantas (id_planta, id_programaciondetalle, correlativo,
-																																							codigo_planta, fechahora_registro, usuario_registro)
-																						 VALUES (";
-										$q_insert .= $id_planta . ', ';
-										$q_insert .= $row_detalle["Id"] . ', ';
-										$q_insert .= $new_codigo . ', ';
-										$q_insert .= "'" . $correlaivo_planta . "', ";
-										$q_insert .= "'" . $fecha_registro . "', ";
-										$q_insert .= "'" . $usuario_registro . "')";
-
-										if ($res_insert = mysqli_query($enlace, $q_insert)) {
-											$c = 999;
-										}
-									}
-								}
-
-								$c++;
-							}
-						}
-					}
-				}
+			if (!mysqli_query($enlace, $q_insert)) {
+				return false;
 			}
 		}
 	}
 
 	return true;
 }
+
 
 // Función para Generar Códigos de Comercialización para Colibrí (Programación de Despachos - 2do tramo)
 function f_SetCodigosComercializacion($enlace, $id_planta, $id_programacion, $fecha_registro, $usuario_registro, $is_addlote, $id_modalidadenvio_real)
@@ -28571,8 +28659,6 @@ case 'confirmar_ProgramacionLote_AddLote':
 		//     Si se requiere reordenar, se devuelve el control al front para que
 		//     el operador lo confirme (estado 21) SIN haber grabado nada.
 		if ($id_planta == 3) {
-			$prefijo_planta = f_GetPrefijoCodigoPlanta($enlace, $id_planta);
-
 			$lotes_pendientes = array();
 
 			foreach (explode('|', $arr_lotes) as $cod_lote_pendiente) {
@@ -28583,7 +28669,11 @@ case 'confirmar_ProgramacionLote_AddLote':
 				}
 			}
 
-			$reordenamiento_previo = f_GetReordenamientoCodigosPlanta($enlace, $id_planta, $id_programacion, $prefijo_planta, 'A', '', $lotes_pendientes);
+			$reordenamiento_previo = f_CalcularReordenamientoCodigosPlanta($enlace, $id_planta, array(
+				'modo' => 'A',
+				'id_programacion' => $id_programacion,
+				'lotes_pendientes' => $lotes_pendientes
+			));
 
 			if ($reordenamiento_previo['is_requerido'] && !$is_confirmado_reordenamiento) {
 				echo json_encode(array(
@@ -28789,9 +28879,10 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$is_reordenado = 0;
 
 		if ($id_planta == 3) {
-			$prefijo_planta = f_GetPrefijoCodigoPlanta($enlace, $id_planta);
-
-			$reordenamiento = f_GetReordenamientoCodigosPlanta($enlace, $id_planta, $id_programacion, $prefijo_planta, 'A');
+			$reordenamiento = f_CalcularReordenamientoCodigosPlanta($enlace, $id_planta, array(
+				'modo' => 'A',
+				'id_programacion' => $id_programacion
+			));
 
 			$is_codigos_ok = f_AplicarReordenamientoCodigosPlanta($enlace, $id_planta, $reordenamiento['cambios'], $g_fecha, $usuario_registro);
 
@@ -31075,9 +31166,10 @@ case 'confirmar_ProgramacionLote_AddLote':
 		}
 
 		if ($id_planta == 3 && $cantidad_liberados > 0) {
-			$prefijo_planta = f_GetPrefijoCodigoPlanta($enlace, $id_planta);
-
-			$reordenamiento_previo = f_GetReordenamientoCodigosPlanta($enlace, $id_planta, $id_programacion, $prefijo_planta, 'D', '', array(), $cantidad_liberados);
+			$reordenamiento_previo = f_CalcularReordenamientoCodigosPlanta($enlace, $id_planta, array(
+				'modo' => 'D',
+				'id_programacion' => $id_programacion
+			));
 
 			if ($reordenamiento_previo['is_requerido'] && !$is_confirmado_reordenamiento) {
 				echo json_encode(array(
@@ -31147,9 +31239,10 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$is_reordenado = 0;
 
 		if ($estado == 1 && $id_planta == 3 && $cantidad_liberados > 0) {
-			$prefijo_planta = f_GetPrefijoCodigoPlanta($enlace, $id_planta);
-
-			$reordenamiento = f_GetReordenamientoCodigosPlanta($enlace, $id_planta, $id_programacion, $prefijo_planta, 'D', '', array(), $cantidad_liberados);
+			$reordenamiento = f_CalcularReordenamientoCodigosPlanta($enlace, $id_planta, array(
+				'modo' => 'D',
+				'id_programacion' => $id_programacion
+			));
 
 			$is_codigos_ok = f_AplicarReordenamientoCodigosPlanta($enlace, $id_planta, $reordenamiento['cambios'], $g_fecha, $usuario_registro);
 
@@ -31204,9 +31297,11 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$is_requerido_reordenamiento = 0;
 
 		if ($id_planta == 3 && $id_programacion > 0 && strlen($cod_lote) > 0) {
-			$prefijo_planta = f_GetPrefijoCodigoPlanta($enlace, $id_planta);
-
-			$reordenamiento_previo = f_GetReordenamientoCodigosPlanta($enlace, $id_planta, $id_programacion, $prefijo_planta, 'E', $cod_lote);
+			$reordenamiento_previo = f_CalcularReordenamientoCodigosPlanta($enlace, $id_planta, array(
+				'modo' => 'E',
+				'id_programacion' => $id_programacion,
+				'cod_lote' => $cod_lote
+			));
 
 			$is_requerido_reordenamiento = ($reordenamiento_previo['is_requerido'] ? 1 : 0);
 
@@ -31231,9 +31326,11 @@ case 'confirmar_ProgramacionLote_AddLote':
 		if ($estado == 1 && $id_planta == 3 && $id_programacion > 0 && strlen($cod_lote) > 0) {
 			f_EliminarCorrelativoPlanta($enlace, $id_programacionlote);
 
-			$prefijo_planta = f_GetPrefijoCodigoPlanta($enlace, $id_planta);
-
-			$reordenamiento = f_GetReordenamientoCodigosPlanta($enlace, $id_planta, $id_programacion, $prefijo_planta, 'E', $cod_lote);
+			$reordenamiento = f_CalcularReordenamientoCodigosPlanta($enlace, $id_planta, array(
+				'modo' => 'E',
+				'id_programacion' => $id_programacion,
+				'cod_lote' => $cod_lote
+			));
 
 			$is_codigos_ok = f_AplicarReordenamientoCodigosPlanta($enlace, $id_planta, $reordenamiento['cambios'], $g_fecha, $usuario_registro);
 
@@ -53057,12 +53154,51 @@ case 'confirmar_ProgramacionLote_AddLote':
 
 	case 'grabar_ProgramacionDespachos_EditarCodigoPlanta':
 		$estado = 0;
+		$is_reordenado = 0;
+		$mensaje = '';
 
 		// Recupera variables
-		$id_registro = mysqli_real_escape_string($enlace, $_POST["id_registro"]);
-		$codigo_planta = mysqli_real_escape_string($enlace, $_POST["codigo_planta"]);
+		$id_registro = intval($_POST["id_registro"]);
+		$codigo_planta = strtoupper(trim(mysqli_real_escape_string($enlace, $_POST["codigo_planta"])));
+		$usuario_registro = $_SESSION["usu_usuario"];
+
+		if ($id_registro <= 0 || strlen($codigo_planta) == 0) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'El Código de Planta no puede estar vacío.'));
+
+			break;
+		}
+
+		// Datos del lote (planta y despacho) para el reordenamiento.
+		$id_planta = 0;
+		$id_programacion = 0;
+		$cod_lote = '';
+
+		$q_lote = "SELECT D.id_planta,
+								D.id_programacion,
+								D.cod_lote,
+								IFNULL(D.codigo_planta, '') AS codigo_planta
+							FROM despachos_segundotramo_programacion_detalle D
+							WHERE D.Id = " . $id_registro . "
+							LIMIT 1";
+
+		if ($res_lote = mysqli_query($enlace, $q_lote)) {
+			if ($row_lote = mysqli_fetch_assoc($res_lote)) {
+				$id_planta = intval($row_lote["id_planta"]);
+				$id_programacion = intval($row_lote["id_programacion"]);
+				$cod_lote = $row_lote["cod_lote"];
+			}
+		}
+
+		if ($id_planta <= 0) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'No se encontró el lote seleccionado.'));
+
+			break;
+		}
 
 		// Grabando datos
+		// El codigo puede estar repetido (asi lo permite el operador): no se
+		// valida contra los demas lotes, solo se graba y se reordena la
+		// secuencia a partir de el.
 		$q_save = "UPDATE despachos_segundotramo_programacion_detalle SET ";
 		$q_save .= "   codigo_planta = '" . $codigo_planta . "'";
 		$q_save .= " WHERE Id = " . $id_registro;
@@ -53071,7 +53207,76 @@ case 'confirmar_ProgramacionLote_AddLote':
 			$estado = 1;
 		}
 
-		echo json_encode(array('estado' => $estado));
+		// MARCA DE CODIGO EDITADO A MANO: el codigo que digita el operador es
+		// un ANCLA de la secuencia, no se renumera nunca mas y los codigos que
+		// le siguen se reanudan a partir de el.
+		//   . Si la base de datos tiene la columna is_editado, se actualiza el
+		//     correlativo del lote con el codigo nuevo y se marca como editado.
+		//   . Si todavia no tiene la columna (no se aplico cambios.sql), el
+		//     correlativo se deja como estaba: la deteccion por comparacion
+		//     sigue detectando la edicion (el codigo guardado difiere del
+		//     registrado y el numero anterior quedo libre).
+		if ($estado == 1 && f_TieneColumnaIsEditado($enlace)) {
+			$parsed_codigo = f_ParsearCodigoPlanta($codigo_planta);
+			$numero_codigo = (!is_null($parsed_codigo)) ? intval($parsed_codigo["correlativo"]) : 0;
+
+			$id_correlativo_lote = 0;
+
+			$q_corr_lote = "SELECT Id
+									FROM correlativo_plantas
+								   WHERE id_programaciondetalle = " . $id_registro . "
+								   LIMIT 1";
+
+			if ($res_corr_lote = mysqli_query($enlace, $q_corr_lote)) {
+				if ($row_corr_lote = mysqli_fetch_assoc($res_corr_lote)) {
+					$id_correlativo_lote = intval($row_corr_lote["Id"]);
+				}
+			}
+
+			if ($id_correlativo_lote > 0) {
+				$q_update_corr = "UPDATE correlativo_plantas
+										SET correlativo = " . $numero_codigo . ",
+												codigo_planta = '" . $codigo_planta . "',
+												is_editado = 1
+								  WHERE Id = " . $id_correlativo_lote;
+			} else {
+				$q_update_corr = "INSERT INTO correlativo_plantas (id_planta, id_programaciondetalle, correlativo,
+																			codigo_planta, is_creadoenbalanza, codlote_balanza, is_editado,
+																			fechahora_registro, usuario_registro)
+															VALUES (" . intval($id_planta) . ", " . $id_registro . ", " . $numero_codigo . ", '"
+														. $codigo_planta . "', 0, NULL, 1, '"
+														. $g_fecha . "', '" . mysqli_real_escape_string($enlace, $usuario_registro) . "')";
+			}
+
+			mysqli_query($enlace, $q_update_corr);
+		}
+
+		// REORDENAMIENTO: el codigo editado por el operador queda como ANCLA de
+		// la secuencia y los codigos que le siguen se renumeran a partir de el
+		// (los despachos posteriores tambien se desplazan).
+		if ($estado == 1 && $id_planta == 3) {
+			$reordenamiento = f_CalcularReordenamientoCodigosPlanta($enlace, $id_planta, array(
+				'modo' => 'U',
+				'id_programacion' => $id_programacion,
+				'id_detalle' => $id_registro
+			));
+
+			$is_codigos_ok = f_AplicarReordenamientoCodigosPlanta($enlace, $id_planta, $reordenamiento['cambios'], $g_fecha, $usuario_registro);
+
+			if ($is_codigos_ok && count($reordenamiento['cambios']) > 0) {
+				$is_reordenado = 1;
+			} elseif (!$is_codigos_ok) {
+				// El codigo editado quedo grabado, pero los codigos siguientes no
+				// se pudieron renumerar: se avisa para que se revisen.
+				$mensaje = 'El Código de Planta se grabó, pero no se pudieron reordenar los Códigos de Planta siguientes. Revise el despacho.';
+			}
+		}
+
+		echo json_encode(array(
+			'estado' => $estado,
+			'is_reordenado' => $is_reordenado,
+			'mensaje' => $mensaje
+		));
 
 		break;
 

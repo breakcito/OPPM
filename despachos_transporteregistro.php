@@ -2061,7 +2061,7 @@ if (!isset($_SESSION["Id"])) {
 
 	<!-- Funciones de Grabación -->
 	<script type="text/javascript">
-		function f_ConfirmarProgramacion() {
+		function f_ConfirmarProgramacion(_is_confirmado_duplicado, _is_confirmado_reordenamiento) {
 			// Recuperando datos hidden
 			var modo = $("#modo_grabarprogramacion").val();
 			var id_programacion = $("#id_programacion").val();
@@ -2085,6 +2085,11 @@ if (!isset($_SESSION["Id"])) {
 				l++;
 			});
 
+			if (arr_lotes === '') {
+				alert("Debe seleccionar al menos un Lote.");
+				return;
+			}
+
 			arr_lotes = arr_lotes.substring(0, arr_lotes.length - 1);
 
 			// Grabando Datos
@@ -2107,8 +2112,21 @@ if (!isset($_SESSION["Id"])) {
 					}, "json");
 			}
 			else {
-				$.post("apis/backend.php", { accion: "confirmar_ProgramacionLote_AddLote", id_planta: idplanta_Selected, id_programacion: id_programacion, arr_lotes: arr_lotes, is_loteaum: 0 },
+				$.post("apis/backend.php", { accion: "confirmar_ProgramacionLote_AddLote", id_planta: idplanta_Selected, id_programacion: id_programacion, arr_lotes: arr_lotes, is_loteaum: 0, is_confirmado_reordenamiento: (_is_confirmado_reordenamiento || 0) },
 					function (data) {
+						// Aviso de reordenamiento de los Codigos de Planta: el backend
+						// detecta que la secuencia de codigos debe reordenarse y espera
+						// la confirmacion del operador.
+						if (data.estado == 21) {
+							f_LoadingGrabarProgramacion(0);
+
+							f_ConfirmarReordenamientoCodigosPlanta(data.mensaje, function (_is_confirmado) {
+								f_ConfirmarProgramacion(_is_confirmado_duplicado, _is_confirmado);
+							});
+
+							return;
+						}
+
 						if (data.estado == 1) {
 							f_LoadItemPlanta(itemplanta_Selected, idplanta_Selected, 1, $("#item_programacion").val(), $("#id_programacion").val());
 
@@ -2129,9 +2147,24 @@ if (!isset($_SESSION["Id"])) {
 				return;
 			}
 
+			f_EliminarProgramacion_Enviar(_id_programacion, 0);
+		}
+
+		function f_EliminarProgramacion_Enviar(_id_programacion, _is_confirmado_reordenamiento) {
 			// Eliminando Datos
-			$.post("apis/backend.php", { accion: "eliminar_Programacion", id_programacion: _id_programacion },
+			$.post("apis/backend.php", { accion: "eliminar_Programacion", id_programacion: _id_programacion, is_confirmado_reordenamiento: (_is_confirmado_reordenamiento || 0) },
 				function (data) {
+					// Aviso de reordenamiento de los Codigos de Planta: el backend
+					// detecta que la secuencia de codigos debe reordenarse y espera
+					// la confirmacion del operador antes de eliminar el despacho.
+					if (data.estado == 21) {
+						f_ConfirmarReordenamientoCodigosPlanta(data.mensaje, function (_is_confirmado) {
+							f_EliminarProgramacion_Enviar(_id_programacion, _is_confirmado);
+						});
+
+						return;
+					}
+
 					if (data.estado == 1) {
 						f_LoadItemPlanta(itemplanta_Selected, idplanta_Selected);
 					}

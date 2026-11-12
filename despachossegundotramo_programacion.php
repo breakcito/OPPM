@@ -2123,6 +2123,11 @@ if (!isset($_SESSION["Id"])) {
 							<input id="editarCodigoPlanta_Codigo" type="text" class="form-control" style="text-align: center; font-size: 14px; width: 50%;">
 						</div>
 					</div>
+					<div class="row">
+						<label style="font-size: 12px; font-style: italic; color: #666666;">
+							El código editado queda como ancla de la numeración: los Códigos de Planta que le siguen se renumeran a partir de él.
+						</label>
+					</div>
 				</div>
 
 				<input id="editCodigoPlanta_idregistro" type="hidden">
@@ -5142,8 +5147,21 @@ if (!isset($_SESSION["Id"])) {
 						html += '<i class="bi bi-pencil-square" style="cursor: pointer; margin-left: 5px;" onclick="f_EditCodigoPlanta(' + id_registro + ", '" + cod_lote + "', '" + codigo_planta + "'" + ')"></i>';
 
 						$("#trdiv_CodigoPlanta_" + id_registro).html(html);
+
+						// El codigo editado queda como ancla de la secuencia: los
+						// codigos de planta que le siguen se renumeran a partir
+						// de el, por lo que hay que recargar la grilla.
+						if (data.is_reordenado == 1) {
+							f_LoadItemPlanta(itemplanta_Selected, idplanta_Selected, 1, itemprog_Selected, idprog_Selected);
+						}
+
+						if (typeof data.mensaje !== 'undefined' && data.mensaje.length > 0) {
+							alert(data.mensaje);
+						}
 					} else {
-						alert("Ocurrió un error al momento de grabar el Código.");
+						alert((typeof data.mensaje !== 'undefined' && data.mensaje.length > 0) ?
+								data.mensaje :
+								"Ocurrió un error al momento de grabar el Código.");
 					}
 
 					f_cerrarModal("modal_EditCodigoPlanta");
