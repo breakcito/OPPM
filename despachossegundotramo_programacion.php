@@ -330,7 +330,7 @@ if (!isset($_SESSION["Id"])) {
 													Código Despacho<br>Comercialización
 												</th>
 
-												<th id="th_codigoplanta" rowspan="2" style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle; min-width: 110px; display: none;">
+												<th id="th_codigoplanta" rowspan="2" style="text-align: center; border: solid; border-width: 1px; background-color: #37393c; border-color: #ffffff; color: #ffffff; vertical-align: middle; min-width: 110px;">
 													Código Planta
 												</th>
 
@@ -2397,12 +2397,12 @@ if (!isset($_SESSION["Id"])) {
 			// Seteando Th de Código de Planta y Comercialización en la Distribución, solo para Colibrí
 			$("#th_distribucion_codplanta").hide();
 			// $("#th_codigocomercializacion").hide();
-			$("#th_codigoplanta").hide();
+			// $("#th_codigoplanta").hide();
 			$(".th_codigoscmh").hide();
 
 			$("#th_distribucion_infolote").attr('colspan', 5);
 
-			if (_id_planta == 3 || _id_planta == 5) {
+			if (_id_planta == 3 || _id_planta == 5 || _id_planta == 19) {
 				$("#th_codigocomercializacion").show();
 			}
 

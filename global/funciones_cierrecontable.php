@@ -10,12 +10,11 @@
 // backend.php lo carga con require_once, por lo que el comportamiento de todos los cases se mantiene igual.
 // ----------------------------------------------------------------------------------------------------------
 
-function f_MigrarLotes_CierreContable($enlace, $id_tipoingreso, $arr_idregistros, $g_fecha, $usuario_registro)
+function f_MigrarLotes_CierreContable($enlace, $id_tipoingreso, $arr_idregistros, $g_fecha, $usuario_registro, bool $update_user = true)
 {
 	$l = 0;
 	$arr_idregistros = explode(', ', $arr_idregistros);
 	$idregistro_new = 0;
-
 	while ($l < count($arr_idregistros)) {
 		$skip_insert = false;
 		$id_existente = 0;
@@ -152,34 +151,39 @@ function f_MigrarLotes_CierreContable($enlace, $id_tipoingreso, $arr_idregistros
 
 			$res_select = mysqli_query($enlace, $q_select_datos);
 			if ($res_select && $row = mysqli_fetch_array($res_select)) {
+				$sql_usuario = ($update_user === true) 
+					? ", fechahora_usuario = '" . mysqli_real_escape_string($enlace, $usuario_registro) . "'" 
+					: "";
+
 				$q_update = "UPDATE consolidado_lotes_cierrecontable SET
 								cod_lote = " . ($row[1] !== null ? "'" . mysqli_real_escape_string($enlace, $row[1]) . "'" : 'NULL') . ",
-								lote_item = " . ($row[2] !== null ? $row[2] : 'NULL') . ",
-								fecha_ingresobalanza = " . ($row[4] !== null ? "'" . $row[4] . "'" : 'NULL') . ",
+								lote_item = " . ($row[2] !== null && $row[2] !== '' ? (int)$row[2] : 'NULL') . ",
+								fecha_ingresobalanza = " . ($row[4] !== null ? "'" . mysqli_real_escape_string($enlace, $row[4]) . "'" : 'NULL') . ",
 								placa1 = " . ($row[5] !== null ? "'" . mysqli_real_escape_string($enlace, $row[5]) . "'" : 'NULL') . ",
 								placa2 = " . ($row[6] !== null ? "'" . mysqli_real_escape_string($enlace, $row[6]) . "'" : 'NULL') . ",
 								numguia_remitente = " . ($row[7] !== null ? "'" . mysqli_real_escape_string($enlace, $row[7]) . "'" : 'NULL') . ",
 								numguia_transportista = " . ($row[8] !== null ? "'" . mysqli_real_escape_string($enlace, $row[8]) . "'" : 'NULL') . ",
 								transportista_ruc = " . ($row[9] !== null ? "'" . mysqli_real_escape_string($enlace, $row[9]) . "'" : 'NULL') . ",
 								transportista_razonsocial = " . ($row[10] !== null ? "'" . mysqli_real_escape_string($enlace, $row[10]) . "'" : 'NULL') . ",
-								id_tipovehiculo = " . ($row[11] !== null ? $row[11] : 'NULL') . ",
+								id_tipovehiculo = " . ($row[11] !== null && $row[11] !== '' ? (int)$row[11] : 'NULL') . ",
 								conductor_licencia = " . ($row[12] !== null ? "'" . mysqli_real_escape_string($enlace, $row[12]) . "'" : 'NULL') . ",
 								conductor_nombres = " . ($row[13] !== null ? "'" . mysqli_real_escape_string($enlace, $row[13]) . "'" : 'NULL') . ",
-								id_tipocarga = " . ($row[14] !== null ? $row[14] : 'NULL') . ",
-								num_bigbag = " . ($row[15] !== null ? $row[15] : 'NULL') . ",
+								id_tipocarga = " . ($row[14] !== null && $row[14] !== '' ? (int)$row[14] : 'NULL') . ",
+								num_bigbag = " . ($row[15] !== null && $row[15] !== '' ? (int)$row[15] : 'NULL') . ",
 								remitente_ruc = " . ($row[20] !== null ? "'" . mysqli_real_escape_string($enlace, $row[20]) . "'" : 'NULL') . ",
 								remitente_razonsocial = " . ($row[21] !== null ? "'" . mysqli_real_escape_string($enlace, $row[21]) . "'" : 'NULL') . ",
-								id_producto = " . ($row[22] !== null ? $row[22] : 'NULL') . ",
-								id_tipomineral = " . ($row[23] !== null ? $row[23] : 'NULL') . ",
+								id_producto = " . ($row[22] !== null && $row[22] !== '' ? (int)$row[22] : 'NULL') . ",
+								id_tipomineral = " . ($row[23] !== null && $row[23] !== '' ? (int)$row[23] : 'NULL') . ",
 								observacion = " . ($row[24] !== null ? "'" . mysqli_real_escape_string($enlace, $row[24]) . "'" : 'NULL') . ",
-								fecha_pesoinicial = " . ($row[25] !== null ? "'" . $row[25] . "'" : 'NULL') . ",
-								fecha_pesofinal = " . ($row[26] !== null ? "'" . $row[26] . "'" : 'NULL') . ",
-								peso_bruto = " . ($row[27] !== null ? $row[27] : 'NULL') . ",
-								peso_tara = " . ($row[28] !== null ? $row[28] : 'NULL') . ",
-								peso_neto = " . ($row[29] !== null ? $row[29] : 'NULL') . ",
-								fechahora_registro = '" . $g_fecha . "',
-								fechahora_usuario = '" . $usuario_registro . "'
-							 WHERE Id = " . $id_existente;
+								fecha_pesoinicial = " . ($row[25] !== null ? "'" . mysqli_real_escape_string($enlace, $row[25]) . "'" : 'NULL') . ",
+								fecha_pesofinal = " . ($row[26] !== null ? "'" . mysqli_real_escape_string($enlace, $row[26]) . "'" : 'NULL') . ",
+								peso_bruto = " . ($row[27] !== null && $row[27] !== '' ? (float)$row[27] : 'NULL') . ",
+								peso_tara = " . ($row[28] !== null && $row[28] !== '' ? (float)$row[28] : 'NULL') . ",
+								peso_neto = " . ($row[29] !== null && $row[29] !== '' ? (float)$row[29] : 'NULL') . ",
+								fechahora_registro = '" . mysqli_real_escape_string($enlace, $g_fecha) . "'
+								$sql_usuario
+							WHERE Id = " . (int)$id_existente;
+
 				mysqli_query($enlace, $q_update);
 			}
 			$skip_insert = true;

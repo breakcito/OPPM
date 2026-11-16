@@ -3342,6 +3342,7 @@ function f_ResyncTicketContable_ResumenBalanza($enlace, $id_registro, $item, $va
 {
 	$id_tipoingreso_sync = 0;
 	$id_registro_sync = 0;
+	$actualizar_usuario = false;
 
 	if ($tipo_condicion == 1) {
 		// 1. Resolver el id_CatalogoLotes
@@ -3442,6 +3443,7 @@ function f_ResyncTicketContable_ResumenBalanza($enlace, $id_registro, $item, $va
 				break;
 			case 15:
 				$vd_campo = 'despacho_observacion';
+				$actualizar_usuario = false;
 				break;
 			case 19:
 				// Peso Neto: no existe como campo en V (tampoco en catalogolotes), porque siempre es
@@ -3531,7 +3533,7 @@ function f_ResyncTicketContable_ResumenBalanza($enlace, $id_registro, $item, $va
 
 	// 6. Si ya fue migrado, re-sincronizar el Ticket Contable con los nuevos valores
 	if ($chk_migrado > 0) {
-		f_MigrarLotes_CierreContable($enlace, $id_tipoingreso_sync, $id_registro_sync, $g_fecha, $usuario_registro);
+		f_MigrarLotes_CierreContable($enlace, $id_tipoingreso_sync, $id_registro_sync, $g_fecha, $usuario_registro, $actualizar_usuario);
 	}
 }
 
@@ -31013,6 +31015,8 @@ case 'confirmar_ProgramacionLote_AddLote':
 					$html .= '    <input id="td_programacionloteaum_' . $d . '" type="hidden" value="' . $is_loteaum . '">';
 					$html .= '  </td>';
 
+
+
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; background-color: #ffffff; font-weight: bold;" ' . (($id_planta != 3) ? '' : '') . '>';
 					$html .= '    <div id="trdiv_CodigoDespachoComercializacion_' . $row_datos["ID_DETALLE"] . '">';
 					$html .= '      ' . $row_datos["codigo_despacho_comercializacion"];
@@ -31030,16 +31034,20 @@ case 'confirmar_ProgramacionLote_AddLote':
 					$html .= '    </div>';
 					$html .= '  </td>';
 
-					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; background-color: #ffffff; font-weight: bold;" ' . (($id_planta != 3) ? 'hidden' : '') . '>';
+
+
+					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; background-color: #ffffff; font-weight: bold;" ' . (($id_planta != 3 || $id_planta != 19) ? '' : '') . '>';
 					$html .= '		<div id="trdiv_CodigoPlanta_' . $row_datos["ID_DETALLE"] . '" class="col-md-12 col-sm-12 col-xs-12">';
 					$html .= '    	' . $row_datos["CODIGO_PLANTA"];
 
-					if ($id_planta == 3) {
-						$html .= '    	<i class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_EditCodigoPlanta(' . $row_datos["ID_DETALLE"] . ", '" . $row_datos["cod_lote"] . "', '" . $row_datos["CODIGO_PLANTA"] . "'" . ')"></i>';
-					}
+					// if ($id_planta == 3 || $id_planta == 19) {
+					$html .= '    	<i class="bi bi-pencil-square" style="cursor: pointer;" onclick="f_EditCodigoPlanta(' . $row_datos["ID_DETALLE"] . ", '" . $row_datos["cod_lote"] . "', '" . $row_datos["CODIGO_PLANTA"] . "'" . ')"></i>';
+					// }
 
 					$html .= '		</div>';
 					$html .= '  </td>';
+
+
 
 					// Total Distribuído
 					$total_distribuido = $row_datos["TOTAL_DISTRIBUIDO"];
