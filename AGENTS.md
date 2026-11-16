@@ -16,96 +16,16 @@ Archivo backend: \apis\backend.php
 Modulo de Programación de Despachos:
     C:\wamp64\www\oppmerp\despachos_transporteregistro.php
 
-Actualmente, al registrar una programacion de despacho, la generacion de codigos de "codigo_planta" no funciona bien, incluso si no se adapta a la realidad del usuario, lo puede editar pero esto no termina afectando correctamente para el siguiente calculo de codigos de "codigo_planta" por cada lote. 
+Permite modificar el numero de parte de los registros de la tabla de despachos_segundotramo_distribucion_lotes. Esta informacion es renderizada al consultar el case de "get_DespachosProgramacion_ListaDistribuciones" y la columna de la tabla donde se indica el numero de la parte es "num_parte" en la tabla mencionada y se renderiza en esta parte del case
+--------
 
-Ademas, cuando luego de haber registrado un despacho, se agrega un nuevo lote a este despacho y se calculan los codigos, el campo de "codigo_planta" de la tabla de despachos_segundotramo_programacion_detalle se asigna el ultimo codigo a partir del ultimo anterior de algun lote del despacho. Sin embargo, estos codigos deben reordenarse en base al codigo de los lotes. Por ejemplo, si un despacho tiene estos lotes con sus codigos de planta asi:
+					$html .= '  <td id="td_distribucionlote_parte_' . $d . '" class="td_lote_' . $row_datos["cod_lote"] . '" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-weight: bold; background-color: ' . $bg_color . ';">';
+					$html .= '  	' . ((strlen($row_datos["NUM_PARTE"]) == 0) ? '' : 'PARTE ' . $row_datos["NUM_PARTE"]);
+					$html .= '  </td>';
 
-DESPACHO A
-LOTE    |   CÓDIGO DE PLANTA
-----------------------------
-261611  |   008-3743
-261613  |   008-3744
-261615  |   008-3745
-261617  |   008-3746
-261627  |   008-3747
+-----
 
-DESPACHO B
-LOTE    |   CÓDIGO DE PLANTA
-----------------------------
-261629  |   008-3748
-261631  |   008-3749
-261633  |   008-3750
-261635  |   008-3751
-261637  |   008-3752
-
-Y decido agregar un lote (261619) mas al despacho A, entonces los codigos deben quedar asi:
-
-DESPACHO A
-LOTE    |   CÓDIGO DE PLANTA
-----------------------------
-261611  |   008-3743
-261613  |   008-3744
-261615  |   008-3745
-261617  |   008-3746
-261619  |   008-3747 -- NUEVO LOTE, SE ACTUALIZAN LOS CODIGOS HACIA DELANTE
-261627  |   008-3748 
-
-DESPACHO B
-LOTE    |   CÓDIGO DE PLANTA
-----------------------------
-261629  |   008-3749
-261631  |   008-3750
-261633  |   008-3751
-261635  |   008-3752
-261637  |   008-3753
-
-Si decido agregar otro despacho C quedaria asi
-
-DESPACHO C
-LOTE    |   CÓDIGO DE PLANTA
-----------------------------
-261639  |   008-3754
-261641  |   008-3755
-261643  |   008-3756
-
-Si edito el codigo del despacho B del lote 261633 de 008-3751 a 008-3755 entonces el despacho B y C quedarian asi:
-
-DESPACHO B
-LOTE    |   CÓDIGO DE PLANTA
-----------------------------
-261629  |   008-3749
-261631  |   008-3750
-261633  |   008-3755 -> aqui edité, a partir de aqui se modifica
-261635  |   008-3756
-261637  |   008-3757
-
-DESPACHO C
-LOTE    |   CÓDIGO DE PLANTA
-----------------------------
-261639  |   008-3758
-261641  |   008-3759
-261643  |   008-3760
-
-
-Si quito el lote 261631 del despacho B de 008-3750 a 008-3753 entonces el despacho B y C quedarian asi:
-
-DESPACHO B
-LOTE    |   CÓDIGO DE PLANTA
-----------------------------
-261629  |   008-3749
-261631  |   008-3753 -> Se actualiza y se aqui en adelante
-261633  |   008-3754 
-261635  |   008-3755
-261637  |   008-3756
-
-DESPACHO C
-LOTE    |   CÓDIGO DE PLANTA
-----------------------------
-261639  |   008-3757
-261641  |   008-3758
-261643  |   008-3759
-
-Considera ignorar los codigos de la tabla de correlativos sin usar, puesto que antes, cuando se eliminaba un lote de un despacho o se eliminaba un despacho, estos codigos quedaban en el aire lo que hacia que cuando se registre otro despacho o se agregue otro lote al despacho, quede un hueco al generar estos codigos debido a los anteriores eliminados
+Añade un boton de Lapiz para poder editar y cuando se de click muestra un modal para indicar el nuevo valor, al confirmar preguntale con un sweetalert si esta seguro de la actualizacion. 
 
 Cases relevantes a revisar:
     get_Programacion_CodigosSugeridos

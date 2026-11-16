@@ -31997,6 +31997,7 @@ case 'confirmar_ProgramacionLote_AddLote':
 
 													 DL.cod_lote,
 													 IFNULL(DL.num_parte, '') AS NUM_PARTE,
+													 IFNULL(DL.cambios_log, '') AS CAMBIOS_LOG,
 													 VD.lote_id_proveedorminero,
 													 PM.documento AS PROVEEDORMINERO_RUC,
 													 PM.razon_social AS PROVEEDORMINERO_RAZONSOCIAL,
@@ -32287,6 +32288,19 @@ case 'confirmar_ProgramacionLote_AddLote':
 
 					$html .= '  <td id="td_distribucionlote_parte_' . $d . '" class="td_lote_' . $row_datos["cod_lote"] . '" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-weight: bold; background-color: ' . $bg_color . ';">';
 					$html .= '  	' . ((strlen($row_datos["NUM_PARTE"]) == 0) ? '' : 'PARTE ' . $row_datos["NUM_PARTE"]);
+
+					// Botón para editar el N° de Parte (solo en los Lotes que NO son Complemento)
+					// El N° de Parte se puede editar aunque la Programación esté cerrada: es un dato
+					// operativo que se corrige despues del cierre.
+					if ($row_datos["is_complemento"] == 0) {
+						$html .= '		<i class="bi bi-pencil-square" style="cursor: pointer; margin-left: 5px; color: #337ab7; font-size: 13px;" onclick="f_EditarNumParte(' . $row_datos["ID_DISTRIBUCIONLOTE"] . ", '" . $row_datos["cod_lote"] . "', '" . ((strlen($row_datos["NUM_PARTE"]) == 0) ? '' : $row_datos["NUM_PARTE"]) . "');" . '"></i>';
+					}
+
+					// Botón del Historial de Modificaciones (solo si el Lote tiene cambios registrados)
+					if (strlen($row_datos["CAMBIOS_LOG"]) > 0) {
+						$html .= '		<i id="btn_logcambios_' . $row_datos["ID_DISTRIBUCIONLOTE"] . '" class="bi bi-clock-history text-dark bg-light rounded" style="padding: 2px; cursor: pointer; margin-left: 5px; -webkit-text-stroke: 0.5px currentColor; display: inline-flex; align-items: center; justify-content: center;" onclick="f_VerLogCambios(this);" title="Ver Historial de Modificaciones" data-logs="' . htmlspecialchars($row_datos["CAMBIOS_LOG"], ENT_QUOTES) . '"></i>';
+					}
+
 					$html .= '  </td>';
 
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; min-width: 100px;">';
@@ -32389,6 +32403,135 @@ case 'confirmar_ProgramacionLote_AddLote':
 		}
 
 		echo json_encode(array('estado' => $estado, 'html' => $html, 'id_distribucionunidad' => $id_distribucionunidad_x));
+
+		break;
+
+	case 'grabar_DistribucionLote_EditarNumParte':
+		$estado = 0;
+		$mensaje = '';
+
+		// Recuperando parámetros
+		$id_distribucionlote = intval((isset($_POST["id_distribucionlote"])) ? $_POST["id_distribucionlote"] : 0);
+		$num_parte = trim(mysqli_real_escape_string($enlace, (isset($_POST["num_parte"])) ? $_POST["num_parte"] : ''));
+		$motivo = trim(mysqli_real_escape_string($enlace, (isset($_POST["motivo"])) ? $_POST["motivo"] : ''));
+		$usuario_registro = $_SESSION["usu_usuario"];
+
+		if ($id_distribucionlote <= 0) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'El Lote seleccionado no es válido.'));
+
+			break;
+		}
+
+		// El N° de Parte debe ser un número entero mayor que cero
+		if (strlen($num_parte) == 0) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'Debe ingresar el N° de Parte.'));
+
+			break;
+		}
+
+		if (!preg_match('/^[0-9]+$/', $num_parte)) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'El N° de Parte debe ser un número entero.'));
+
+			break;
+		}
+
+		$num_parte_valor = intval($num_parte);
+
+		if ($num_parte_valor <= 0) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'El N° de Parte debe ser mayor que cero.'));
+
+			break;
+		}
+
+		// Obteniendo los datos del Lote
+		$cod_lote = '';
+		$num_parte_actual = '';
+		$is_complemento = 0;
+
+		$q_datos = "SELECT DL.cod_lote,
+								IFNULL(DL.num_parte, '') AS num_parte,
+								DL.is_complemento
+							FROM despachos_segundotramo_distribucion_lotes DL
+							WHERE DL.Id = " . $id_distribucionlote . "
+							LIMIT 1";
+
+		if ($res_datos = mysqli_query($enlace, $q_datos)) {
+			if ($row_datos = mysqli_fetch_assoc($res_datos)) {
+				$cod_lote = $row_datos["cod_lote"];
+				$num_parte_actual = $row_datos["num_parte"];
+				$is_complemento = intval($row_datos["is_complemento"]);
+			}
+		}
+
+		if (strlen($cod_lote) == 0) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'No se encontró el Lote seleccionado.'));
+
+			break;
+		}
+
+		// Los Complementos no manejan N° de Parte propio (heredan el de su Lote origen)
+		if ($is_complemento == 1) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'El N° de Parte no se puede editar en un Complemento.'));
+
+			break;
+		}
+
+		// Verificando que el N° de Parte no se repita dentro del mismo Lote
+		$q_verifica = "SELECT COUNT(Id) AS _COUNT
+							FROM despachos_segundotramo_distribucion_lotes
+							WHERE cod_lote = '" . $cod_lote . "'
+								AND is_complemento = 0
+								AND num_parte = " . $num_parte_valor . "
+								AND Id <> " . $id_distribucionlote;
+
+		if ($res_verifica = mysqli_query($enlace, $q_verifica)) {
+			if ($row_verifica = mysqli_fetch_assoc($res_verifica)) {
+				if (intval($row_verifica["_COUNT"]) > 0) {
+					echo json_encode(array('estado' => 0, 'mensaje' => 'El Lote ' . $cod_lote . ' ya tiene otro registro con el N° de Parte ' . $num_parte_valor . '.'));
+
+					break;
+				}
+			}
+		}
+
+		// Si el valor ingresado es el mismo que ya tiene el lote, no se ensucia el historial
+		if (!f_HayCambioReal($num_parte_actual, $num_parte_valor)) {
+			echo json_encode(array('estado' => 0, 'mensaje' => 'El N° de Parte ingresado es igual al que ya tiene el lote. No se realizó ningún cambio.'));
+
+			break;
+		}
+
+		// Grabando el nuevo N° de Parte
+		$q_save = "UPDATE despachos_segundotramo_distribucion_lotes SET";
+		$q_save .= "   num_parte = " . $num_parte_valor;
+		$q_save .= " WHERE Id = " . $id_distribucionlote;
+
+		$json_log = '';
+
+		if ($res_save = mysqli_query($enlace, $q_save)) {
+			$estado = 1;
+
+			// Guardando el cambio en el historial del lote (cambios_log)
+			$json_log = f_AgregarCambioLog(
+				$enlace,
+				'despachos_segundotramo_distribucion_lotes',
+				$id_distribucionlote,
+				'N° de Parte',
+				f_FormatearValorCambioLog($num_parte_actual),
+				f_FormatearValorCambioLog($num_parte_valor),
+				$usuario_registro,
+				((strlen($motivo) > 0) ? $motivo : 'Edición manual del N° de Parte')
+			);
+		}
+
+		echo json_encode(array(
+			'estado' => $estado,
+			'mensaje' => $mensaje,
+			'cod_lote' => $cod_lote,
+			'num_parte' => $num_parte_valor,
+			'num_parte_anterior' => $num_parte_actual,
+			'cambios_log' => $json_log
+		));
 
 		break;
 
@@ -44721,8 +44864,10 @@ case 'confirmar_ProgramacionLote_AddLote':
 		$d = 1;
 		$html = '';
 
-		$q_datos = "SELECT DISTINCT DL.cod_lote,
+		$q_datos = "SELECT DISTINCT DL.Id AS ID_DISTRIBUCIONLOTE,
+													 DL.cod_lote,
 													 DL.num_parte,
+													 IFNULL(DL.cambios_log, '') AS CAMBIOS_LOG,
 													 DL.guias_remitenteruc,
 													 DL.guias_remitenterazonsocial,
 													 PD.codigo_planta,
@@ -44778,8 +44923,17 @@ case 'confirmar_ProgramacionLote_AddLote':
 					$html .= '    ' . $row_datos["cod_lote"];
 					$html .= '  </td>';
 
-					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
+					$html .= '  <td id="td_lote_numparte_' . $row_datos["ID_DISTRIBUCIONLOTE"] . '" style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center;">';
 					$html .= '    ' . $row_datos["num_parte"];
+
+					// Botón para editar el N° de Parte
+					$html .= '		<i class="bi bi-pencil-square" style="cursor: pointer; margin-left: 5px; color: #337ab7; font-size: 13px;" onclick="f_EditarNumParte(' . $row_datos["ID_DISTRIBUCIONLOTE"] . ", '" . $row_datos["cod_lote"] . "', '" . ((strlen($row_datos["num_parte"]) == 0) ? '' : $row_datos["num_parte"]) . "');" . '"></i>';
+
+					// Botón del Historial de Modificaciones (solo si el Lote tiene cambios registrados)
+					if (strlen($row_datos["CAMBIOS_LOG"]) > 0) {
+						$html .= '		<i id="btn_logcambios_' . $row_datos["ID_DISTRIBUCIONLOTE"] . '" class="bi bi-clock-history text-dark bg-light rounded" style="padding: 2px; cursor: pointer; margin-left: 5px; -webkit-text-stroke: 0.5px currentColor; display: inline-flex; align-items: center; justify-content: center;" onclick="f_VerLogCambios(this);" title="Ver Historial de Modificaciones" data-logs="' . htmlspecialchars($row_datos["CAMBIOS_LOG"], ENT_QUOTES) . '"></i>';
+					}
+
 					$html .= '  </td>';
 
 					$html .= '  <td style="border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; text-align: center; font-weight: bold;">';

@@ -2258,6 +2258,101 @@ if (!isset($_SESSION["Id"])) {
 		</div>
 	</div>
 
+	<!-- Modal Editar N° de Parte del Lote -->
+	<div class="modal fade modal-dialog-scrollable" id="modal_EditNumParte" data-bs-backdrop="static"
+		data-bs-keyboard="false" tabindex="-1" aria-labelledby="modal_EditNumParteLabel" aria-hidden="true" style="top: 250px;" >
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h1 class="modal-title fs-6" id="modal_EditNumParteLabel">Editar N° de Parte</h1>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+					<div class="row" style="font-size: 14px;">
+						<div class="col-md-6 col-sm-6 col-xs-12" style="padding: 2px; position: relative; left: 10px;">
+							<label style="font-weight: bold;">Lote:</label>
+							<span id="modal_EditNumParteLabel_lote" style="margin-left: 5px; color: #337ab7; font-weight: bold;"></span>
+						</div>
+						<div class="col-md-6 col-sm-6 col-xs-12" style="padding: 2px;">
+							<label style="font-weight: bold;">N° de Parte actual:</label>
+							<span id="modal_EditNumParteLabel_actual" style="margin-left: 5px; color: #337ab7; font-weight: bold;"></span>
+						</div>
+					</div>
+
+					<hr style="border-color: #D9D9D9; margin-top: 8px; margin-bottom: 10px;" />
+
+					<div class="row">
+						<div class="col-md-12 col-sm-12 col-xs-12">
+							<label style="font-size: 14px; font-weight: bold; margin-bottom: 5px;">Nuevo N° de Parte:</label>
+							<input id="input_editNumParte" type="number" min="1" step="1" class="form-control"
+								style="text-align: center; font-size: 15px; font-weight: bold;" placeholder="Ej. 1">
+							
+						</div>
+					</div>
+
+					<div class="row" style="margin-top: 10px;">
+						<div class="col-md-12 col-sm-12 col-xs-12">
+							<label style="font-size: 14px; font-weight: bold; margin-bottom: 5px;">Motivo (opcional):</label>
+							<input id="input_editNumParte_motivo" type="text" class="form-control"
+								style="font-size: 14px;" placeholder="Motivo de la corrección">
+							
+						</div>
+					</div>
+				</div>
+
+				<input id="editNumParte_idregistro" type="hidden">
+
+				<div class="modal-footer" style="margin-top: -10px;">
+					<div id="wt_EditNumParte" style="font-size: 12px; text-align: center; display: none; padding-top: 5px;">
+						<img src="<?php echo $img_waiting ?>" style="width: 20px;">
+						<label style="font-style: italic;"> Grabando datos...</label>
+					</div>
+
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="font-size: 14px;">Cancelar</button>
+					<button type="button" class="btn btn-primary" style="font-size: 14px;"
+						onclick="f_ConfirmarEditarNumParte();">Confirmar</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Modal: Ver Historial de Modificaciones (Timeline) -->
+	<div class="modal fade" id="modal_verLogCambios" data-bs-backdrop="static" data-bs-keyboard="false"
+		tabindex="-1" aria-labelledby="modal_verLogCambiosLabel" aria-hidden="true">
+		<div class="modal-dialog modal-dialog-centered" style="max-width: 560px;">
+			<div class="modal-content"
+				style="border-radius: 10px; border: none; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18); overflow: hidden;">
+				<div class="modal-header py-2 px-3"
+					style="background: linear-gradient(135deg, #f8da62, #f5c400); color: #212529; border: none;">
+					<h6 class="modal-title mb-0" id="modal_verLogCambiosLabel"
+						style="font-weight: 700; font-size: 1.2rem;">
+						<i class="bi bi-clock-history"></i> Historial de Modificaciones
+						<span class="badge text-bg-dark ms-2" id="log_cambios_count"
+							style="font-size: 1rem; font-weight: 600; vertical-align: middle;"></span>
+					</h6>
+					<button type="button" class="btn-close btn-close-dark" data-bs-dismiss="modal" aria-label="Close"
+						style="font-size: 1rem;"></button>
+				</div>
+				<div class="modal-body p-2 px-3" style="background-color: #fcfcfc; max-height: 62vh; overflow-y: auto;">
+					<!-- Contenedor del Timeline -->
+					<div id="timeline_container" style="position: relative; padding-left: 22px;">
+						<!-- Línea vertical del timeline -->
+						<div
+							style="position: absolute; left: 6px; top: 10px; bottom: 10px; width: 2px; background-color: #e9ecef; border-radius: 2px;"></div>
+
+						<div id="timeline_items_list">
+							<!-- Los elementos del timeline se cargarán dinámicamente aquí -->
+						</div>
+					</div>
+				</div>
+				<div class="modal-footer py-2 px-3" style="background-color: #f8f9fa; border-top: 1px solid #dee2e6;">
+					<button type="button" class="btn btn-sm btn-light px-3" data-bs-dismiss="modal"
+						style="font-weight: 600; font-size: 1rem; border: 1px solid #dee2e6; border-radius: 6px;">Cerrar</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
 	<!-- Referenciando a JQuery -->
 	<script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
 	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-A3rJD856KowSb7dwlZdYEkO39Gagi7vIsF0jrRAoQmDKKtQBHUuLZ9AsSv4jD4Xa" crossorigin="anonymous"></script>
@@ -3712,6 +3807,186 @@ if (!isset($_SESSION["Id"])) {
 
 			// Abre modal
 			f_OpenModal('modal_EditCodigoPlanta');
+		}
+
+		// ================================================================
+		// EDICION DEL N° DE PARTE DEL LOTE
+		// ================================================================
+		function f_EditarNumParte(_id_distribucionlote, _cod_lote, _num_parte) {
+			// Seteando Objetos
+			$("#modal_EditNumParteLabel_lote").html(_cod_lote);
+			$("#modal_EditNumParteLabel_actual").html((_num_parte.length > 0) ? 'PARTE ' + _num_parte : '---');
+
+			$("#editNumParte_idregistro").val(_id_distribucionlote);
+			$("#input_editNumParte").val((_num_parte.length > 0) ? _num_parte : '');
+			$("#input_editNumParte_motivo").val('');
+
+			// Abre modal
+			f_OpenModal('modal_EditNumParte');
+		}
+
+		function f_ConfirmarEditarNumParte() {
+			// Obteniendo datos
+			var id_registro = $("#editNumParte_idregistro").val();
+			var cod_lote = $("#modal_EditNumParteLabel_lote").html().trim();
+			var num_parte = f_CleanInjection($("#input_editNumParte").val().trim());
+			var motivo = f_CleanInjection($("#input_editNumParte_motivo").val().trim());
+
+			// Validando datos
+			if (num_parte.length == 0) {
+				alert("Debe ingresar el N° de Parte.");
+
+				return;
+			}
+			if (!/^[0-9]+$/.test(num_parte)) {
+				alert("El N° de Parte debe ser un número entero.");
+
+				return;
+			}
+			if (parseInt(num_parte, 10) <= 0) {
+				alert("El N° de Parte debe ser mayor que cero.");
+
+				return;
+			}
+
+			// Confirmando la actualización
+			f_ConfirmarActualizacionNumParte(id_registro, cod_lote, num_parte, motivo);
+		}
+
+		function f_ConfirmarActualizacionNumParte(_id_distribucionlote, _cod_lote, _num_parte, _motivo) {
+			var _html = 'Lote: <b>' + _cod_lote + '</b><br>';
+			_html += 'Nuevo N° de Parte: <b>PARTE ' + _num_parte + '</b><br><br>';
+			_html += '<b>Esta acción no se puede deshacer.</b>';
+
+			if (typeof Swal === 'undefined') {
+				if (confirm(_html.replace(/<br>/g, "\n").replace(/<b>|<\/b>/g, ""))) {
+					f_GrabarNumParte(_id_distribucionlote, _num_parte, _motivo);
+				}
+
+				return;
+			}
+
+			Swal.fire({
+				title: '¿Desea actualizar el N° de Parte?',
+				html: _html,
+				icon: 'warning',
+				showCancelButton: true,
+				confirmButtonText: 'Sí, actualizar',
+				cancelButtonText: 'Cancelar',
+				reverseButtons: true,
+				focusConfirm: false,
+				focusCancel: true
+			}).then(function (result) {
+				if (!result.isConfirmed) {
+					return;
+				}
+
+				f_GrabarNumParte(_id_distribucionlote, _num_parte, _motivo);
+			});
+		}
+
+		function f_GrabarNumParte(_id_distribucionlote, _num_parte, _motivo) {
+			// Grabando datos
+			f_LoadingEditNumParte(1);
+
+			$.post("apis/backend.php", { accion: "grabar_DistribucionLote_EditarNumParte", id_distribucionlote: _id_distribucionlote, num_parte: _num_parte, motivo: _motivo },
+				function (data) {
+					if (data.estado == 1) {
+						f_cerrarModal('modal_EditNumParte');
+
+						// Recargando la grilla de Distribuciones
+						f_LoadItemProgramacion(itemprog_Selected, idprog_Selected);
+
+						if (typeof Swal !== 'undefined') {
+							Swal.fire({
+								title: 'El N° de Parte fue actualizado.',
+								icon: 'success',
+								showConfirmButton: false,
+								timer: 1500
+							});
+						}
+					}
+					else {
+						alert((typeof data.mensaje !== 'undefined' && data.mensaje.length > 0) ?
+								data.mensaje :
+								"Ocurrió un error al momento de actualizar el N° de Parte.");
+					}
+
+					f_LoadingEditNumParte(0);
+
+				}, "json");
+		}
+
+		function f_LoadingEditNumParte(_is_show) {
+			if (_is_show == 1) {
+				$("#wt_EditNumParte").show();
+			} else {
+				$("#wt_EditNumParte").hide();
+			}
+		}
+
+		// ================================================================
+		// HISTORIAL DE MODIFICACIONES DEL LOTE (cambios_log)
+		// ================================================================
+		function f_EscapeHtml(_texto) {
+			if (_texto === null || typeof _texto === 'undefined') {
+				return '';
+			}
+
+			return String(_texto).replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;')
+				.replace(/"/g, '&quot;')
+				.replace(/'/g, '&#39;');
+		}
+
+		function f_VerLogCambios(elem) {
+			var rawLogs = $(elem).attr('data-logs');
+			if (!rawLogs) return;
+
+			try {
+				var logs = JSON.parse(rawLogs);
+				if (!Array.isArray(logs) || logs.length === 0) return;
+
+				var html = '';
+				for (var i = logs.length - 1; i >= 0; i--) {
+					var log = logs[i];
+
+					// Los valores del cambios_log son texto libre tipeado por el usuario (p.ej. el motivo
+					// de la corrección del N° de Parte), por eso se escapan antes de inyectarlos como HTML.
+					var valAnterior = f_EscapeHtml(log.valor_anterior) || '(Vacío)';
+					var valResultante = f_EscapeHtml(log.valor_resultante) || '(Vacío)';
+					var usuario = f_EscapeHtml(log.usuario) || 'Desconocido';
+					var motivo = f_EscapeHtml(log.motivo) || 'No especificado';
+					var descripcion = f_EscapeHtml(log.descripcion) || 'Modificación';
+
+					html += '<div style="position: relative;' + ((i === 0) ? '' : ' margin-bottom: 10px;') + '">';
+					html += '  <span style="position: absolute; left: -20px; top: 11px; width: 9px; height: 9px; border-radius: 50%; background-color: #ffc107; border: 2px solid #fff; box-shadow: 0 0 0 2px #ffc107;"></span>';
+					html += '  <div style="background-color: #fff; padding: 7px 10px; border-radius: 6px; border: 1px solid #eceff1; border-left: 3px solid #ffc107;">';
+					html += '    <div class="d-flex justify-content-between align-items-center gap-2">';
+					html += '      <span style="font-weight: 600; color: #495057; font-size: 16px; line-height: 1.2;">' + descripcion + '</span>';
+					html += '      <span class="badge bg-light text-dark text-truncate" style="font-size: 11px; font-weight: 600; border: 1px solid #dee2e6; max-width: 140px;" title="' + usuario + '"><i class="bi bi-person-fill text-muted"></i> ' + usuario + '</span>';
+					html += '    </div>';
+					html += '    <div class="d-flex align-items-center gap-1 mt-1" style="font-size: 16px; background-color: #f8f9fa; border-radius: 4px; padding: 3px 6px;">';
+					html += '      <span style="color: #868e96; text-decoration: line-through; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 38%;" title="' + valAnterior + '">' + valAnterior + '</span>';
+					html += '      <i class="bi bi-arrow-right" style="font-size: 16px; color: #adb5bd; flex: 0 0 auto;"></i>';
+					html += '      <span style="color: #198754; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 42%;" title="' + valResultante + '">' + valResultante + '</span>';
+					html += '    </div>';
+					html += '    <div class="mt-1" style="font-size: 16px; color: #6c757d; line-height: 1.3;">';
+					html += '      <i class="bi bi-chat-left-text-fill text-muted" style="font-size: 16px;"></i> <span style="font-style: italic; white-space: pre-wrap; word-break: break-word;">' + motivo + '</span>';
+					html += '    </div>';
+					html += '  </div>';
+					html += '</div>';
+				}
+
+				$("#log_cambios_count").text(logs.length + (logs.length == 1 ? ' cambio' : ' cambios'));
+				$("#timeline_items_list").html(html);
+				f_OpenModal('modal_verLogCambios');
+
+			} catch (e) {
+				console.error(e);
+				alert("Ocurrió un error al cargar el historial de cambios.");
+			}
 		}
 	</script>
 
