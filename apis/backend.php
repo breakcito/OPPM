@@ -4133,6 +4133,64 @@ function generateRandomString($length = 15)
 	return substr(sha1(rand()), 0, $length);
 }
 
+/**
+ * Convierte un valor de la base de datos en un literal de texto JavaScript seguro.
+ *
+ * Se usa cuando el dato debe embeberse dentro de un atributo HTML (por ejemplo dentro de un
+ * onclick). Los textos que vienen de la BD pueden traer comilla simple, barra invertida o
+ * saltos de linea (por ejemplo una observacion capturada en un <textarea>). Si se concatenan
+ * tal cual, el literal de JavaScript queda sin cerrar y el navegador lanza
+ * "Uncaught SyntaxError: Invalid or unexpected token", dejando el boton sin funcion.
+ *
+ * @param mixed $valor Valor a convertir.
+ * @return string Literal de texto JavaScript entre comillas simples.
+ */
+function f_JsTextoLiteral($valor)
+{
+	$texto = ($valor === null) ? '' : (string)$valor;
+
+	// Se escapan primero las barras invertidas para no duplicar las que agregan los reemplazos siguientes.
+	$texto = str_replace(
+		array("\\", "'", "\r\n", "\r", "\n", "\t"),
+		array("\\\\", "\\'", "\\n", "\\r", "\\n", "\\t"),
+		$texto
+	);
+
+	// Caracteres de control restantes que JavaScript no admite dentro de un literal de texto.
+	$texto = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', '', $texto);
+
+	return "'" . $texto . "'";
+}
+
+/**
+ * Convierte un valor de la base de datos en un literal numerico JavaScript seguro.
+ * Si el valor no es numerico se devuelve 0 para no generar una llamada JavaScript invalida.
+ *
+ * @param mixed $valor Valor a convertir.
+ * @return string Literal numerico JavaScript.
+ */
+function f_JsNumero($valor)
+{
+	if ($valor === null || $valor === '' || !is_numeric($valor)) {
+		return '0';
+	}
+
+	return (string)$valor;
+}
+
+/**
+ * Arma el valor de un atributo HTML que contiene codigo JavaScript.
+ * El codigo se escapa con htmlspecialchars para que las comillas del propio JavaScript
+ * (o cualquier caracter especial) no corten el atributo ni el HTML.
+ *
+ * @param string $codigo_js Codigo JavaScript a embeber.
+ * @return string Valor del atributo listo para concatenarse en el HTML.
+ */
+function f_AtributoJs($codigo_js)
+{
+	return htmlspecialchars($codigo_js, ENT_QUOTES, 'UTF-8');
+}
+
 saveLog(['http' => ['post' => $_POST, 'session' => $_SESSION]], 'http_requests');
 switch ($_POST["accion"]) {
 	case 'Log_In':
@@ -21598,7 +21656,18 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
 										if (strlen($row_lotes["tFechaInicialBalanza"]) > 0) {
 											$html .= '					' . number_format($row_lotes["nPeso_InicialBalanza"], 0, '.', ',');
 										} else {
-											$html .= '					<button class="btn btn-warning" type="button" onclick="f_GestionLotes(' . $row_ingreso["id_controlIngresoVehiculo"] . ', ' . $row_lotes["id_CatalogoLotes"] . ", '" . $row_lotes["ccod_Lote"] . "', 1 , 0, ''" . ');" style="width: 100%; font-size: 14px; height: 25px;">';
+											// MAX: Se usan literales seguros (f_JsTextoLiteral / f_JsNumero) para que el
+											// codigo del lote no pueda romper el JavaScript del atributo onclick.
+											$args_gestion_lotes = array(
+												f_JsNumero($row_ingreso["id_controlIngresoVehiculo"]),
+												f_JsNumero($row_lotes["id_CatalogoLotes"]),
+												f_JsTextoLiteral($row_lotes["ccod_Lote"]),
+												'1',
+												'0',
+												f_JsTextoLiteral('')
+											);
+
+											$html .= '					<button class="btn btn-warning" type="button" onclick="' . f_AtributoJs('f_GestionLotes(' . implode(', ', $args_gestion_lotes) . ');') . '" style="width: 100%; font-size: 14px; height: 25px;">';
 											$html .= '						<label style="margin-top: -5px;">Pesar</label>';
 											$html .= '					</button>';
 										}
@@ -22082,7 +22151,12 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
 		$encargado = mysqli_real_escape_string($enlace, $_POST["encargado"]);
 		$producto = mysqli_real_escape_string($enlace, $_POST["producto"]);
 		$tipomaterial = mysqli_real_escape_string($enlace, $_POST["tipomaterial"]);
-		$observacion = mysqli_real_escape_string($enlace, $_POST["observacion"]);
+
+		// MAX: Se recorta el texto ANTES de escapar porque el <textarea> de la observacion puede
+		// traer un salto de linea final (el usuario presiona Enter). Ese salto terminaba guardado
+		// en la base de datos y despues rompia el literal JavaScript del boton "Peso Final"
+		// (ver case get_ListaLotesPesoFinal_Cards).
+		$observacion = mysqli_real_escape_string($enlace, trim(isset($_POST["observacion"]) ? $_POST["observacion"] : ''));
 
 		$serie_guia_remitente = isset($_POST["serie_guia_remitente"]) ? mysqli_real_escape_string($enlace, $_POST["serie_guia_remitente"]) : '';
 		$numero_guia_remitente = isset($_POST["numero_guia_remitente"]) ? mysqli_real_escape_string($enlace, $_POST["numero_guia_remitente"]) : '';
@@ -22301,7 +22375,34 @@ CONCAT(E.nombres, ' ', E.apellido_paterno) AS NOMBRES,
 					$html .= '				<td style="text-align: center; border: solid; border-width: 1px; border-color: #D9D9D9; vertical-align: middle; font-weight: bold;">';
 
 					if (strlen($row_ingreso["dFechaFinalBalanza"]) == 0) {
-						$html .= '					<button class="btn btn-primary" type="button" onclick="f_GestionLotes(' . $row_ingreso["id_controlIngresoVehiculo"] . ', ' . $row_ingreso["id_CatalogoLotes"] . ", '" . $row_ingreso["placa"] . "', 0, " . $row_ingreso["nPeso_InicialBalanza"] . ", '" . $row_ingreso["pesoinicial_observacion"] . "', '" . $row_ingreso["ccod_Lote"] . "', '" . $row_ingreso["nNro_ticketsBalanza"] . "', " . $row_ingreso["balanza_id_tipocarga"] . ', ' . $row_ingreso["balanza_id_zonaorigen"] . ', ' . $row_ingreso["balanza_id_proveedorminero"] . ', ' . $row_ingreso["balanza_id_encargadomuestra"] . ', ' . $row_ingreso["balanza_id_producto"] . ', ' . $row_ingreso["balanza_id_tipomineral"] . ", '" . str_replace("\n", '', $row_ingreso["balanza_observacion"]) . "', '" . str_replace("'", "\'", isset($row_ingreso["serie_guia_remitente"]) ? $row_ingreso["serie_guia_remitente"] : '') . "', '" . str_replace("'", "\'", isset($row_ingreso["numero_guia_remitente"]) ? $row_ingreso["numero_guia_remitente"] : '') . "', '" . str_replace("'", "\'", isset($row_ingreso["serie_guia_transportista"]) ? $row_ingreso["serie_guia_transportista"] : '') . "', '" . str_replace("'", "\'", isset($row_ingreso["numero_guia_transportista"]) ? $row_ingreso["numero_guia_transportista"] : '') . "'" . ');" style="color: #ffffff; width: 100%; font-size: 14px; height: 25px;">';
+						// MAX: La llamada se arma con literales seguros (f_JsTextoLiteral / f_JsNumero) y el
+						// atributo se escapa con f_AtributoJs. Antes los datos se concatenaban directo, por lo que
+						// una observacion con salto de linea (capturada en un <textarea>) dejaba el literal de
+						// JavaScript sin cerrar y el boton "Peso Final" lanzaba
+						// "Uncaught SyntaxError: Invalid or unexpected token" al insertarse en el DOM.
+						$args_gestion_lotes = array(
+							f_JsNumero($row_ingreso["id_controlIngresoVehiculo"]),
+							f_JsNumero($row_ingreso["id_CatalogoLotes"]),
+							f_JsTextoLiteral($row_ingreso["placa"]),
+							'0',
+							f_JsNumero($row_ingreso["nPeso_InicialBalanza"]),
+							f_JsTextoLiteral($row_ingreso["pesoinicial_observacion"]),
+							f_JsTextoLiteral($row_ingreso["ccod_Lote"]),
+							f_JsTextoLiteral($row_ingreso["nNro_ticketsBalanza"]),
+							f_JsNumero($row_ingreso["balanza_id_tipocarga"]),
+							f_JsNumero($row_ingreso["balanza_id_zonaorigen"]),
+							f_JsNumero($row_ingreso["balanza_id_proveedorminero"]),
+							f_JsNumero($row_ingreso["balanza_id_encargadomuestra"]),
+							f_JsNumero($row_ingreso["balanza_id_producto"]),
+							f_JsNumero($row_ingreso["balanza_id_tipomineral"]),
+							f_JsTextoLiteral($row_ingreso["balanza_observacion"]),
+							f_JsTextoLiteral(isset($row_ingreso["serie_guia_remitente"]) ? $row_ingreso["serie_guia_remitente"] : ''),
+							f_JsTextoLiteral(isset($row_ingreso["numero_guia_remitente"]) ? $row_ingreso["numero_guia_remitente"] : ''),
+							f_JsTextoLiteral(isset($row_ingreso["serie_guia_transportista"]) ? $row_ingreso["serie_guia_transportista"] : ''),
+							f_JsTextoLiteral(isset($row_ingreso["numero_guia_transportista"]) ? $row_ingreso["numero_guia_transportista"] : '')
+						);
+
+						$html .= '					<button class="btn btn-primary" type="button" onclick="' . f_AtributoJs('f_GestionLotes(' . implode(', ', $args_gestion_lotes) . ');') . '" style="color: #ffffff; width: 100%; font-size: 14px; height: 25px;">';
 						$html .= '						<label style="margin-top: -5px;">Peso Final</label>';
 						$html .= '					</button>';
 					} else {

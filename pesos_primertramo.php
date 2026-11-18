@@ -3018,7 +3018,10 @@
           var _encargado = $("#lote_encargado").val();
           var _producto = $("#lote_producto").val();
           var _tipomaterial = $("#lote_tipomaterial").val();
-          var _observacion = $("#lote_observacion").val();
+          // MAX: Se recorta la observacion porque el <textarea> puede devolver un salto de linea
+          // final (cuando el usuario presiona Enter). Ese salto se guardaba en la base de datos y
+          // despues rompia el boton "Peso Final" con "Invalid or unexpected token".
+          var _observacion = ($("#lote_observacion").val() || '').trim();
 
           var _serie_guia_remitente = '';
           var _numero_guia_remitente = '';
