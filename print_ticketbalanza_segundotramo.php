@@ -328,7 +328,7 @@ SELECT
     CL.num_ticketbalanza,
     IFNULL(DATE(DL.peso_bruto_fechahoraregistro), DL.guias_fecha) AS FECHA_INGRESOBALANZA,
 
-    DL.guias_placa1 AS PLACA1,
+    COALESCE(trn.cplaca, DL.guias_placa1) AS PLACA1,
     COALESCE(I.placa2, DL.guias_placa2) AS PLACA2,
     PD.codigo_planta,
     DL.guiaremitente_serie,
@@ -436,6 +436,7 @@ LEFT JOIN tb_usuario usu ON
     usu.usu_usuario = CL.fechahora_usuario
     
 LEFT JOIN tb_empleados emp ON emp.Id = usu.id_empleado 
+LEFT JOIN transporte trn on trn.id_transporte = U.id_unidad
 
 WHERE MD5(DL.Id) = '" . $id_md5 . "'";
 
